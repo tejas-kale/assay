@@ -281,4 +281,7 @@ Decide these while building, and record each here:
 
 ## Status
 
-Nothing built. Next: move this file to the new repo, then start slice 1 with Verify first items 1 and 2.
+Slice 1 is written (spec and decisions: `docs/slice-1.md`). Its logic tests pass, but the Electron, preload and renderer code
+has never been compiled or run. Next: on the Mac, `npm install`, `npm run typecheck`, then `npm run dev` and the checklist in
+`README.md` (Verify first items 1 to 5). The pane-hiding change for the config repo is briefed in `docs/config-repo-slice-1.md`
+and not done.

@@ -90,6 +90,8 @@ export function editFact(text: string, index: number, expectedLine: string, inpu
   const fact = readInput(input)
   const old = parseNote(expectedLine)
   const query = fact.hasTag ? fact.query : old.query
+  // Like the mod: an edit that changes neither text nor citation writes nothing, so it cannot downgrade a label.
+  if (fact.text === old.text && query === old.query) return text
   const keepTrusted = old.label === 'trusted' && query !== undefined && query === old.query
   const line = build(fact.text, query, queries, keepTrusted)
   return notesText(lines.map((each, i) => (i === index ? line : each)))

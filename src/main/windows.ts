@@ -33,9 +33,14 @@ export type WindowCtx = {
 const here = fileURLToPath(new URL('.', import.meta.url))
 const contexts = new Map<number, WindowCtx>()
 let onClosed: (() => void) | undefined
+let onKeepWaiting: (() => void) | undefined
 
 export const setOnClosed = (cb: () => void) => {
   onClosed = cb
+}
+/** Called when the user answers the force-quit dialog with "Keep waiting". */
+export const setOnKeepWaiting = (cb: () => void) => {
+  onKeepWaiting = cb
 }
 export const allContexts = () => [...contexts.values()]
 export const contextFor = (sender: WebContents) => contexts.get(sender.id)
@@ -84,7 +89,7 @@ export function createWindow(): WindowCtx {
   wc.on('will-attach-webview', event => event.preventDefault())
 
   wc.on('before-input-event', (event, input) => {
-    if (input.type !== 'keyDown') return
+    if (input.type !== 'keyDown' && input.type !== 'keyUp') return
     const id = commandForInput({
       key: input.key,
       code: input.code,
@@ -94,13 +99,20 @@ export function createWindow(): WindowCtx {
       alt: input.alt,
     })
     if (!id) return
+    // The terminal sees neither half of a claimed shortcut; only a first keyDown runs it.
     event.preventDefault()
+    if (input.type !== 'keyDown' || input.isAutoRepeat) return
     if (id === 'window.new') createWindow()
     else if (id === 'window.close') win.close()
     else send(ctx, CHANNELS.command, id)
   })
 
   win.on('close', event => {
+    // The force-quit dialog is parented to this window: hold the close until it is answered.
+    if (ctx.dialogOpen) {
+      event.preventDefault()
+      return
+    }
     if (ctx.allowClose || !isLive(ctx)) return
     event.preventDefault()
     requestClose(ctx)
@@ -121,6 +133,8 @@ export function createWindow(): WindowCtx {
 }
 
 function closeNow(ctx: WindowCtx) {
+  // confirmForce closes the window itself once the dialog is answered and the session has exited.
+  if (ctx.dialogOpen) return
   ctx.allowClose = true
   if (!ctx.win.isDestroyed()) ctx.win.close()
 }
@@ -156,9 +170,11 @@ async function confirmForce(ctx: WindowCtx, session: PtySession) {
       cancelId: 0,
     })
     if (response === 1 && session.flow.state() === 'closing') session.flow.forceKill()
+    else if (response === 0) onKeepWaiting?.()
   } finally {
     ctx.dialogOpen = false
   }
+  if (session.flow.state() === 'exited') closeNow(ctx)
 }
 
 export async function pushState(ctx: WindowCtx) {

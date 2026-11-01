@@ -1,10 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 
-import { INITIAL, filterItems, listNav } from '../../core/listNav.ts'
-import type { ListNavState } from '../../core/listNav.ts'
 import type { ClosedThread, EditResult, Threads } from '../../shared/ipc.ts'
-import { InlineInput, NAV_KEYS, SearchLine, isPaneKey } from './common.tsx'
+import { InlineInput, SearchLine, isPaneKey, useListPane } from './common.tsx'
 
 /** `index` is the position in threads.open or threads.closed, which is what edits take. */
 type Item = { kind: 'open'; index: number; text: string } | { kind: 'closed'; index: number; text: string; closed: ClosedThread }
@@ -17,11 +14,6 @@ type Mode =
   | { type: 'confirmDelete'; item: Item }
 
 export function ThreadsTab({ threads }: { threads: Threads }) {
-  const [nav, setNav] = useState<ListNavState>(INITIAL)
-  const [mode, setMode] = useState<Mode>({ type: 'list' })
-  const [message, setMessage] = useState<string>()
-  const rootRef = useRef<HTMLDivElement>(null)
-
   const items: Item[] = [
     ...threads.open.map((text, index): Item => ({ kind: 'open', index, text })),
     ...threads.closed.map((closed, index): Item => ({
@@ -31,24 +23,17 @@ export function ThreadsTab({ threads }: { threads: Threads }) {
       text: closed.outcome ? `${closed.thread} ${closed.outcome}` : closed.thread,
     })),
   ]
-  const visible = filterItems(items, nav, i => i.text)
-  const selectedIndex = Math.max(0, Math.min(nav.selected, visible.length - 1))
-  const selected = visible[selectedIndex]
-
-  useEffect(() => {
-    rootRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
-  }, [selectedIndex, visible.length])
-
-  const refocus = () => requestAnimationFrame(() => rootRef.current?.focus())
-  const finish = (result: EditResult) => {
-    setMode({ type: 'list' })
-    setMessage(result.ok ? undefined : result.message)
-    refocus()
-  }
-  const cancel = () => {
-    setMode({ type: 'list' })
-    refocus()
-  }
+  const { nav, setNav, mode, setMode, message, setMessage, visible, selectedIndex, selected, rootRef, finish, cancel, confirmDeleteKey, navigate } =
+    useListPane<Item, Mode>({
+      items,
+      textOf: i => i.text,
+      targetGone: m => {
+        if (m.type === 'list' || m.type === 'add') return false
+        const { kind, index } = m.item
+        return !items.some(i => i.kind === kind && i.index === index)
+      },
+      confirmDelete: m => remove(m.item),
+    })
 
   function remove(item: Item): Promise<EditResult> {
     return item.kind === 'open'
@@ -58,13 +43,7 @@ export function ThreadsTab({ threads }: { threads: Threads }) {
 
   function onKeyDown(e: KeyboardEvent) {
     if (!isPaneKey(e)) return
-    if (mode.type === 'confirmDelete') {
-      e.preventDefault()
-      const item = mode.item
-      setMode({ type: 'list' })
-      if (e.key === 'y') void remove(item).then(finish)
-      return
-    }
+    if (confirmDeleteKey(e)) return
     if (mode.type !== 'list') return
 
     setMessage(undefined)
@@ -100,9 +79,7 @@ export function ThreadsTab({ threads }: { threads: Threads }) {
         }
       }
     }
-    const next = listNav(nav, e.key, visible.length)
-    if (nav.search?.active || NAV_KEYS.has(e.key)) e.preventDefault()
-    setNav(next.state)
+    navigate(e)
   }
 
   const rows: ReactNode[] = []

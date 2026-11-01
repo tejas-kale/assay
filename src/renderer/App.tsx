@@ -143,7 +143,8 @@ export function App() {
           onRun={id => {
             const returnTo = palette.returnTo
             setPalette(undefined)
-            const movedFocus = id === 'palette.open' ? true : run(id)
+            // Running palette.open from the palette just closes it, so focus goes back like any other close.
+            const movedFocus = id === 'palette.open' ? false : run(id)
             if (!movedFocus) {
               if (returnTo) focusPane(returnTo)
               else setPickerFocus(n => n + 1)

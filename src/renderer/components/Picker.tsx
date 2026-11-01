@@ -26,6 +26,8 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
   const ranked = fuzzyRank(analyses ?? [], query, a => a.name)
   const name = query.trim()
   const canCreate = analyses !== undefined && ranked.length === 0 && validName(name)
+  // Shift+Enter creates the typed name even when fuzzy matches exist, unless it is already an analysis.
+  const canForceCreate = analyses !== undefined && validName(name) && !analyses.some(a => a.name === name)
   const count = canCreate ? 1 : ranked.length
   const index = Math.max(0, Math.min(selected, count - 1))
 
@@ -40,6 +42,11 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
     else onOpened()
   }
 
+  function create() {
+    setBusy(true)
+    window.app.analyses.create(name).then(handle, err => handle({ ok: false, message: String(err) }))
+  }
+
   function submit() {
     if (busy) return
     setMessage(undefined)
@@ -48,8 +55,7 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
       setBusy(true)
       window.app.analyses.open(target.path).then(handle, err => handle({ ok: false, message: String(err) }))
     } else if (canCreate) {
-      setBusy(true)
-      window.app.analyses.create(name).then(handle, err => handle({ ok: false, message: String(err) }))
+      create()
     } else if (name !== '') {
       setMessage('No match. A new name uses letters, digits, ".", "_" or "-".')
     }
@@ -81,6 +87,12 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
           if (down || up) {
             e.preventDefault()
             setSelected(index + (down ? 1 : -1))
+          } else if (e.key === 'Enter' && e.shiftKey) {
+            e.preventDefault()
+            if (!busy && canForceCreate) {
+              setMessage(undefined)
+              create()
+            }
           } else if (e.key === 'Enter') {
             e.preventDefault()
             submit()
@@ -108,6 +120,7 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
           <li className="empty">{name === '' ? 'No analyses yet. Type a name to create one.' : 'No match, and that is not a valid name.'}</li>
         )}
       </ul>
+      {canForceCreate && <div className="hint">Shift+Enter creates "{name}" as a new analysis</div>}
       {message && <div className="status warn">{message}</div>}
       <div className="hint">Up/Down or Ctrl-N/Ctrl-P move  Enter opens  Cmd+K palette  Cmd+N new window</div>
     </div>

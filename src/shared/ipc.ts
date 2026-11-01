@@ -89,7 +89,7 @@ export type AppApi = {
     closeOpen(index: number, expected: string, outcome: string): Promise<EditResult>
     deleteClosed(index: number, expected: ClosedThread): Promise<EditResult>
     /** delta -1 moves up, +1 down. */
-    moveOpen(index: number, expected: string, delta: number): Promise<EditResult>
+    moveOpen(index: number, expected: string, delta: 1 | -1): Promise<EditResult>
   }
 
   /** Reads a linked note file, on request. `path` is `Fact.file.path`; main resolves it against the analysis folder. */

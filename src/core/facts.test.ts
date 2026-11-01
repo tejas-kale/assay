@@ -91,6 +91,16 @@ test('editFact keeps trusted only for the same query whose .csv still exists', (
   assert.equal(editFact(text, 0, old, 'b2', ['012_third.sql']), 'b2 [unverified q 012]\n')
 })
 
+test('editFact returns the text unchanged when text and citation are unchanged', () => {
+  const trusted = '\nb [trusted q 012]\n\n'
+  assert.equal(editFact(trusted, 0, 'b [trusted q 012]', 'b', ['012_x.sql']), trusted)
+  assert.equal(editFact(trusted, 0, 'b [trusted q 012]', 'b [q 12]', ['012_x.sql']), trusted)
+  const plain = 'a [queried q 001]\n'
+  assert.equal(editFact(plain, 0, 'a [queried q 001]', 'a', ['001_x.sql']), plain)
+  const untagged = 'plain note\n'
+  assert.equal(editFact(untagged, 0, 'plain note', 'plain note', QUERIES), untagged)
+})
+
 test('editFact throws StaleEdit when the line changed, and refuses file notes and empty input', () => {
   assert.throws(() => editFact('a [unverified]\n', 0, 'other', 'x', QUERIES), StaleEdit)
   assert.throws(() => editFact('a [unverified]\n', 3, 'a [unverified]', 'x', QUERIES), StaleEdit)

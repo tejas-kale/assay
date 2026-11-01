@@ -1,5 +1,9 @@
-import { useState } from 'react'
-import type { KeyboardEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from 'react'
+
+import { INITIAL, filterItems, listNav } from '../../core/listNav.ts'
+import type { ListNavEffect, ListNavState } from '../../core/listNav.ts'
+import type { EditResult } from '../../shared/ipc.ts'
 
 export type PaneName = 'terminal' | 'notes' | 'data'
 export type NotesTabName = 'notes' | 'threads'
@@ -63,4 +67,83 @@ export function SearchLine(props: { search: { active: boolean; query: string } |
       {props.search.active ? '█' : ''}
     </div>
   )
+}
+
+type ListMode = { type: 'list' }
+
+/**
+ * State and key handling shared by the list tabs. `M` is the tab's mode union; `list` and
+ * `confirmDelete` are the two modes this hook knows about.
+ */
+export function useListPane<T, M extends { type: string }>(opts: {
+  items: readonly T[]
+  textOf: (item: T) => string
+  /** True when the item a non-list mode points at is gone (a poll removed it): the pane then returns to the list. */
+  targetGone: (mode: M | ListMode) => boolean
+  /** Deletes the item of a confirmed `confirmDelete` mode. */
+  confirmDelete: (mode: Extract<M, { type: 'confirmDelete' }>) => Promise<EditResult>
+}): {
+  nav: ListNavState
+  setNav: Dispatch<SetStateAction<ListNavState>>
+  mode: M | ListMode
+  setMode: Dispatch<SetStateAction<M | ListMode>>
+  message: string | undefined
+  setMessage: Dispatch<SetStateAction<string | undefined>>
+  rootRef: RefObject<HTMLDivElement | null>
+  visible: T[]
+  selectedIndex: number
+  selected: T | undefined
+  finish: (result: EditResult) => void
+  cancel: () => void
+  /** Handles a key in `confirmDelete` mode. Returns true when the key was consumed. */
+  confirmDeleteKey: (e: KeyboardEvent) => boolean
+  /** The shared tail of the list-mode key handler: moves the selection and returns listNav's effect. */
+  navigate: (e: KeyboardEvent) => ListNavEffect | undefined
+} {
+  const [nav, setNav] = useState<ListNavState>(INITIAL)
+  const [mode, setMode] = useState<M | ListMode>({ type: 'list' })
+  const [message, setMessage] = useState<string>()
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  const visible = filterItems(opts.items, nav, opts.textOf)
+  const selectedIndex = Math.max(0, Math.min(nav.selected, visible.length - 1))
+  const selected = visible[selectedIndex]
+
+  useEffect(() => {
+    rootRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
+  }, [selectedIndex, visible.length])
+
+  const gone = mode.type !== 'list' && opts.targetGone(mode)
+  useEffect(() => {
+    if (gone) setMode({ type: 'list' })
+  }, [gone])
+
+  const refocus = () => requestAnimationFrame(() => rootRef.current?.focus())
+  const finish = (result: EditResult) => {
+    setMode({ type: 'list' })
+    setMessage(result.ok ? undefined : result.message)
+    refocus()
+  }
+  const cancel = () => {
+    setMode({ type: 'list' })
+    refocus()
+  }
+
+  const confirmDeleteKey = (e: KeyboardEvent) => {
+    if (mode.type !== 'confirmDelete') return false
+    e.preventDefault()
+    const target = mode as unknown as Extract<M, { type: 'confirmDelete' }>
+    setMode({ type: 'list' })
+    if (e.key === 'y') void opts.confirmDelete(target).then(finish)
+    return true
+  }
+
+  const navigate = (e: KeyboardEvent) => {
+    const next = listNav(nav, e.key, visible.length)
+    if (nav.search?.active || NAV_KEYS.has(e.key)) e.preventDefault()
+    setNav(next.state)
+    return next.effect
+  }
+
+  return { nav, setNav, mode, setMode, message, setMessage, rootRef, visible, selectedIndex, selected, finish, cancel, confirmDeleteKey, navigate }
 }

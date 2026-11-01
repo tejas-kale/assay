@@ -1,10 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 
-import { INITIAL, filterItems, listNav } from '../../core/listNav.ts'
-import type { ListNavState } from '../../core/listNav.ts'
-import type { EditResult, Fact } from '../../shared/ipc.ts'
-import { InlineInput, NAV_KEYS, SearchLine, isPaneKey } from './common.tsx'
+import type { Fact } from '../../shared/ipc.ts'
+import { InlineInput, SearchLine, isPaneKey, useListPane } from './common.tsx'
 
 type Mode =
   | { type: 'list' }
@@ -14,29 +11,13 @@ type Mode =
   | { type: 'file'; title: string; text: string }
 
 export function NotesTab({ facts }: { facts: Fact[] }) {
-  const [nav, setNav] = useState<ListNavState>(INITIAL)
-  const [mode, setMode] = useState<Mode>({ type: 'list' })
-  const [message, setMessage] = useState<string>()
-  const rootRef = useRef<HTMLDivElement>(null)
-
-  const visible = filterItems(facts, nav, f => f.text)
-  const selectedIndex = Math.max(0, Math.min(nav.selected, visible.length - 1))
-  const selected = visible[selectedIndex]
-
-  useEffect(() => {
-    rootRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
-  }, [selectedIndex, visible.length])
-
-  const refocus = () => requestAnimationFrame(() => rootRef.current?.focus())
-  const finish = (result: EditResult) => {
-    setMode({ type: 'list' })
-    setMessage(result.ok ? undefined : result.message)
-    refocus()
-  }
-  const cancel = () => {
-    setMode({ type: 'list' })
-    refocus()
-  }
+  const { nav, setNav, mode, setMode, message, setMessage, rootRef, visible, selectedIndex, selected, finish, cancel, confirmDeleteKey, navigate } =
+    useListPane<Fact, Mode>({
+      items: facts,
+      textOf: f => f.text,
+      targetGone: m => (m.type === 'edit' || m.type === 'confirmDelete') && !facts.some(f => f.index === m.fact.index),
+      confirmDelete: m => window.app.facts.delete(m.fact.index, m.fact.line),
+    })
 
   function onKeyDown(e: KeyboardEvent) {
     if (!isPaneKey(e)) return
@@ -48,13 +29,7 @@ export function NotesTab({ facts }: { facts: Fact[] }) {
       e.preventDefault()
       return
     }
-    if (mode.type === 'confirmDelete') {
-      e.preventDefault()
-      const fact = mode.fact
-      setMode({ type: 'list' })
-      if (e.key === 'y') void window.app.facts.delete(fact.index, fact.line).then(finish)
-      return
-    }
+    if (confirmDeleteKey(e)) return
     if (mode.type !== 'list') return
 
     setMessage(undefined)
@@ -76,10 +51,8 @@ export function NotesTab({ facts }: { facts: Fact[] }) {
           return
       }
     }
-    const next = listNav(nav, e.key, visible.length)
-    if (nav.search?.active || NAV_KEYS.has(e.key)) e.preventDefault()
-    setNav(next.state)
-    if (next.effect?.type === 'open' && selected?.file) {
+    const effect = navigate(e)
+    if (effect?.type === 'open' && selected?.file) {
       const { title } = selected.file
       void window.app.readNoteFile(selected.file.path).then(result => {
         if (result.ok) setMode({ type: 'file', title, text: result.text })

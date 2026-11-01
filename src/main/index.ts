@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 import { registerIpc } from './ipc.ts'
-import { allContexts, createWindow, isLive, requestClose, setOnClosed } from './windows.ts'
+import { allContexts, createWindow, isLive, requestClose, setOnClosed, setOnKeepWaiting } from './windows.ts'
 
 function analysisRoot(): string {
   const configured = process.env['ANALYSIS_ROOT']
@@ -56,6 +56,11 @@ setOnClosed(() => {
   finishQuitIfDone()
 })
 
+// "Keep waiting" cancels the quit, so the next window close must not quit the app.
+setOnKeepWaiting(() => {
+  quitPending = false
+})
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin' || quitPending) app.quit()
 })
@@ -65,7 +70,10 @@ app.on('activate', () => {
 })
 
 void app.whenReady().then(() => {
-  electronSession.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
+  // Terminal paste needs the clipboard; everything else stays denied.
+  const allowed = (permission: string) => permission === 'clipboard-read' || permission === 'clipboard-sanitized-write'
+  electronSession.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => callback(allowed(permission)))
+  electronSession.defaultSession.setPermissionCheckHandler((_wc, permission) => allowed(permission))
   Menu.setApplicationMenu(buildMenu())
   registerIpc(analysisRoot())
   createWindow()
