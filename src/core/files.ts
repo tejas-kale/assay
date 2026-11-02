@@ -57,7 +57,31 @@ export async function walkFiles(port: WalkPort, root: string): Promise<{ path: s
   return found.sort((a, b) => b.mtimeMs - a.mtimeMs || a.path.localeCompare(b.path))
 }
 
-/** Ghostty's arguments to open `file` in Neovim, starting in `cwd`. `-e` takes the rest of the line, so it comes last. */
+/** POSIX single-quoting, so a path with spaces or quotes stays one word. */
+const shellQuote = (word: string) => `'${word.replace(/'/g, `'\\''`)}'`
+
+const NEW_TAB_SCRIPT = `on run argv
+  set cmd to item 1 of argv
+  set dir to item 2 of argv
+  tell application "Ghostty"
+    set cfg to new surface configuration
+    set command of cfg to cmd
+    set initial working directory of cfg to dir
+    if (count of windows) > 0 then
+      new tab in front window with configuration cfg
+    else
+      new window with configuration cfg
+    end if
+    activate
+  end tell
+end run`
+
+/** `osascript` arguments that open `file` in Neovim as a new tab of Ghostty's front window (a new window when none is open). Paths travel as `argv`, never inside the script text. */
+export const ghosttyTabArgs = (nvim: string, cwd: string, file: string) => [
+  '-e', NEW_TAB_SCRIPT, `${shellQuote(nvim)} ${shellQuote(file)}`, cwd,
+]
+
+/** Fallback: a new Ghostty instance running Neovim. `-e` takes the rest of the line, so it comes last. */
 export const ghosttyArgs = (nvim: string, cwd: string, file: string) => [
   '-na', 'Ghostty', '--args', `--working-directory=${cwd}`, '--quit-after-last-window-closed=true', '-e', nvim, file,
 ]

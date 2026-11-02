@@ -7,7 +7,7 @@ import { promisify } from 'node:util'
 
 import { shell } from 'electron'
 
-import { ghosttyArgs, kindByBytes, kindByName, walkFiles } from '../core/files.ts'
+import { ghosttyArgs, ghosttyTabArgs, kindByBytes, kindByName, walkFiles } from '../core/files.ts'
 import type { FileEntry, FileKind } from '../core/files.ts'
 import { resolveInside } from '../core/safePath.ts'
 import type { OpenFileResult } from '../shared/ipc.ts'
@@ -73,7 +73,11 @@ export async function openFile(folder: string, target: string): Promise<OpenFile
       return { ok: true, how: 'image', dataUrl: `data:${mime};base64,${(await readFile(real)).toString('base64')}` }
     }
     if (kind === 'text') {
-      await run('open', ghosttyArgs(await findNvim(), folder, real))
+      const nvim = await findNvim()
+      // A new tab in the user's Ghostty; if that fails (say, Automation was denied), a new instance.
+      await run('osascript', ghosttyTabArgs(nvim, folder, real), { timeout: 15_000 }).catch(() =>
+        run('open', ghosttyArgs(nvim, folder, real)),
+      )
       return { ok: true, how: 'nvim' }
     }
     const failed = await shell.openPath(real)

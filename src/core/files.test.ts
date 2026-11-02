@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { ghosttyArgs, kindByBytes, kindByName, walkFiles } from './files.ts'
+import { ghosttyArgs, ghosttyTabArgs, kindByBytes, kindByName, walkFiles } from './files.ts'
 import type { WalkPort } from './files.ts'
 
 test('kindByName knows images, text and binary data by extension, and leaves the rest to the bytes', () => {
@@ -45,4 +45,14 @@ test('ghosttyArgs puts -e and its command last', () => {
   const args = ghosttyArgs('/bin/nvim', '/w', '/w/notes.md')
   assert.deepEqual(args.slice(-3), ['-e', '/bin/nvim', '/w/notes.md'])
   assert.ok(args.includes('--working-directory=/w'))
+})
+
+test('ghosttyTabArgs passes the quoted command and the folder as arguments, not in the script', () => {
+  const args = ghosttyTabArgs("/opt/n vim/nvim", '/w/my analysis', "/w/it's.md")
+  assert.deepEqual(args.slice(0, 1), ['-e'])
+  assert.deepEqual(args.slice(2), [`'/opt/n vim/nvim' '/w/it'\\''s.md'`, '/w/my analysis'])
+  const script = args[1] ?? ''
+  assert.ok(!script.includes('/w/') && !script.includes('nvim'))
+  assert.match(script, /new tab in front window with configuration cfg/)
+  assert.match(script, /new window with configuration cfg/)
 })
