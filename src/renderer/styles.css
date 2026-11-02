@@ -190,22 +190,15 @@ table.grid th.cur-col { color: var(--accent); }
 .trust-state.bad { color: var(--bad); }
 .trust-state.dim { color: var(--dim); }
 
-/* Preview: Tab in the Notes and Files tabs and in search. Beside the list when the pane is wide, under it when narrow. */
-.list:has(> .split, > .split-off) { container-type: inline-size; }
-.list:has(> .split) { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
-.split-off, .split-off > .split-list { display: contents; }
-.split { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.split > .split-list { flex: 0 0 40%; min-height: 0; overflow: auto; padding: 4px 0; border-bottom: 1px solid var(--line); }
-.split > .preview { flex: 1; }
-@container (min-width: 560px) {
-  .split { flex-direction: row; }
-  .split > .split-list { flex: 0 0 42%; border-bottom: 0; border-right: 1px solid var(--line); }
-}
+/* Preview: the Code tab's view of a file or text, in the search's right side and in the Tab pop-up. */
 .preview { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .preview-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-.preview-body { flex: 1; min-height: 0; overflow: auto; }
-.preview-body img { display: block; max-width: 100%; max-height: 100%; margin: auto; padding: 8px; object-fit: contain; }
-.preview-body mark { background: var(--accent); color: var(--bg); border-radius: 2px; }
+.preview-body { flex: 1; min-height: 0; display: flex; flex-direction: column; outline: none; }
+.preview-body .run-body { flex: 1; min-height: 0; }
+.preview-body img { display: block; max-width: 100%; max-height: 100%; margin: auto; padding: 8px; object-fit: contain; min-height: 0; }
+.preview-popup { width: min(1000px, 92vw); height: 76vh; display: flex; flex-direction: column; outline: none; }
+.preview-popup .preview { flex: 1; }
+.preview-popup .hint { padding: 6px 4px 0; }
 
 /* Search (Cmd+F): the palette's look, wider, with the preview on the right. */
 .palette.search { width: min(640px, 92vw); display: flex; gap: 8px; }

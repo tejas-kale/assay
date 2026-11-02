@@ -7,7 +7,8 @@ import type { ListNavState } from '../../core/listNav.ts'
 import type { FileEntry } from '../../shared/ipc.ts'
 import { NAV_KEYS, SearchLine, isPaneKey, useReveal } from './common.tsx'
 import type { Reveal } from './common.tsx'
-import { Preview } from './Preview.tsx'
+import { PreviewPopup } from './Preview.tsx'
+import type { PreviewSource } from '../../core/search.ts'
 
 const size = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : bytes < 1024 ** 2 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`
@@ -17,16 +18,15 @@ const KIND_LABEL = { text: 'nvim', image: 'preview', other: 'open' } as const
 /**
  * Every file in the analysis, newest first. `/` searches, Enter opens: text in Neovim (a new
  * Ghostty window), images as a preview here, anything else in its default app. `r` refreshes.
- * Tab shows a preview of the selected file beside the list; J / K scroll it.
+ * Tab opens the selected file in a pop-up preview, with the cursor in it.
  */
 export function FilesTab({ refreshKey, reveal, onRevealed }: { refreshKey: unknown; reveal?: Reveal | undefined; onRevealed: () => void }) {
   const [files, setFiles] = useState<FileEntry[]>()
   const [nav, setNav] = useState<ListNavState>(INITIAL)
   const [message, setMessage] = useState<string>()
   const [preview, setPreview] = useState<{ path: string; dataUrl: string }>()
-  const [side, setSide] = useState(false)
+  const [popup, setPopup] = useState<PreviewSource>()
   const rootRef = useRef<HTMLDivElement>(null)
-  const sideRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(() => {
     void window.app.files.list().then(setFiles, err => setMessage(String(err)))
@@ -84,17 +84,7 @@ export function FilesTab({ refreshKey, reveal, onRevealed }: { refreshKey: unkno
     }
     if (e.key === 'Tab' && !e.shiftKey) {
       e.preventDefault()
-      setSide(on => !on)
-      return
-    }
-    if (side && !nav.search?.active && (e.key === 'J' || e.key === 'K')) {
-      e.preventDefault()
-      sideRef.current?.scrollBy(0, (e.key === 'J' ? 1 : -1) * 120)
-      return
-    }
-    if (side && !nav.search && e.key === 'Escape') {
-      e.preventDefault()
-      setSide(false)
+      if (selected) setPopup({ type: 'path', path: selected.path })
       return
     }
     if (!nav.search?.active && e.key === 'r') {
@@ -118,8 +108,7 @@ export function FilesTab({ refreshKey, reveal, onRevealed }: { refreshKey: unkno
           <img src={preview.dataUrl} alt={preview.path} />
         </div>
       ) : (
-        <div className={side ? 'split' : 'split-off'}>
-        <div className="split-list">
+        <>
           <SearchLine search={nav.search} />
           {files === undefined && <div className="empty">Reading the folder…</div>}
           {files?.length === 0 && <div className="empty">No files.</div>}
@@ -147,11 +136,16 @@ export function FilesTab({ refreshKey, reveal, onRevealed }: { refreshKey: unkno
               </li>
             ))}
           </ul>
-        </div>
-        {side && (
-          <Preview source={selected && { type: 'path', path: selected.path }} bodyRef={sideRef} refreshKey={selected?.mtimeMs} />
-        )}
-        </div>
+        </>
+      )}
+      {popup && (
+        <PreviewPopup
+          source={popup}
+          onClose={() => {
+            setPopup(undefined)
+            requestAnimationFrame(() => rootRef.current?.focus())
+          }}
+        />
       )}
       {message && <div className="status">{message}</div>}
     </div>

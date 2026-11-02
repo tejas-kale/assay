@@ -78,16 +78,28 @@ export function formatSql(text: string): string {
 
 type CodeViewProps = {
   code: string
-  language: 'sql' | 'python' | undefined
+  language: CodeLanguage | undefined
   focusKey: string
   /** Show the exact file text instead of the formatted SQL. */
   original: boolean
   onToggleOriginal: () => void
   /** Not a focus target: the host tab keeps the keys (the Trust tab scrolls). */
   passive?: boolean
+  /** Take the focus when built (a pop-up). */
+  autoFocus?: boolean
+  /** Select the first case-insensitive match of this text and scroll it into the middle (a search hit). */
+  find?: string | undefined
 }
 
-export function CodeView({ code, language, focusKey, original, onToggleOriginal, passive }: CodeViewProps) {
+export type CodeLanguage = 'sql' | 'python' | 'markdown'
+
+/** The highlighting a file gets, by its extension. */
+export function languageOfPath(path: string): CodeLanguage | undefined {
+  const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
+  return ext === 'sql' ? 'sql' : ext === 'py' ? 'python' : ext === 'md' ? 'markdown' : undefined
+}
+
+export function CodeView({ code, language, focusKey, original, onToggleOriginal, passive, autoFocus, find }: CodeViewProps) {
   const host = useRef<HTMLDivElement>(null)
   const hadFocus = useRef(false)
   const shown = useMemo(() => (language === 'sql' && !original ? formatSql(code) : code), [code, language, original])
@@ -101,13 +113,18 @@ export function CodeView({ code, language, focusKey, original, onToggleOriginal,
         extensions: [
           EditorState.readOnly.of(true),
           keymap.of([...readingKeys, ...defaultKeymap]),
-          language === 'sql' ? sql({ dialect: StandardSQL, upperCaseKeywords: true }) : language === 'python' ? python() : [],
+          language === 'sql' ? sql({ dialect: StandardSQL, upperCaseKeywords: true }) : language === 'python' ? python() : language === 'markdown' ? markdown() : [],
           syntaxHighlighting(highlight),
           EditorView.lineWrapping,
           theme,
         ],
       }),
     })
+    const at = find ? shown.toLowerCase().indexOf(find.toLowerCase()) : -1
+    if (find && at >= 0) {
+      view.dispatch({ selection: { anchor: at, head: at + find.length }, effects: EditorView.scrollIntoView(at, { y: 'center' }) })
+    }
+    if (autoFocus) view.focus()
     if (!passive) view.contentDOM.setAttribute('data-focus-target', '')
     // A rebuild (o, a new run) keeps focus where it was.
     if (!passive && (hadFocus.current || host.current.closest('[data-pane]')?.contains(document.activeElement))) view.focus()
@@ -116,7 +133,7 @@ export function CodeView({ code, language, focusKey, original, onToggleOriginal,
       hadFocus.current = view.hasFocus
       view.destroy()
     }
-  }, [shown, language, focusKey, passive])
+  }, [shown, language, focusKey, passive, find, autoFocus])
 
   return (
     <div

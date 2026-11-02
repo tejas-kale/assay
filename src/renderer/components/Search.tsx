@@ -64,7 +64,7 @@ export function Search(props: { state: AnalysisState; onChoose: (target: SearchT
               const up = e.key === 'ArrowUp' || (e.ctrlKey && e.key === 'p')
               if (down || up) setSelected(Math.max(0, Math.min(index + (down ? 1 : -1), hits.length - 1)))
               else if (e.key === 'Tab') setPreview(p => !p)
-              else if (e.ctrlKey && (e.key === 'd' || e.key === 'u')) previewRef.current?.scrollBy(0, (e.key === 'd' ? 1 : -1) * 200)
+              else if (e.ctrlKey && (e.key === 'd' || e.key === 'u')) (previewRef.current?.querySelector('.cm-scroller') ?? previewRef.current)?.scrollBy(0, (e.key === 'd' ? 1 : -1) * 200)
               else if (e.key === 'Enter') {
                 if (hit) props.onChoose(hit.entry.target)
               } else if (e.key === 'Escape') props.onClose()
@@ -94,7 +94,7 @@ export function Search(props: { state: AnalysisState; onChoose: (target: SearchT
           </ul>
           <div className="hint">Enter show · Tab preview {preview ? 'off' : 'on'} · Ctrl-D / Ctrl-U scroll · Esc close</div>
         </div>
-        {preview && <Preview source={hit?.entry.preview} mark={hit?.snippet !== undefined ? query.trim() : undefined} bodyRef={previewRef} />}
+        {preview && <Preview source={hit?.entry.preview} find={hit?.snippet !== undefined ? query.trim() : undefined} bodyRef={previewRef} />}
       </div>
     </div>
   )

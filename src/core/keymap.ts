@@ -83,16 +83,17 @@ export function shortcutLabel(id: CommandId): string {
 export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
   {
     pane: 'Threads',
-    keys: [['⌘2 again', 'switch to Notes'], ['j / k', 'move'], ['/', 'search'], ['a', 'add'], ['e', 'edit'], ['c', 'close'], ['d', 'delete'], ['J / K', 'reorder']],
+    keys: [['⌘2 again', 'switch to Notes'], ['j / k', 'move'], ['/', 'search'], ['Tab', 'full text in a pop-up'], ['a', 'add'], ['e', 'edit'], ['c', 'close'], ['d', 'delete'], ['J / K', 'reorder']],
   },
   {
     pane: 'Notes',
-    keys: [['⌘2 again', 'switch to Files'], ['j / k', 'move'], ['/', 'search'], ['Enter', 'open file note or read note'], ['Tab', 'preview on / off'], ['J / K', 'scroll preview'], ['a', 'add fact'], ['n', 'new note'], ['e', 'edit'], ['d', 'delete']],
+    keys: [['⌘2 again', 'switch to Files'], ['j / k', 'move'], ['/', 'search'], ['Enter', 'open file note or read note'], ['Tab', 'preview in a pop-up'], ['a', 'add fact'], ['n', 'new note'], ['e', 'edit'], ['d', 'delete']],
   },
   {
     pane: 'Note reader',
     keys: [['Tab / ⇧Tab', 'next / previous link or citation'], ['Enter', 'follow: note, or run in the data pane'], ['Backspace', 'previous note'], ['j / k', 'scroll'], ['e', 'edit'], ['Esc', 'back to the list']],
   },
+  { pane: 'Preview pop-up', keys: [['h j k l  w b', 'move'], ['g / G', 'top / bottom'], ['o', 'original / formatted SQL'], ['Esc / Tab / q', 'close']] },
   { pane: 'Note editor', keys: [['⌘S', 'save'], ['Esc', 'leave (in Vim normal mode)']] },
   {
     pane: 'Data',
@@ -115,7 +116,7 @@ export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
   { pane: 'Trust', keys: [['j / k', 'scroll'], ['g / G', 'top / bottom']] },
   {
     pane: 'Files',
-    keys: [['j / k', 'move'], ['/', 'search'], ['Enter', 'open: text in Neovim, image preview'], ['Tab', 'preview on / off'], ['J / K', 'scroll preview'], ['r', 'refresh'], ['⌘2 again', 'switch to Threads']],
+    keys: [['j / k', 'move'], ['/', 'search'], ['Enter', 'open: text in Neovim, image preview'], ['Tab', 'preview in a pop-up'], ['r', 'refresh'], ['⌘2 again', 'switch to Threads']],
   },
   {
     pane: 'Search (⌘F)',

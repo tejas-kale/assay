@@ -3,6 +3,8 @@ import type { KeyboardEvent, ReactNode } from 'react'
 import type { ClosedThread, EditResult, Threads } from '../../shared/ipc.ts'
 import { InlineInput, SearchLine, isPaneKey, useListPane, useReveal } from './common.tsx'
 import type { Reveal } from './common.tsx'
+import { PreviewPopup } from './Preview.tsx'
+import { useState } from 'react'
 
 /** `index` is the position in threads.open or threads.closed, which is what edits take. */
 type Item = { kind: 'open'; index: number; text: string } | { kind: 'closed'; index: number; text: string; closed: ClosedThread }
@@ -36,6 +38,9 @@ export function ThreadsTab({ threads, reveal, onRevealed }: { threads: Threads; 
       confirmDelete: m => remove(m.item),
     })
 
+  /** Tab opens the selected thread, outcome included, in a pop-up: a long one is cut in the list. */
+  const [popup, setPopup] = useState<string>()
+
   useReveal(
     reveal,
     items,
@@ -59,6 +64,11 @@ export function ThreadsTab({ threads, reveal, onRevealed }: { threads: Threads; 
     if (mode.type !== 'list') return
 
     setMessage(undefined)
+    if (e.key === 'Tab' && !e.shiftKey) {
+      e.preventDefault()
+      if (selected) setPopup(selected.kind === 'open' ? selected.text : `${selected.closed.thread}${selected.closed.outcome ? `\n\n→ ${selected.closed.outcome}` : ''}`)
+      return
+    }
     if (!nav.search?.active) {
       switch (e.key) {
         case 'a':
@@ -156,6 +166,15 @@ export function ThreadsTab({ threads, reveal, onRevealed }: { threads: Threads; 
         <div className="status warn">Delete "{mode.item.text}"? y to confirm, any other key cancels</div>
       )}
       {message && <div className="status warn">{message}</div>}
+      {popup !== undefined && (
+        <PreviewPopup
+          source={{ type: 'text', text: popup }}
+          onClose={() => {
+            setPopup(undefined)
+            requestAnimationFrame(() => rootRef.current?.focus())
+          }}
+        />
+      )}
     </div>
   )
 }

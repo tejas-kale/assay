@@ -11,7 +11,7 @@ import { CodeEditor } from './CodeView.tsx'
 import type { EditorHandle } from './CodeView.tsx'
 import { InlineInput, SearchLine, isPaneKey, useListPane, useReveal } from './common.tsx'
 import type { Reveal } from './common.tsx'
-import { Preview } from './Preview.tsx'
+import { PreviewPopup } from './Preview.tsx'
 
 type Item = { kind: 'fact'; fact: Fact } | { kind: 'note'; note: NoteFile }
 
@@ -67,8 +67,8 @@ export function NotesTab(props: {
     })
   const latest = useRef({ mode, selected })
   latest.current = { mode, selected }
-  const [preview, setPreview] = useState(false)
-  const previewRef = useRef<HTMLDivElement>(null)
+  /** The pop-up preview Tab opened; closing it gives the keys back to the list. */
+  const [popup, setPopup] = useState<PreviewSource>()
 
   useReveal(
     reveal,
@@ -155,13 +155,11 @@ export function NotesTab(props: {
     }
   }
 
-  /** Tab toggles the preview; while it shows, J / K scroll it and Esc (with no search kept) hides it. */
+  /** Tab opens the selected item in a pop-up preview. */
   function previewKey(e: KeyboardEvent): boolean {
-    if (e.key === 'Tab' && !e.shiftKey) setPreview(p => !p)
-    else if (preview && !nav.search?.active && (e.key === 'J' || e.key === 'K')) previewRef.current?.scrollBy(0, (e.key === 'J' ? 1 : -1) * 120)
-    else if (preview && !nav.search && e.key === 'Escape') setPreview(false)
-    else return false
+    if (e.key !== 'Tab' || e.shiftKey) return false
     e.preventDefault()
+    if (previewSource) setPopup(previewSource)
     return true
   }
 
@@ -219,8 +217,7 @@ export function NotesTab(props: {
           }}
         />
       ) : (
-        <div className={preview ? 'split' : 'split-off'}>
-        <div className="split-list">
+        <>
           <SearchLine search={nav.search} />
           {items.length === 0 && mode.type !== 'add' && <div className="empty">No facts yet. Press a to add one, n for a note.</div>}
           <ul role="listbox" aria-label="Facts and note files">
@@ -290,9 +287,16 @@ export function NotesTab(props: {
             </div>
           )}
           {message && <div className="status warn">{message}</div>}
-        </div>
-        {preview && <Preview source={previewSource} bodyRef={previewRef} refreshKey={noteFiles} />}
-        </div>
+        </>
+      )}
+      {popup && (
+        <PreviewPopup
+          source={popup}
+          onClose={() => {
+            setPopup(undefined)
+            requestAnimationFrame(() => rootRef.current?.focus())
+          }}
+        />
       )}
       {ownsFocus && message && <div className="status warn">{message}</div>}
     </div>
