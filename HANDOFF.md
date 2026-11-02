@@ -271,6 +271,11 @@ Decide these while building, and record each here:
 
 ### Decided while building
 
+- **Kernel link (user, 2026-11-02): files only.** Python runs from the app go through request files, as SQL does in
+  slice 2b, with interrupts as a request too. The mod talks to the runner over the spawned process's stdin/stdout. The
+  port, token, forwarder use and `.assay/session.json` are dropped from the plan, and the "Channels" and "Discovery"
+  wiring above are superseded on this point. Accepted cost: output shows in steps of about 0.5 s, not live.
+
 - **Slice 2b** (`docs/slice-2b.md`): the app writes `.assay/requests/<id>.json`; the mod polls it every 500 ms, runs it
   through `runQuery` with `-- author: user` and `-- from: NNN` header lines, and answers in `.assay/replies/<id>.json`.
   A user's run is never `trusted`. Editing starts from the SQL on screen (formatted unless `o`), header lines removed.
