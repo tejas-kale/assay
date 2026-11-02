@@ -45,3 +45,10 @@ test('plots changing for the current run marks Plots, unless Plots is on screen'
   assert.deepEqual([...markTabs(none, after, after, 'data')], [])
   assert.deepEqual([...markTabs(none, after, seen({ plots: ['001_a.p1.png', '001_a.p2.png'] }), 'code')], ['plots'])
 })
+
+test('a changed trust review marks Trust, except while it is shown', () => {
+  const after = seen({ trust: '100:asking:3' })
+  assert.deepEqual([...markTabs(none, seen({ trust: '100:checking:1' }), after, 'data')], ['trust'])
+  assert.deepEqual([...markTabs(none, seen({ trust: '100:checking:1' }), after, 'trust')], [])
+  assert.deepEqual([...markTabs(none, seen(), seen(), 'data')], [])
+})

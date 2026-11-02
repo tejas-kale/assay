@@ -7,7 +7,7 @@ import type { EditResult } from '../../shared/ipc.ts'
 
 export type PaneName = 'terminal' | 'notes' | 'data'
 export type NotesTabName = 'threads' | 'notes' | 'files'
-export type DataTabName = 'data' | 'plots' | 'code' | 'history'
+export type DataTabName = 'data' | 'plots' | 'code' | 'history' | 'trust'
 
 /** True for inputs, textareas, selects, editable elements and anything inside a dialog: pane keys must not run there. */
 export function isTypingTarget(target: EventTarget | null): boolean {

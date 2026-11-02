@@ -11,6 +11,7 @@ export type CommandId =
   | 'tab.plots'
   | 'tab.code'
   | 'tab.history'
+  | 'tab.trust'
   | 'tab.notes'
   | 'tab.threads'
   | 'tab.files'
@@ -45,6 +46,7 @@ export const COMMANDS: readonly Command[] = [
   { id: 'tab.plots', title: 'Show Plots tab', accelerator: { code: 'KeyP', shift: true } },
   { id: 'tab.code', title: 'Show Code tab', accelerator: { code: 'KeyC', shift: true } },
   { id: 'tab.history', title: 'Show History tab', accelerator: { code: 'KeyH', shift: true } },
+  { id: 'tab.trust', title: 'Show Trust tab', accelerator: { code: 'KeyR', shift: true } },
   { id: 'tab.threads', title: 'Show Threads tab', accelerator: { code: 'KeyT', shift: true } },
   { id: 'tab.notes', title: 'Show Notes tab', accelerator: { code: 'KeyN', shift: true } },
   { id: 'tab.files', title: 'Show Files tab', accelerator: { code: 'KeyF', shift: true } },
@@ -108,6 +110,7 @@ export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
     pane: 'History',
     keys: [['j / k', 'move'], ['Enter', 'show that run'], ['p', 'pin / follow latest'], ['newest run', 'follow Claude again']],
   },
+  { pane: 'Trust', keys: [['j / k', 'scroll'], ['g / G', 'top / bottom']] },
   {
     pane: 'Files',
     keys: [['j / k', 'move'], ['/', 'search'], ['Enter', 'open: text in Neovim, image preview'], ['r', 'refresh'], ['⌘2 again', 'switch to Threads']],

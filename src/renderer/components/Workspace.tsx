@@ -89,7 +89,7 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
       </section>
 
       <section className="pane" data-pane="data" ref={dataRef} tabIndex={-1} aria-label="Data pane">
-        <DataPane tab={dataTab} runs={state.runs} status={state.runStatus} onTab={onDataTab} command={dataCommand} onToast={onToast} />
+        <DataPane tab={dataTab} runs={state.runs} status={state.runStatus} trust={state.trust} onTab={onDataTab} command={dataCommand} onToast={onToast} />
         {hints && (
           <PaneHint>
             {[shortcutLabel('focus.data'), ...DATA_TABS.map(t => `${t.title} ${shortcutLabel(`tab.${t.id}`)}`)].join('  ·  ')}
