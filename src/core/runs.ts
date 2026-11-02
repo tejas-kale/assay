@@ -260,18 +260,21 @@ export type RunLabel = 'trusted' | 'queried' | 'computed' | 'unverified' | 'runn
 /** The trust label, as the mod's `deriveLabel`: no result is unverified, a trusted header is trusted, an ok Python run is computed. */
 export function runLabel(run: Run, header: RunHeader, status: RunStatus): RunLabel {
   if (status.running?.number === run.number) return 'running'
+  const cited = resultLabel(run)
+  return cited === 'queried' && header.trusted ? 'trusted' : cited
+}
+
+/** The label a run's result earns: an ok Python run is computed, SQL with data is queried, anything else unverified. */
+function resultLabel(run: Run): 'queried' | 'computed' | 'unverified' {
   if (run.language === 'python') return run.status === 'ok' ? 'computed' : 'unverified'
-  if (!run.data) return 'unverified'
-  return header.trusted ? 'trusted' : 'queried'
+  return run.data ? 'queried' : 'unverified'
 }
 
 /** The label a note gets when it cites run `n` (never `trusted`: only an existing trusted note keeps that). */
 export function citedLabel(runs: readonly Run[]): (n: number) => 'queried' | 'computed' | 'unverified' {
   return n => {
     const run = runs.find(r => r.number === n)
-    if (!run) return 'unverified'
-    if (run.language === 'python') return run.status === 'ok' ? 'computed' : 'unverified'
-    return run.data ? 'queried' : 'unverified'
+    return run ? resultLabel(run) : 'unverified'
   }
 }
 

@@ -173,3 +173,9 @@ test('runningPythonRun finds the Python run the mod says is running, and nothing
   assert.equal(runningPythonRun(runs, { failed: {} }), undefined)
   assert.equal(runningPythonRun(runs, { running: { number: 9, startedAt: 1 }, failed: {} }), undefined)
 })
+
+test('citedLabel: unknown run unverified, SQL with data queried, Python ok computed, never trusted', () => {
+  const sql = { number: 1, label: '001', slug: 'a', code: '001_a.sql', language: 'sql', tables: [], plots: [], data: '001_a.csv' } as const
+  const label = citedLabel([sql, { ...sql, number: 2, data: undefined }, { ...sql, number: 3, language: 'python', status: 'ok' }, { ...sql, number: 4, language: 'python', status: 'error' }])
+  assert.deepEqual([1, 2, 3, 4, 9].map(label), ['queried', 'unverified', 'computed', 'unverified', 'unverified'])
+})
