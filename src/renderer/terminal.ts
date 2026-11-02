@@ -21,6 +21,7 @@
 // a terminal keeps the theme it was created with and everything else still works.
 import * as ghostty from 'ghostty-web'
 
+import { inputOverride } from '../core/terminalKeys.ts'
 import { THEMES, cellRecolor } from '../core/theme.ts'
 import type { CellColors, ThemeMode } from '../core/theme.ts'
 import { currentMode, onModeChange } from './appearance.ts'
@@ -57,6 +58,7 @@ type RawTerminal = {
   resize?: (cols: number, rows: number) => void
   focus?: () => void
   loadAddon?: (addon: unknown) => void
+  attachCustomKeyEventHandler?: (handler: (event: KeyboardEvent) => boolean) => void
   renderer?: RawRenderer
   wasmTerm?: unknown
   viewportY?: number
@@ -115,6 +117,17 @@ export async function createTerminal(el: HTMLElement): Promise<TerminalHandle> {
     term.loadAddon(fitAddon)
   }
 
+  // Input goes to these, whether it comes from the library or from a key rewritten here.
+  const dataListeners = new Set<(data: string) => void>()
+  // The library treats `true` as "handled": it skips its own encoding and calls preventDefault.
+  term.attachCustomKeyEventHandler?.(event => {
+    if (event.type !== 'keydown') return false
+    const data = inputOverride(event)
+    if (data === undefined) return false
+    for (const cb of dataListeners) cb(data)
+    return true
+  })
+
   const resizeListeners = new Set<(cols: number, rows: number) => void>()
   let last: TerminalSize | undefined
 
@@ -163,8 +176,12 @@ export async function createTerminal(el: HTMLElement): Promise<TerminalHandle> {
   return {
     write: data => term.write(data),
     onData(cb) {
+      dataListeners.add(cb)
       const sub = term.onData(cb)
-      return () => sub?.dispose()
+      return () => {
+        dataListeners.delete(cb)
+        sub?.dispose()
+      }
     },
     onResize(cb) {
       resizeListeners.add(cb)
@@ -178,6 +195,7 @@ export async function createTerminal(el: HTMLElement): Promise<TerminalHandle> {
       stopFollowingTheme()
       observer.disconnect()
       resizeListeners.clear()
+      dataListeners.clear()
       term.dispose()
     },
   }
