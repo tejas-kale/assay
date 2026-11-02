@@ -304,7 +304,7 @@ Decide these while building, and record each here:
 
 ## Status
 
-As of 2026-11-02 (after slice 2b).
+As of 2026-11-02 (after slice 3).
 
 ### Done and run on the Mac
 
@@ -335,12 +335,25 @@ As of 2026-11-02 (after slice 2b).
 - **Fixes after slice 2b:** Shift+Enter sends a newline to Claude (ESC CR); Files opens Neovim as a new tab in the
   front Ghostty window over AppleScript (falls back to a new instance); a window's title is `<analysis> — Assay`.
 
+- **Slice 3** (`docs/slice-3.md`; config `2c794a5`..`bbdd751`): Claude's `python` tool runs in one `ipykernel` per
+  session (runner `notes-src/analysis_kernel.py`, `serve` + `run`); Python runs share the SQL numbers and save `.py`,
+  `.json`, `.tK.csv`, `.pK.png|svg`; `q(N)` (pandas); `computed` label; Data shows tables (`[`/`]`) and stdout (`s`),
+  live while running; Plots tab (`j`/`k`); Python edit and re-run; Cmd+. interrupts; palette Restart kernel (y/n) and
+  Replay (choose runs, new kernel, `# replay: NNN`); the run notice to Claude; the Bash guard on Python. The mod no
+  longer knows the Molten notebook. Smoke-tested with a stub Claude and real runner output (a real kernel in a scratch
+  venv), with replies simulated by hand; the runner's `serve` was checked with a closed stdin and a dying parent.
+
 ### Left
 
 - **Slice 2b, untested live:** a real Claude session picking up a request (mod poller), the request-to-run latency
   (Verify first item 8), and Postgres re-runs.
-- **Slice 3** and **slice 4** as written under Build slices.
-- **Open for the build** above is still open (none of it was needed for slice 2b).
+- **Slice 3, untested live:** the mod's kernel in a real container session (spawn, ready, runs, interrupt, restart,
+  replay, the 120 s ready limit), the Bash guard and the run notice on real prompts.
+- **Slice 3, the user's setup:** copy `claude/analysis/notes-src/analysis_kernel.py` into `~/Code/notes-src`, add
+  `ipykernel` to its `pyproject.toml` (and drop `marimo` and `[tool.marimo.runtime]`), then `claude-pkg uv sync` in the
+  sandbox. Until then the kernel shows `missing`.
+- **Slice 4** as written under Build slices.
+- **Open for the build:** the note-file items remain (slice 4).
 - Untested by Claude: a live Claude session in the app (the user has used it), physical Cmd keys, Cmd+W/Cmd+Q closing.
 
 ### How this app was tested on the Mac without a person
