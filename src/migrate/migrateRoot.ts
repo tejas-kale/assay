@@ -4,7 +4,8 @@
 import { readdir, readFile, rename, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { ANALYSIS_FILE, parseAnalysisFile, yamlScalar } from '../core/analyses.ts'
+import { slugify } from '../core/noteFiles.ts'
+import { ANALYSIS_FILE, parseAnalysisFile, slugFor, yamlScalar } from '../core/analyses.ts'
 
 const OLD_MARKER = '.analysis'
 const OLD_MARKER_TEXT = '# Marks this folder for the analysis mod.'
@@ -48,7 +49,8 @@ export function yamlFor(title: string, created: string, oldMarker: string): stri
 export async function migrateRoot(root: string, apply: boolean): Promise<Report> {
   const steps: Step[] = []
   const leftAlone: string[] = []
-  const taken = new Set(await dirs(join(root, 'analyses')))
+  // Every entry counts as taken (files and dot-names too), so a move never targets an existing path.
+  const taken = new Set(await readdir(join(root, 'analyses')).catch(() => [] as string[]))
 
   for (const parent of ['analyses', ...MOVED_FROM]) {
     for (const name of await dirs(join(root, parent))) {
@@ -63,20 +65,21 @@ export async function migrateRoot(root: string, apply: boolean): Promise<Report>
         leftAlone.push(`${label} (has both ${OLD_MARKER} and ${ANALYSIS_FILE}; nothing is overwritten)`)
         continue
       }
-      const isMove = parent !== 'analyses'
-      let slug = name
-      if (isMove) for (let n = 2; taken.has(slug); n++) slug = `${name}-${n}`
+      // A folder moves when it is outside analyses/ or its name is not already a slug.
+      const isMove = parent !== 'analyses' || slugify(name) !== name
+      const slug = isMove ? slugFor(name, taken) : name
       const info = await stat(folder)
       const step: Step = { from: label, to: `analyses/${slug}`, title: titleFromFolder(name), created: await createdOn(folder, info.mtimeMs), isMove, isRenamed: slug !== name }
       steps.push(step)
       if (isMove) taken.add(slug)
       if (!apply) continue
 
-      const oldMarker = await readFile(join(folder, OLD_MARKER), 'utf8').catch(() => '')
-      await writeFile(join(folder, ANALYSIS_FILE), yamlFor(step.title, step.created, oldMarker), { flag: 'wx' })
-      await rm(join(folder, OLD_MARKER))
+      // Move first: a failed move leaves the folder as it was, still marked, for a rerun to find.
       const target = join(root, step.to)
       if (isMove) await rename(folder, target)
+      const oldMarker = await readFile(join(target, OLD_MARKER), 'utf8').catch(() => '')
+      await writeFile(join(target, ANALYSIS_FILE), yamlFor(step.title, step.created, oldMarker), { flag: 'wx' })
+      await rm(join(target, OLD_MARKER))
       // The picker sorts by the folder's change time: writing the file must not make every analysis new.
       await utimes(target, info.atime, info.mtime)
     }
