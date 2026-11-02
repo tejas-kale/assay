@@ -190,3 +190,50 @@ export function cellRecolor(from: TerminalColors, to: TerminalColors) {
       return next
     })
 }
+
+/** WCAG relative luminance of an sRGB colour. */
+function luminance(r: number, g: number, b: number): number {
+  const lin = (c: number) => {
+    const s = c / 255
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+}
+
+/** WCAG contrast ratio of two colours, 1 (same) to 21 (black on white). */
+export function contrastRatio(a: readonly [number, number, number], b: readonly [number, number, number]): number {
+  const [x, y] = [luminance(...a), luminance(...b)]
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
+}
+
+/** Below this, text is unreadable (white on Light's background is 1.05); Claude's dim grey is about 3, and stays. */
+export const MIN_CONTRAST = 2
+
+const rgb = (hex: string): [number, number, number] => {
+  const n = hexToInt(hex)
+  return [n >> 16, (n >> 8) & 255, n & 255]
+}
+
+/**
+ * A program can draw text in its own truecolor, such as Claude Code's dark-theme white, which the
+ * theme cannot recolour. This repaints any text under MIN_CONTRAST against its own cell background
+ * with whichever of the theme's text and background colours reads better there. Input is not changed.
+ */
+export function minimumContrast(theme: TerminalColors) {
+  const choices = [rgb(theme.foreground), rgb(theme.background)]
+  // Every line is checked on every draw, so each fg/bg pair is worked out once: undefined means it reads.
+  const memo = new Map<string, [number, number, number] | undefined>()
+  const fixFor = (fg: [number, number, number], bg: [number, number, number]) => {
+    const key = `${fg.join()},${bg.join()}`
+    if (memo.has(key)) return memo.get(key)
+    const fix = contrastRatio(fg, bg) >= MIN_CONTRAST ? undefined : choices.reduce((a, b) => (contrastRatio(b, bg) > contrastRatio(a, bg) ? b : a))
+    if (memo.size > 4096) memo.clear()
+    memo.set(key, fix)
+    return fix
+  }
+  return <Cell extends CellColors>(cells: readonly Cell[]): Cell[] =>
+    cells.map(cell => {
+      const best = fixFor([cell.fg_r, cell.fg_g, cell.fg_b], [cell.bg_r, cell.bg_g, cell.bg_b])
+      return best ? { ...cell, fg_r: best[0], fg_g: best[1], fg_b: best[2] } : cell
+    })
+}

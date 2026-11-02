@@ -22,7 +22,7 @@
 import * as ghostty from 'ghostty-web'
 
 import { inputOverride, leavesTerminal } from '../core/terminalKeys.ts'
-import { THEMES, cellRecolor } from '../core/theme.ts'
+import { THEMES, cellRecolor, minimumContrast } from '../core/theme.ts'
 import type { CellColors, ThemeMode } from '../core/theme.ts'
 import { currentMode, onModeChange } from './appearance.ts'
 
@@ -81,10 +81,13 @@ function followSystemTheme(term: RawTerminal, created: ThemeMode): () => void {
 
   const original = THEMES[created].terminal
   let recolor: ((cells: CellColors[]) => CellColors[]) | undefined
-  renderer.renderLine = (cells, y, cols) => drawLine.call(renderer, recolor ? recolor(cells) : cells, y, cols)
+  // Always on, after the theme swap: text a program drew in its own colour must still read.
+  let legible = minimumContrast(original)
+  renderer.renderLine = (cells, y, cols) => drawLine.call(renderer, legible(recolor ? recolor(cells) : cells), y, cols)
 
   return onModeChange(mode => {
     recolor = mode === created ? undefined : cellRecolor(original, THEMES[mode].terminal)
+    legible = minimumContrast(THEMES[mode].terminal)
     renderer.setTheme(THEMES[mode].terminal)
     // The scrollbar comes back on the next scroll; the library tracks its fade privately.
     renderer.render(term.wasmTerm, true, term.viewportY ?? 0, term, 0)

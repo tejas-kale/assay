@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { THEMES, cellRecolor } from './theme.ts'
+import { THEMES, cellRecolor, contrastRatio, minimumContrast } from './theme.ts'
 
 const { light, dark } = THEMES
 const cell = (fg: number[], bg: number[]) => ({
@@ -42,4 +42,25 @@ test('no theme uses one colour for two cell roles, or a swap could not be undone
     const values = Object.values(cellColors)
     assert.equal(new Set(values).size, values.length)
   }
+})
+
+test('minimumContrast repaints unreadable text and leaves readable text alone', () => {
+  const fix = minimumContrast(light.terminal)
+  const bg = [0xf8, 0xf9, 0xfa]
+  // Claude Code's dark-theme white on Light's background becomes Light's text colour.
+  assert.deepEqual(fix([cell([255, 255, 255], bg)]), [cell([0x5c, 0x61, 0x66], bg)])
+  // Normal and dim text stay.
+  const normal = cell([0x5c, 0x61, 0x66], bg)
+  const dim = cell([0x82, 0x8e, 0x9f], bg)
+  assert.deepEqual(fix([normal, dim]), [normal, dim])
+  // White on a dark highlight stays: it reads against its own cell background.
+  const inverse = cell([255, 255, 255], [0x30, 0x30, 0x30])
+  assert.deepEqual(fix([inverse]), [inverse])
+  // Dark text on a dark cell takes the theme background colour, which reads there.
+  assert.deepEqual(fix([cell([0x20, 0x20, 0x20], [0, 0, 0])]), [cell([0xf8, 0xf9, 0xfa], [0, 0, 0])])
+})
+
+test('contrastRatio runs from 1 to 21', () => {
+  assert.equal(contrastRatio([0, 0, 0], [0, 0, 0]), 1)
+  assert.equal(Math.round(contrastRatio([0, 0, 0], [255, 255, 255])), 21)
 })

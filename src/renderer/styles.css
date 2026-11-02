@@ -219,3 +219,4 @@ table.grid th.cur-col { color: var(--accent); }
 .search-title { overflow: hidden; }
 .search-snippet { display: block; font: 11px/1.4 Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chip-kind { min-width: 4.5em; text-align: center; }
+.run-step { padding: 0 6px; }

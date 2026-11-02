@@ -109,6 +109,13 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
     setHeld(run.number === latest?.number ? undefined : run.number)
     onTab('data')
   }
+  /** `,` and `.`: the run before or after the current one. The newest run follows Claude again, as in History. */
+  const stepRun = (delta: 1 | -1) => {
+    if (edit || !current) return
+    const next = runs[runs.findIndex(r => r.number === current.number) + delta]
+    if (!next) return onToast(delta < 0 ? 'This is the first run.' : 'This is the latest run.')
+    setHeld(next.number === latest?.number ? undefined : next.number)
+  }
   // Vim owns the keys while editing, and a pin would change what the edit is about.
   const togglePin = () => {
     if (!edit) setHeld(following ? current?.number : undefined)
@@ -322,6 +329,7 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
           pinned={!following}
           editing={edit !== undefined && tab === 'code'}
           onFollow={() => setHeld(undefined)}
+          onStep={edit && tab === 'code' ? undefined : stepRun}
         >
           {note}
           {kernel && (
@@ -353,6 +361,7 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
           onTable={delta => setTableK(Math.max(1, Math.min(k + delta, tableCount)))}
           onCode={() => onTab('code')}
           onPin={togglePin}
+          onStep={stepRun}
         />
       ) : tab === 'plots' ? (
         <PlotsTab
@@ -364,6 +373,7 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
           onPlot={delta => setPlotK(Math.max(1, Math.min(plot + delta, plotCount)))}
           onCode={() => onTab('code')}
           onPin={togglePin}
+          onStep={stepRun}
         />
       ) : (
         <CodeTab
@@ -372,6 +382,7 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
           run={current}
           onData={() => onTab('data')}
           onPin={togglePin}
+          onStep={stepRun}
           onEdit={startEdit}
           original={original}
           onToggleOriginal={() => setOriginal(v => !v)}
@@ -445,11 +456,24 @@ function RunHeader(props: {
   pinned: boolean
   editing: boolean
   onFollow: () => void
+  /** Earlier (-1) or later (+1) run; undefined while editing. */
+  onStep: ((delta: 1 | -1) => void) | undefined
   children: ReactNode
 }) {
+  const step = props.onStep
   return (
     <div className="run-header">
+      {step && (
+        <button type="button" className="run-link run-step" tabIndex={-1} onClick={() => step(-1)} title="Earlier run (,)">
+          ‹
+        </button>
+      )}
       <b>{props.run.label}</b>
+      {step && (
+        <button type="button" className="run-link run-step" tabIndex={-1} onClick={() => step(1)} title="Later run (.)">
+          ›
+        </button>
+      )}
       <span className="grow run-slug">{props.run.slug}</span>
       <RunTags run={props.run} status={props.status} />
       {props.editing && <span className="editing-flag">editing {props.run.label}</span>}
@@ -505,8 +529,9 @@ function DataTab(props: {
   onTable: (delta: 1 | -1) => void
   onCode: () => void
   onPin: () => void
+  onStep: (delta: 1 | -1) => void
 }) {
-  const { header, view, status, run, textView, tableCount, onToggleText, onTable, onCode, onPin } = props
+  const { header, view, status, run, textView, tableCount, onToggleText, onTable, onCode, onPin, onStep } = props
   const table = view?.table
   const [cell, setCell] = useState<Cell>({ row: 0, col: 0 })
   const [rowOpen, setRowOpen] = useState(false)
@@ -537,6 +562,7 @@ function DataTab(props: {
     const python = run.language === 'python'
     if (e.key === 'c') onCode()
     else if (e.key === 'p') onPin()
+    else if (e.key === ',' || e.key === '.') onStep(e.key === '.' ? 1 : -1)
     else if (python && e.key === 's') onToggleText()
     else if (python && !textView && tableCount > 1 && (e.key === '[' || e.key === ']')) onTable(e.key === ']' ? 1 : -1)
     else if (textView) {
@@ -739,8 +765,9 @@ function PlotsTab(props: {
   onPlot: (delta: 1 | -1) => void
   onCode: () => void
   onPin: () => void
+  onStep: (delta: 1 | -1) => void
 }) {
-  const { header, run, runs, plot, onPlot, onCode, onPin } = props
+  const { header, run, runs, plot, onPlot, onCode, onPin, onStep } = props
   const file = run.plots[plot - 1]
   const [shown, setShown] = useState<{ file: string; url?: string; message?: string }>()
   const failed = shown !== undefined && shown.file === file && shown.url === undefined
@@ -760,6 +787,7 @@ function PlotsTab(props: {
     if (!isPaneKey(e)) return
     if (e.key === 'c') onCode()
     else if (e.key === 'p') onPin()
+    else if (e.key === ',' || e.key === '.') onStep(e.key === '.' ? 1 : -1)
     else if (e.key === 'j' || e.key === 'ArrowDown' || e.key === 'l' || e.key === 'ArrowRight') onPlot(1)
     else if (e.key === 'k' || e.key === 'ArrowUp' || e.key === 'h' || e.key === 'ArrowLeft') onPlot(-1)
     else return
@@ -804,6 +832,7 @@ function CodeTab(props: {
   run: Run
   onData: () => void
   onPin: () => void
+  onStep: (delta: 1 | -1) => void
   onEdit: () => void
   original: boolean
   onToggleOriginal: () => void
@@ -843,6 +872,7 @@ function CodeTab(props: {
         if (edit || e.metaKey || e.ctrlKey || e.altKey) return
         if (e.key === 'd') props.onData()
         else if (e.key === 'p') props.onPin()
+        else if (e.key === ',' || e.key === '.') props.onStep(e.key === '.' ? 1 : -1)
         else if (e.key === 'i') props.onEdit()
         else return
         e.preventDefault()
