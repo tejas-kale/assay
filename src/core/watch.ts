@@ -5,7 +5,9 @@ export type WatchPort = {
   setInterval(cb: () => void, ms: number): () => void
 }
 
-const signature = (stat: WatchStat | undefined) => (stat ? `${stat.mtimeMs}:${stat.size}` : 'missing')
+/** `mtime:size`, or `missing`. */
+export const statSignature = (stat: WatchStat | undefined) => (stat ? `${stat.mtimeMs}:${stat.size}` : 'missing')
+const signature = statSignature
 
 /**
  * Calls `onChange(path)` when a file's mtime, size or existence changes (a rename-over save
@@ -38,6 +40,35 @@ export function pollFiles(port: WatchPort, paths: readonly string[], onChange: (
     }
   }, intervalMs)
 
+  return () => {
+    isStopped = true
+    stop()
+  }
+}
+
+/**
+ * Calls `onChange()` when the string `read` returns differs from the last one. The first read is the
+ * baseline. A read that rejects counts as no change. Reads never overlap. Returns a stop function.
+ */
+export function pollSignature(port: Pick<WatchPort, 'setInterval'>, read: () => Promise<string>, onChange: () => void, intervalMs = 500): () => void {
+  let seen: string | undefined
+  let isStopped = false
+  let isBusy = false
+  const stop = port.setInterval(async () => {
+    if (isBusy) return
+    isBusy = true
+    try {
+      const next = await read()
+      if (isStopped) return
+      const changed = seen !== undefined && seen !== next
+      seen = next
+      if (changed) onChange()
+    } catch {
+      // A failed read is not a change.
+    } finally {
+      isBusy = false
+    }
+  }, intervalMs)
   return () => {
     isStopped = true
     stop()

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { pollFiles } from './watch.ts'
+import { pollFiles, pollSignature } from './watch.ts'
 import type { WatchStat } from './watch.ts'
 
 function setup() {
@@ -86,4 +86,53 @@ test('stop ends the timer and silences later results', async () => {
   s.files.set('/a', { mtimeMs: 3, size: 1 })
   await s.run()
   assert.deepEqual(changed, [])
+})
+
+test('pollSignature takes the first read as the baseline and reports changes once', async () => {
+  const s = setup()
+  let value = 'a'
+  let changes = 0
+  pollSignature(s.port, async () => value, () => changes++)
+  await s.run()
+  assert.equal(changes, 0)
+  value = 'b'
+  await s.run()
+  assert.equal(changes, 1)
+  await s.run()
+  assert.equal(changes, 1)
+})
+
+test('pollSignature ignores a failed read, does not overlap reads and stops', async () => {
+  const s = setup()
+  let fail = false
+  let reads = 0
+  let release = () => {}
+  let hold = false
+  let changes = 0
+  const stop = pollSignature(
+    s.port,
+    async () => {
+      reads++
+      if (fail) throw new Error('x')
+      if (hold) await new Promise<void>(r => (release = r))
+      return fail ? 'z' : hold ? 'b' : 'a'
+    },
+    () => changes++,
+  )
+  await s.run()
+  fail = true
+  await s.run()
+  assert.equal(changes, 0)
+  fail = false
+  hold = true
+  const before = reads
+  const first = s.run()
+  await s.run()
+  assert.equal(reads, before + 1)
+  release()
+  await first
+  await new Promise(r => setImmediate(r))
+  assert.equal(changes, 1)
+  stop()
+  assert.equal(s.stopped, true)
 })

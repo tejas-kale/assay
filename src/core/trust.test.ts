@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { diffLines, isActive, latestReview, parseTrustReview, stateLine, stateTone, stepDetail, stepTitle } from './trust.ts'
+import { diffLines, isActive, latestReview, parseTrustReview, stateLine, stateTone, stepDetail, stepTitle, trustSeenKey } from './trust.ts'
 
 const base = {
   name: 'c',
@@ -63,6 +63,8 @@ test('stepTitle', () => {
   assert.equal(stepTitle({ step: 'test', ok: true, text: 'PASSED', name: 'case 2' }), 'test case 2')
   assert.equal(stepTitle({ step: 'test', ok: true, text: 'PASSED', name: 'test_x.py::test_y' }), 'test test_x.py::test_y')
   assert.equal(stepTitle({ step: 'transpile', ok: true, text: '' }), 'transpile')
+  assert.equal(stepTitle({ step: 'transpile', ok: true, text: '', name: 'x' }), 'transpile')
+  assert.equal(stepTitle({ step: 'test', ok: true, text: '' }), 'test')
 })
 
 test('stepDetail drops the PASSED/FAILED the line already shows', () => {
@@ -97,4 +99,13 @@ test('diffLines tags by the first characters', () => {
     { kind: 'add', text: '+ 1,3' },
     { kind: 'same', text: '  4,5' },
   ])
+})
+
+test('trustSeenKey changes with the start, state, step count and sample rows', () => {
+  const r = parseTrustReview(JSON.stringify({ ...base, steps: [{ step: 'a', ok: true, text: '' }], sample: { columns: ['a'], rows: [['1'], ['2']] } }))!
+  assert.equal(trustSeenKey(r), `${r.startedAt}:${r.state}:1:2`)
+  assert.notEqual(trustSeenKey(r), trustSeenKey({ ...r, state: 'approved' }))
+  assert.equal(trustSeenKey({ ...r, steps: [] }).split(':')[2], '0')
+  const { sample: _drop, ...bare } = r
+  assert.equal(trustSeenKey(bare).split(':')[3], '0')
 })

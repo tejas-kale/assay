@@ -85,10 +85,14 @@ export function latestReview(reviews: readonly TrustReview[]): TrustReview | und
   return best
 }
 
-/** `test case 2`, `transpile`. */
+/** `test case 2`, `transpile`. Only a test step shows its name. */
 export function stepTitle(step: TrustStep): string {
-  return step.name ? `${step.step} ${step.name}` : step.step
+  return step.step === 'test' && step.name ? `${step.step} ${step.name}` : step.step
 }
+
+/** What the Trust tab's "new since you looked" marker compares: changes when the review moves on. */
+export const trustSeenKey = (review: TrustReview): string =>
+  `${review.startedAt}:${review.state}:${review.steps.length}:${review.sample?.rows.length ?? 0}`
 
 /** A step's text without a leading PASSED or FAILED (the line shows that as its marker). */
 export function stepDetail(step: TrustStep): string {

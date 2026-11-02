@@ -17,6 +17,7 @@ import type { NoteFile } from '../core/noteFiles.ts'
 import { parseThreads } from '../core/threads.ts'
 import { latestReview, parseTrustReview } from '../core/trust.ts'
 import type { TrustReview } from '../core/trust.ts'
+import { statSignature } from '../core/watch.ts'
 import type { WatchPort } from '../core/watch.ts'
 import type { AnalysisState, EditResult, NoteFileCreateResult, NoteFileResult, PlotResult, RequestResult, RunRequest, RunView } from '../shared/ipc.ts'
 
@@ -395,10 +396,10 @@ export async function readNoteFiles(folder: string): Promise<NoteFile[]> {
       const path = join(folder, NOTE_FILES, name)
       try {
         const info = await stat(path)
-        const signature = `${info.mtimeMs}:${info.size}`
+        const signature = statSignature(info)
         const cached = parsedNotes.get(path)
         if (cached?.signature === signature) return cached.note
-        const note = parseNoteFile(name, (await readHead(path, MAX_NOTE_FILE_BYTES)).text)
+        const note = parseNoteFile(name, (await readHead(path, MAX_NOTE_FILE_BYTES)).text, info)
         parsedNotes.set(path, { signature, note })
         return note
       } catch {
@@ -415,7 +416,7 @@ export async function noteFilesSignature(folder: string): Promise<string> {
   const parts = await Promise.all(
     (await noteFileNames(folder)).map(async name => {
       const info = await stat(join(folder, NOTE_FILES, name)).catch(() => undefined)
-      return `${name}:${info?.mtimeMs}:${info?.size}`
+      return `${name}:${statSignature(info)}`
     }),
   )
   return parts.join('|')

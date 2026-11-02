@@ -10,7 +10,7 @@ import { cmdHold } from '../core/cmdHold.ts'
 import { commandForInput } from '../core/keymap.ts'
 import { spawnSpec } from '../core/session.ts'
 import { THEMES } from '../core/theme.ts'
-import { pollFiles } from '../core/watch.ts'
+import { pollFiles, pollSignature } from '../core/watch.ts'
 import { CHANNELS } from '../shared/ipc.ts'
 import type { OpenResult, PtyExit } from '../shared/ipc.ts'
 import { NOTES, QUERIES, REPLIES_DIR, RUN_STATUS, THREADS, TRUST_DIR, loadState, noteFilesSignature, takeReplies, watchPort } from './files.ts'
@@ -250,22 +250,7 @@ export function attachAnalysis(ctx: WindowCtx, analysis: { name: string; path: s
   // Replies that were already waiting when the window attached.
   deliverReplies()
   // A note file edited in place leaves the folder's mtime alone, so its names, sizes and mtimes are compared.
-  let notesSeen: string | undefined
-  let notesBusy = false
-  const stopNotes = watchPort.setInterval(() => {
-    if (notesBusy) return
-    notesBusy = true
-    void noteFilesSignature(analysis.path)
-      .then(signature => {
-        const changed = notesSeen !== undefined && notesSeen !== signature
-        notesSeen = signature
-        if (changed) return pushState(ctx)
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        notesBusy = false
-      })
-  }, 500)
+  const stopNotes = pollSignature(watchPort, () => noteFilesSignature(analysis.path), () => void pushState(ctx))
   const stopState = ctx.stopPoll
   ctx.stopPoll = () => {
     stopState()

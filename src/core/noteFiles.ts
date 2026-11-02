@@ -9,6 +9,9 @@ export type NoteFile = {
   links: string[]
   /** Cited run numbers, in order of first appearance, outside fenced code. */
   citations: number[]
+  /** The file's mtime and size when read: the reader re-reads its note only when they change. */
+  mtimeMs: number
+  size: number
 }
 
 export type Segment = { type: 'text'; text: string } | { type: 'link'; target: string } | { type: 'citation'; number: number }
@@ -18,7 +21,7 @@ export type Block =
   | { type: 'code'; text: string }
 
 const FILE_NAME = /^(\d{3,})-([a-z0-9][a-z0-9-]*)\.md$/
-const INLINE = /\[\[([^[\]\n]+)\]\]|\[q (\d+)\]/g
+const INLINE = /\[\[([^\]\n]+)\]\]|\[q (\d+)\]/g
 const FENCE = /^\s*(```|~~~)/
 
 export function parseNoteFileName(name: string): { number: number; slug: string } | undefined {
@@ -50,7 +53,7 @@ export function noteBody(text: string): string {
   return text.slice(text.indexOf('\n') + 1).replace(/^\n/, '')
 }
 
-export function parseNoteFile(name: string, text: string): NoteFile {
+export function parseNoteFile(name: string, text: string, stat: { mtimeMs: number; size: number }): NoteFile {
   const parsed = parseNoteFileName(name)
   const links: string[] = []
   const citations: number[] = []
@@ -59,7 +62,7 @@ export function parseNoteFile(name: string, text: string): NoteFile {
     if (segment.type === 'citation' && !citations.includes(segment.number)) citations.push(segment.number)
   }
   const slug = parsed?.slug ?? name
-  return { name, number: parsed?.number ?? 0, slug, title: titleLine(text)?.[1]?.trim() || slug, links, citations }
+  return { name, number: parsed?.number ?? 0, slug, title: titleLine(text)?.[1]?.trim() || slug, links, citations, mtimeMs: stat.mtimeMs, size: stat.size }
 }
 
 /** The text split at links and citations. Fenced code blocks stay plain text. */
@@ -136,4 +139,29 @@ export function backlinks(note: NoteFile, notes: readonly NoteFile[]): NoteFile[
   return notes
     .filter(n => n.name !== note.name && n.links.some(t => resolveLink(t, notes)?.name === note.name))
     .sort((a, b) => a.number - b.number || a.name.localeCompare(b.name))
+}
+
+export type NoteTarget = { type: 'link'; target: string } | { type: 'citation'; number: number } | { type: 'backlink'; name: string }
+
+/** The links and citations of the blocks in reading order, not in code: each segment with its target. */
+function blockTargets(blocks: readonly Block[]): { segment: Segment; target: NoteTarget }[] {
+  const out: { segment: Segment; target: NoteTarget }[] = []
+  for (const block of blocks) {
+    if (block.type === 'code') continue
+    for (const segment of block.segments) {
+      if (segment.type === 'link') out.push({ segment, target: { type: 'link', target: segment.target } })
+      else if (segment.type === 'citation') out.push({ segment, target: { type: 'citation', number: segment.number } })
+    }
+  }
+  return out
+}
+
+/** What Tab moves between in the reader: the blocks' links and citations in reading order, then the backlinks. */
+export function noteTargets(blocks: readonly Block[], linkedFrom: readonly NoteFile[]): NoteTarget[] {
+  return [...blockTargets(blocks).map(t => t.target), ...linkedFrom.map((b): NoteTarget => ({ type: 'backlink', name: b.name }))]
+}
+
+/** Each link or citation segment's index in `noteTargets`, for the renderer. Backlink `i` is at `blockTargetCount + i`. */
+export function targetIndices(blocks: readonly Block[]): Map<Segment, number> {
+  return new Map(blockTargets(blocks).map((t, i) => [t.segment, i]))
 }

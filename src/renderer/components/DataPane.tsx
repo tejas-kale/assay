@@ -10,6 +10,7 @@ import { chosenRuns, confirmText, initReplay, replayKey } from '../../core/repla
 import type { ReplayState } from '../../core/replay.ts'
 import { codeBody, runLabel } from '../../core/runs.ts'
 import type { RunHeader } from '../../core/runs.ts'
+import { trustSeenKey } from '../../core/trust.ts'
 import type { Run, RunRequest, RunStatus, RunView, TrustReview } from '../../shared/ipc.ts'
 import { CodeEditor, CodeView, formatSql } from './CodeView.tsx'
 import type { EditorHandle } from './CodeView.tsx'
@@ -130,7 +131,7 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
     plots: current?.plots ?? [],
     failed: current ? status.failed[current.number] !== undefined : false,
     runCount: runs.length,
-    ...(trust && { trust: `${trust.startedAt}:${trust.state}:${trust.steps.length}:${trust.sample?.rows.length ?? 0}` }),
+    ...(trust && { trust: trustSeenKey(trust) }),
   }
   const before = useRef(seen)
   useEffect(() => {
@@ -250,8 +251,11 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
   // The app's commands reach the pane through one request at a time; the latest handlers run them.
   const showRun = (number: number) => {
     const run = runs.find(r => r.number === number)
-    if (run) choose(run)
-    else onToast(`No run ${String(number).padStart(3, '0')}`)
+    if (run) {
+      choose(run)
+      // The citation came from another pane: the data pane takes the keys once the run is shown.
+      focusDataPane()
+    } else onToast(`No run ${String(number).padStart(3, '0')}`)
   }
   const handlers = useRef({ togglePin, startEdit, runIt, openReplay, showRun })
   handlers.current = { togglePin, startEdit, runIt, openReplay, showRun }

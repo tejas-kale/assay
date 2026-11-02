@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 
-import { backlinks, noteBlocks, noteBody, resolveLink } from '../../core/noteFiles.ts'
-import type { Segment } from '../../core/noteFiles.ts'
+import { backlinks, noteBlocks, noteBody, noteTargets, resolveLink, targetIndices } from '../../core/noteFiles.ts'
+import type { NoteTarget, Segment } from '../../core/noteFiles.ts'
 import { runLabel } from '../../core/runs.ts'
 import type { EditResult, Fact, NoteFile, Run, RunStatus } from '../../shared/ipc.ts'
 import { CodeEditor } from './CodeView.tsx'
@@ -15,7 +15,8 @@ type Mode =
   | { type: 'list' }
   | { type: 'add' }
   | { type: 'edit'; fact: Fact }
-  | { type: 'confirmDelete'; item: Item }
+  /** `text` is the note's text when the prompt opened, so a change since then makes the delete refuse. */
+  | { type: 'confirmDelete'; item: Item; text?: string }
   | { type: 'file'; title: string; text: string }
   | { type: 'newNote' }
   /** The reader. `trail` is the notes opened before this one by following links. */
@@ -40,11 +41,10 @@ export function NotesTab(props: {
     () => [...facts.map((fact): Item => ({ kind: 'fact', fact })), ...noteFiles.map((note): Item => ({ kind: 'note', note }))],
     [facts, noteFiles],
   )
-  const deleteItem = async (item: Item): Promise<EditResult> => {
+  const deleteItem = async ({ item, text }: { item: Item; text?: string }): Promise<EditResult> => {
     if (item.kind === 'fact') return window.app.facts.delete(item.fact.index, item.fact.line)
-    const read = await window.app.noteFiles.read(item.note.name)
-    if (!read.ok) return { ok: false, reason: 'invalid', message: read.message }
-    return window.app.noteFiles.delete(item.note.name, read.text)
+    if (text === undefined) return { ok: false, reason: 'invalid', message: 'The note could not be read' }
+    return window.app.noteFiles.delete(item.note.name, text)
   }
   const { nav, setNav, mode, setMode, message, setMessage, rootRef, visible, selectedIndex, selected, finish, cancel, confirmDeleteKey, navigate } =
     useListPane<Item, Mode>({
@@ -56,7 +56,7 @@ export function NotesTab(props: {
         if (m.type === 'read' || m.type === 'editNote') return !noteFiles.some(n => n.name === m.name)
         return false
       },
-      confirmDelete: m => deleteItem(m.item),
+      confirmDelete: deleteItem,
     })
 
   /** Reads a note's text, then opens its editor. */
@@ -100,7 +100,16 @@ export function NotesTab(props: {
           return
         case 'd':
           e.preventDefault()
-          if (selected) setMode({ type: 'confirmDelete', item: selected })
+          if (!selected) return
+          if (selected.kind === 'fact') setMode({ type: 'confirmDelete', item: selected })
+          else {
+            // The text is read now, so a change made while the prompt is open stops the delete.
+            const item = selected
+            void window.app.noteFiles.read(item.note.name).then(result => {
+              if (result.ok) setMode({ type: 'confirmDelete', item, text: result.text })
+              else setMessage(result.message)
+            })
+          }
           return
       }
     }
@@ -154,8 +163,10 @@ export function NotesTab(props: {
           note={editNote}
           initial={mode.initial}
           onLeave={() => (mode.from === 'read' ? (setMode({ type: 'read', name: mode.name, trail: mode.trail })) : cancel())}
-          onStale={() => {
-            setMessage('Changed on disk, reloaded')
+          onStale={unsaved => {
+            // The reload drops the user's text, so it goes to the clipboard first.
+            void navigator.clipboard.writeText(unsaved).catch(() => undefined)
+            setMessage('Changed on disk, reloaded. Your edit is on the clipboard.')
             setMode({ type: 'read', name: mode.name, trail: mode.trail })
           }}
         />
@@ -237,8 +248,6 @@ export function NotesTab(props: {
   )
 }
 
-type Target = { type: 'link'; target: string } | { type: 'citation'; number: number } | { type: 'backlink'; name: string }
-
 /** The reader: the note as text, with links and citations to move between (Tab) and follow (Enter). */
 function NoteReader(props: {
   note: NoteFile
@@ -258,7 +267,7 @@ function NoteReader(props: {
   const [error, setError] = useState<string>()
   const [sel, setSel] = useState(-1)
 
-  // Read again whenever the state is pushed: Claude and the user may both edit the file.
+  // Read again when this note's own file changed: Claude and the user may both edit it.
   useEffect(() => {
     void window.app.noteFiles.read(note.name).then(result => {
       if (result.ok) {
@@ -266,23 +275,13 @@ function NoteReader(props: {
         setError(undefined)
       } else setError(result.message)
     })
-  }, [note.name, notes])
+  }, [note.name, note.mtimeMs, note.size])
   useEffect(() => root.current?.focus(), [])
 
   const blocks = useMemo(() => noteBlocks(noteBody(text ?? '')), [text])
   const linkedFrom = useMemo(() => backlinks(note, notes), [note, notes])
-  const targets = useMemo<Target[]>(() => {
-    const out: Target[] = []
-    for (const block of blocks) {
-      if (block.type === 'code') continue
-      for (const s of block.segments) {
-        if (s.type === 'link') out.push({ type: 'link', target: s.target })
-        else if (s.type === 'citation') out.push({ type: 'citation', number: s.number })
-      }
-    }
-    for (const b of linkedFrom) out.push({ type: 'backlink', name: b.name })
-    return out
-  }, [blocks, linkedFrom])
+  const targets = useMemo(() => noteTargets(blocks, linkedFrom), [blocks, linkedFrom])
+  const indices = useMemo(() => targetIndices(blocks), [blocks])
   const [flash, setFlash] = useState<string>()
   const current = sel >= 0 && sel < targets.length ? sel : -1
 
@@ -290,7 +289,7 @@ function NoteReader(props: {
     root.current?.querySelector('.target.sel')?.scrollIntoView({ block: 'nearest' })
   }, [current])
 
-  const follow = (target: Target | undefined) => {
+  const follow = (target: NoteTarget | undefined) => {
     if (!target) return
     if (target.type === 'backlink') props.onOpen(target.name)
     else if (target.type === 'link') {
@@ -316,11 +315,10 @@ function NoteReader(props: {
     e.preventDefault()
   }
 
-  let ordinal = 0
   const renderSegments = (segments: Segment[]) =>
     segments.map((s, i) => {
       if (s.type === 'text') return <span key={i}>{s.text}</span>
-      const mine = ordinal++
+      const mine = indices.get(s) ?? -1
       const cls = mine === current ? 'target sel' : 'target'
       if (s.type === 'link') {
         const found = resolveLink(s.target, notes)
@@ -368,8 +366,8 @@ function NoteReader(props: {
       {linkedFrom.length > 0 && (
         <div className="note-backlinks">
           <div className="subhead group">Linked from</div>
-          {linkedFrom.map(b => {
-            const mine = ordinal++
+          {linkedFrom.map((b, i) => {
+            const mine = indices.size + i
             return (
               <div key={b.name} className={mine === current ? 'row target sel' : 'row target'}>
                 <span className="grow">{b.title}</span>
@@ -385,7 +383,7 @@ function NoteReader(props: {
 }
 
 /** The editor: Vim mode over the note's Markdown. Cmd+S saves; Esc in normal mode leaves. */
-function NoteEditor(props: { note: NoteFile; initial: string; onLeave: () => void; onStale: () => void }) {
+function NoteEditor(props: { note: NoteFile; initial: string; onLeave: () => void; onStale: (unsaved: string) => void }) {
   const handle = useRef<EditorHandle>(null)
   const baseline = useRef(props.initial)
   const text = useRef(props.initial)
@@ -402,7 +400,7 @@ function NoteEditor(props: { note: NoteFile; initial: string; onLeave: () => voi
     if (result.ok) {
       baseline.current = next
       setStatus('Saved')
-    } else if (result.reason === 'stale') props.onStale()
+    } else if (result.reason === 'stale') props.onStale(next)
     else setStatus(result.message)
   }
 
