@@ -167,3 +167,55 @@ export function noteTargets(blocks: readonly Block[], linkedFrom: readonly NoteF
 export function targetIndices(blocks: readonly Block[]): Map<Segment, number> {
   return new Map(blockTargets(blocks).map((t, i) => [t.segment, i]))
 }
+
+// What `new_note` needs, ported from the analysis mod's hooks/model.ts.
+
+export const NOTE_SLUG = /^[a-z0-9][a-z0-9-]*$/
+
+/** The text outside fenced code blocks. */
+const outsideFences = (text: string) => {
+  let isFenced = false
+  return text
+    .split('\n')
+    .filter(line => {
+      if (/^\s*(```|~~~)/.test(line)) {
+        isFenced = !isFenced
+        return false
+      }
+      return !isFenced
+    })
+    .join('\n')
+}
+
+/** The `[[target]]` links of a note's text, in order of first appearance, outside fenced code. */
+export function noteLinks(text: string): string[] {
+  const found: string[] = []
+  for (const match of outsideFences(text).matchAll(/\[\[([^\]\n]+)\]\]/g)) {
+    const target = (match[1] ?? '').trim()
+    if (target && !found.includes(target)) found.push(target)
+  }
+  return found
+}
+
+/** The run numbers cited as `[q 12]`, in order of first appearance, outside fenced code. */
+export function noteCitations(text: string): number[] {
+  const found: number[] = []
+  for (const match of outsideFences(text).matchAll(/\[q (\d+)\]/g)) {
+    const number = Number(match[1])
+    if (!found.includes(number)) found.push(number)
+  }
+  return found
+}
+
+/** A note file's text: `# <title>`, a blank line, the body (trimmed), a final newline. */
+export const noteFileText = (title: string, body: string) => {
+  const head = `# ${title.replace(/\s+/g, ' ').trim()}`
+  return body.trim() ? `${head}\n\n${body.trim()}\n` : `${head}\n`
+}
+
+/** Whether a link resolves among the note file names: by slug, or by the whole stem (`004-slug`). */
+export const resolvesToNote = (target: string, names: readonly string[]) =>
+  names.some(name => {
+    const parsed = parseNoteFileName(name)
+    return parsed !== undefined && (parsed.slug === target || name === `${target}.md`)
+  })

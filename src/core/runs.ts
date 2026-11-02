@@ -284,3 +284,6 @@ export function runningPythonRun(runs: readonly Run[], status: RunStatus): Run |
   const run = runs.find(r => r.number === number)
   return run?.language === 'python' ? run : undefined
 }
+
+/** The number the next run claims: the highest in `queries/` plus one. Numbers are never reused. */
+export const nextRunNumber = (names: readonly string[]) => Math.max(0, ...parseRuns(names).map(run => run.number)) + 1

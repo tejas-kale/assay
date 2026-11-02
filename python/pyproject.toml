@@ -1,0 +1,38 @@
+# Assay's Python environment, venv-assay. `claude-pkg venv-assay` (on the Mac, from any directory) builds it from
+# this file and uv.lock (in ~/Code/assay/python) into the Podman volume venv-assay, which sessions mount at
+# /opt/venv-assay: rerun it after changing this file, and commit the new uv.lock.
+# (tests/test_venv.sh builds this file with uv in a scratch folder.)
+
+[project]
+name = "notes-src"
+version = "0"
+requires-python = ">=3.10"
+dependencies = [
+  "ipykernel",
+  "pytest",
+  "databricks-sdk",
+  "databricks-sqlalchemy>=2,<3",
+  "databricks-sql-connector",
+  "polars",
+  "pandas",
+  "pyarrow",
+  "duckdb",
+  # analysis_trust: SQL parsing and transpiling, the dictionary's and calculations' YAML.
+  "sqlglot",
+  "pyyaml",
+  # A SQLAlchemy engine on DuckDB, for Python calculations' fixture tests (analysis_trust.fixture_engine).
+  "duckdb-engine",
+  "altair",
+  "matplotlib",
+]
+
+# The project installs itself, editable, so `import analysis_db` (and the server's `python -m analysis_trust`)
+# works from any analysis folder, whatever is on sys.path.
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["analysis_db", "analysis_trust"]
+packages = []
+

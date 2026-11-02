@@ -113,7 +113,7 @@ export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
     pane: 'History',
     keys: [['j / k', 'move'], ['Enter', 'show that run'], ['p', 'pin / follow latest'], ['newest run', 'follow Claude again']],
   },
-  { pane: 'Trust', keys: [['j / k', 'scroll'], ['g / G', 'top / bottom']] },
+  { pane: 'Trust', keys: [['J / K', 'choose a proposal'], ['c', 'check it'], ['t / r', 'trust / reject, once every check passed'], ['l', 'list the proposals again'], ['j / k', 'scroll'], ['g / G', 'top / bottom']] },
   {
     pane: 'Files',
     keys: [['j / k', 'move'], ['/', 'search'], ['Enter', 'open: text in Neovim, Mermaid chart in the browser, image preview'], ['Tab', 'preview in a pop-up'], ['r', 'refresh'], ['⌘2 again', 'switch to Threads']],

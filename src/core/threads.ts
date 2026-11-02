@@ -93,3 +93,64 @@ export function moveOpen(text: string, index: number, expected: string, delta: n
   const rest = threads.open.filter((_, i) => i !== index)
   return formatThreads({ ...threads, open: [...rest.slice(0, to), expected, ...rest.slice(to)] })
 }
+
+// The tools' thread operations, ported from the analysis mod's hooks/model.ts. They name an open thread by its
+// number, its exact text (any case) or a part of its text that no other open thread shares.
+
+export const parkThread = (threads: Threads, thread: string): Threads => ({
+  ...threads,
+  open: [...threads.open, oneLine(thread)],
+})
+
+/** The index of the open thread that `ref` names, or why there is none. */
+function findOpen(threads: Threads, ref: string): { index: number } | { error: string } {
+  const wanted = oneLine(ref).toLowerCase()
+  let index = /^\d+$/.test(wanted) ? Number(wanted) - 1 : -1
+  if (index < 0 || index >= threads.open.length) {
+    index = threads.open.findIndex(open => open.toLowerCase() === wanted)
+  }
+  if (index < 0 && !/^\d+$/.test(wanted)) {
+    const matches = threads.open.flatMap((open, i) => (open.toLowerCase().includes(wanted) ? [i] : []))
+    if (matches.length > 1) return { error: `${matches.length} open threads match "${ref}"; give its number.` }
+    index = matches[0] ?? -1
+  }
+  return threads.open[index] === undefined ? { error: `No open thread matches "${ref}".` } : { index }
+}
+
+/** Closes the open thread that `ref` names. */
+export function closeThread(
+  threads: Threads,
+  ref: string,
+  outcome?: string,
+): { threads: Threads; closed?: ClosedThread; error?: string } {
+  const found = findOpen(threads, ref)
+  if ('error' in found) return { threads, error: found.error }
+  const thread = threads.open[found.index] ?? ''
+  const closed: ClosedThread = outcome && oneLine(outcome) ? { thread, outcome: oneLine(outcome) } : { thread }
+  return {
+    threads: { open: threads.open.filter((_, i) => i !== found.index), closed: [...threads.closed, closed] },
+    closed,
+  }
+}
+
+/** Moves the open thread that `ref` names to the top: the one under discussion. */
+export function focusThread(threads: Threads, ref: string): { threads: Threads; focused?: string; error?: string } {
+  const found = findOpen(threads, ref)
+  if ('error' in found) return { threads, error: found.error }
+  const thread = threads.open[found.index] ?? ''
+  if (found.index === 0) return { threads, focused: thread }
+  return { threads: { ...threads, open: [thread, ...threads.open.filter((_, i) => i !== found.index)] }, focused: thread }
+}
+
+/** Moves the open threads that `refs` name (each against the list as it was) to the top in that order. */
+export function orderThreads(threads: Threads, refs: readonly string[]): { threads: Threads; error?: string } {
+  const picked: number[] = []
+  for (const ref of refs) {
+    const found = findOpen(threads, ref)
+    if ('error' in found) return { threads, error: found.error }
+    if (picked.includes(found.index)) return { threads, error: `"${ref}" names a thread already listed.` }
+    picked.push(found.index)
+  }
+  const rest = threads.open.flatMap((thread, i) => (picked.includes(i) ? [] : [thread]))
+  return { threads: { ...threads, open: [...picked.map(i => threads.open[i] ?? ''), ...rest] } }
+}

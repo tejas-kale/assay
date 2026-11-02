@@ -108,7 +108,7 @@ export function registerIpc() {
   })
 
   handle(CHANNELS.ptyStart, (ctx, cols, rows) => {
-    if (isSize(cols) && isSize(rows)) startPty(ctx, cols, rows)
+    if (isSize(cols) && isSize(rows)) void startPty(ctx, cols, rows)
   })
   listen(CHANNELS.ptyWrite, (ctx, data) => {
     // While closing, nothing may reach the wrapper: a stray Ctrl-C could interrupt its import.

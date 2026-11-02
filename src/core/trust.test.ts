@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { diffLines, isActive, latestReview, parseTrustReview, stateLine, stateTone, stepDetail, stepTitle, trustSeenKey } from './trust.ts'
+import { canAnswer, canCheck, TRUST_STATES, diffLines, isActive, latestReview, parseTrustReview, stateLine, stateTone, stepDetail, stepTitle, trustSeenKey } from './trust.ts'
 
 const base = {
   name: 'c',
@@ -85,10 +85,10 @@ test('stateTone and isActive', () => {
   assert.equal(isActive('approved'), false)
 })
 
-test('stateLine ticks while checking, points at Claude while asking, else shows the message', () => {
+test('stateLine ticks while checking, asks for Trust or Reject, else shows the message', () => {
   const r = parseTrustReview(JSON.stringify({ ...base, steps: [], message: 'Trusted c: committed in trusted/.' }))!
   assert.deepEqual(stateLine(r, 4100), { text: 'checking… 4 s', tone: 'dim' })
-  assert.equal(stateLine({ ...r, state: 'asking' }, 9000).text, 'Answer in the Claude pane (⌘1)')
+  assert.equal(stateLine({ ...r, state: 'asking' }, 9000).text, 'Every check passed: Trust (t) or Reject (r).')
   assert.deepEqual(stateLine({ ...r, state: 'approved' }, 9000), { text: 'Trusted c: committed in trusted/.', tone: 'good' })
 })
 
@@ -108,4 +108,14 @@ test('trustSeenKey changes with the start, state, step count and sample rows', (
   assert.equal(trustSeenKey({ ...r, steps: [] }).split(':')[2], '0')
   const { sample: _drop, ...bare } = r
   assert.equal(trustSeenKey(bare).split(':')[3], '0')
+})
+
+test('Trust and Reject are offered only while asking; Check only when no review is open', () => {
+  const r = { name: 'c', kind: 'calculation' as const, what: 'SQL template', replaces: false, startedAt: 0, steps: [] }
+  assert.equal(canAnswer(undefined), false)
+  assert.equal(canCheck(undefined), true)
+  for (const state of TRUST_STATES) {
+    assert.equal(canAnswer({ ...r, state }), state === 'asking')
+    assert.equal(canCheck({ ...r, state }), state !== 'checking' && state !== 'asking')
+  }
 })
