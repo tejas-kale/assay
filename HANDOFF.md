@@ -317,7 +317,7 @@ Decide these while building, and record each here:
 
 ## Status
 
-As of 2026-11-02 (after slice 3).
+As of 2026-11-02 (after slice 4).
 
 ### Done and run on the Mac
 
@@ -325,7 +325,7 @@ As of 2026-11-02 (after slice 3).
   folder above), terminal, Threads and Notes, Cmd shortcuts, Show Shortcuts (palette), left-Cmd hints. Threads is the
   first tab. Cmd+2 pressed again cycles Threads → Notes → Files.
 - **Pane hidden** (config repo): with `ASSAY_APP=1` the mod never opens its pane and `/an` points to the app.
-  `claude/bin/claude` passes `-e ASSAY_APP`. `/an trust` still opens the pane: its review view is slice 4.
+  `claude/bin/claude` passes `-e ASSAY_APP`. Since slice 4 `/an trust` does not open it either (Trust tab).
 - **Run status** (config repo, beyond the brief): with `ASSAY_APP=1` the mod writes `.assay/runs.json`
   (`{ running: { number, startedAt } | null, failed: { "<n>": message } }`) before each `.sql` and after each result,
   and `.assay/.gitignore` (`*`). The app shows "running" and failures from it.
@@ -364,7 +364,22 @@ As of 2026-11-02 (after slice 3).
   switch); the pane's Data tab shows Python runs (status, stdout, first table, plot names, `computed`). Mod 199 pass.
   Not yet tried live.
 
+- **Slice 4** (`docs/slice-4.md`; assay `bc51440`..`12113d2`, config `155a39d`..`5036172` minus the user's
+  `fe01877`): note files `notes/NNN-<slug>.md` in the Notes tab under the facts: reader with each citation's run
+  label, `[[slug]]` links, backlinks, Tab/Enter to follow (a citation holds the run and focuses the data pane),
+  Backspace back; `n` new, `e` edit (CodeMirror Markdown, Vim, Cmd+S; a stale save puts the edit on the clipboard),
+  `d` delete. Claude's `new_note` tool claims the number. Trust tab (Cmd+Shift+R) over `.assay/trust/<name>.json`:
+  pytest-style steps with diffs, live sample, state line; it switches in once per new review without taking focus.
+  The mod streams `analysis_trust check --stream`, never opens its pane with `ASSAY_APP=1`, asks "Trust <name>?"
+  with `$.ui.ask` (only "Trust" approves) in and out of the app, and ends an unchanged approval as "Already trusted:
+  no changes". App 185 tests, mod 216. Smoke-tested in the dev app with a stub Claude and trust files written by
+  hand (screenshots read, focus checked); the helper's `--stream` ran in a container on venv-assay.
+
 ### Left
+
+- **Slice 4, untested live:** `/an trust` in a real session (spawned stream, the `$.ui.ask` dialog and its timing
+  while Claude is idle, the commit), `new_note` from a real Claude, a note edited by Claude while open in the reader.
+  Cosmetic: the helper's diff prints integers as floats (`10.0,1.0`).
 
 - **Slice 2b, untested live:** a real Claude session picking up a request (mod poller), the request-to-run latency
   (Verify first item 8), and Postgres re-runs.
@@ -374,8 +389,6 @@ As of 2026-11-02 (after slice 3).
   with the session's mounts: trust, helper imports from `/opt/analysis`, a kernel run, read-only venv.
 - **Setup, once:** `claude-pkg venv-assay` (done on this Mac 2026-11-02; rerun after changing the mod's
   `notes-src/pyproject.toml`). `~/Code/notes-src` needs no changes.
-- **Slice 4** as written under Build slices.
-- **Open for the build:** the note-file items remain (slice 4).
 - Untested by Claude: a live Claude session in the app (the user has used it), physical Cmd keys, Cmd+W/Cmd+Q closing.
 
 ### How this app was tested on the Mac without a person
