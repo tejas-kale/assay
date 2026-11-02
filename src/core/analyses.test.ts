@@ -52,6 +52,11 @@ test('a title edit rewrites the title line only: other keys, unknown keys and co
   }
 })
 
+test('a title edit keeps CRLF line endings and never adds a second title line', () => {
+  assert.equal(setTitle('title: Old\r\ncreated: 2026-11-02\r\n', 'New'), 'title: New\r\ncreated: 2026-11-02\r\n')
+  assert.equal(setTitle('created: 2026-11-02\r\n', 'New'), 'title: New\r\ncreated: 2026-11-02\r\n')
+})
+
 test('slugFor: the note slug rule, numbered from -2 on a clash', () => {
   assert.equal(slugFor('Churn in Q3', []), 'churn-in-q3')
   assert.equal(slugFor('Churn in Q3', ['churn-in-q3']), 'churn-in-q3-2')

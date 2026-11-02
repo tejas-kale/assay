@@ -79,13 +79,14 @@ export function yamlScalar(value: string): string {
   return plain ? value : JSON.stringify(value)
 }
 
-/** The text with `title:` set; every other line stays as it was. */
+/** The text with `title:` set; every other line stays as it was, and so do the file's line endings. */
 export function setTitle(text: string, title: string): string {
+  const eol = text.includes('\r\n') ? '\r\n' : '\n'
   const line = `title: ${yamlScalar(title.trim())}`
   const lines = text.split('\n')
-  const at = lines.findIndex(each => KEY_LINE.exec(each)?.[1]?.toLowerCase() === 'title')
-  if (at < 0) return `${line}\n${text}`
-  lines[at] = line
+  const at = lines.findIndex(each => KEY_LINE.exec(each.replace(/\r$/, ''))?.[1]?.toLowerCase() === 'title')
+  if (at < 0) return `${line}${eol}${text}`
+  lines[at] = lines[at]?.endsWith('\r') ? `${line}\r` : line
   return lines.join('\n')
 }
 
