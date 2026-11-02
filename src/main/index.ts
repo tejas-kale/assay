@@ -1,5 +1,7 @@
 import { Menu, app, session as electronSession } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
+import { fileURLToPath } from 'node:url'
+
 import { registerIpc } from './ipc.ts'
 import { allContexts, createWindow, isLive, requestClose, setOnClosed, setOnKeepWaiting } from './windows.ts'
 
@@ -65,6 +67,8 @@ void app.whenReady().then(() => {
   const allowed = (permission: string) => permission === 'clipboard-read' || permission === 'clipboard-sanitized-write'
   electronSession.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => callback(allowed(permission)))
   electronSession.defaultSession.setPermissionCheckHandler((_wc, permission) => allowed(permission))
+  // v1 runs unpackaged, so the Dock icon is set here rather than from an app bundle.
+  app.dock?.setIcon(fileURLToPath(new URL('../../resources/icon.png', import.meta.url)))
   Menu.setApplicationMenu(buildMenu())
   registerIpc()
   createWindow()
