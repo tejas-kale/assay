@@ -1,0 +1,444 @@
+// The analysis mod's model tests (config b2f7df2, claude/analysis/tests/model.test.ts), ported to the core
+// functions the server uses. The pane's tests (layout, SQL folding, transposing) went with the pane.
+import { test } from 'node:test'
+
+import { expect } from '../testing/expect.ts'
+import { BASH_PYTHON_DENY, bashRunsPython } from './bashGuard.ts'
+import { parseCliOutput, parsePsqlOutput, readTarget } from './engines.ts'
+import { deriveLabel, noteLine, parseNote } from './facts.ts'
+import { nextNoteNumber, noteCitations, noteFileName, noteFileText, noteLinks, parseNoteFileName, resolvesToNote } from './noteFiles.ts'
+import type { PythonRun } from './pythonRuns.ts'
+import { formatPythonRun, formatTable, parsePythonRun, pythonBody, pythonHeader, runSlug, splitKernelEvents, toCsv, venvCandidates } from './pythonRuns.ts'
+import { isUrgent, parseRequestFile } from './requests.ts'
+import type { ServerRequest } from './requests.ts'
+import { analysisRules, runNotice, VENV_ASSAY_COMMAND } from './rules.ts'
+import { nextRunNumber, parseRunHeader, parseRunResult, parseRuns } from './runs.ts'
+import { closeThread, focusThread, formatThreads, orderThreads, parkThread, parseThreads } from './threads.ts'
+
+const statusOf = (text: string) => parseRunResult(text)?.status
+
+const THREADS = `## Open
+1. Why do some panels have alpha = 0?
+2. Is \`completion_rate\` per respondent or per survey?
+
+## Closed
+- Does \`is_test\` exclude internal traffic? → yes, filter in all queries
+- Is the table partitioned?
+`
+
+test('threads.md parses and formats back unchanged', async () => {
+  const threads = parseThreads(THREADS)
+  expect(threads.open).toEqual([
+    'Why do some panels have alpha = 0?',
+    'Is `completion_rate` per respondent or per survey?',
+  ])
+  expect(threads.closed).toEqual([
+    { thread: 'Does `is_test` exclude internal traffic?', outcome: 'yes, filter in all queries' },
+    { thread: 'Is the table partitioned?' },
+  ])
+  expect(formatThreads(threads)).toBe(THREADS)
+})
+
+test('an empty threads.md is no threads', async () => {
+  expect(parseThreads('')).toEqual({ open: [], closed: [] })
+  expect(formatThreads({ open: [], closed: [] })).toBe('## Open\n\n## Closed\n')
+})
+
+test('park appends to the open list', async () => {
+  const threads = parkThread(parseThreads(''), '  Why is beta null?\n')
+  expect(threads.open).toEqual(['Why is beta null?'])
+})
+
+test('close matches by number, exact text or a unique part', async () => {
+  const threads = parseThreads(THREADS)
+
+  const byNumber = closeThread(threads, '2', 'per respondent')
+  expect(byNumber.closed?.thread).toBe('Is `completion_rate` per respondent or per survey?')
+  expect(byNumber.threads.open).toEqual(['Why do some panels have alpha = 0?'])
+  expect(byNumber.threads.closed.at(-1)).toEqual({
+    thread: 'Is `completion_rate` per respondent or per survey?',
+    outcome: 'per respondent',
+  })
+
+  expect(closeThread(threads, 'why do some panels have alpha = 0?').closed?.thread).toBe(
+    'Why do some panels have alpha = 0?',
+  )
+  expect(closeThread(threads, 'alpha').closed?.thread).toBe('Why do some panels have alpha = 0?')
+  expect(closeThread(threads, 'nothing like it').error).toMatch(/No open thread/)
+  expect(closeThread(threads, '?').error).toMatch(/2 open threads match/)
+  expect(closeThread(threads, '7').error).toMatch(/No open thread/)
+})
+
+test('focus moves the named open thread to the top, keeping the rest in order', async () => {
+  const threads = parseThreads(THREADS)
+  const focused = focusThread(threads, 'completion')
+  expect(focused.focused).toBe('Is `completion_rate` per respondent or per survey?')
+  expect(focused.threads.open).toEqual([
+    'Is `completion_rate` per respondent or per survey?',
+    'Why do some panels have alpha = 0?',
+  ])
+  expect(focused.threads.closed).toEqual(threads.closed)
+  expect(focusThread(threads, '1').threads).toBe(threads)
+  expect(focusThread(threads, '?').error).toMatch(/2 open threads match/)
+})
+
+test('order moves the named threads to the top in turn, the rest keep their order', async () => {
+  const threads = parseThreads('## Open\n1. A?\n2. B?\n3. C?\n4. D?\n')
+  expect(orderThreads(threads, ['4', 'B?']).threads.open).toEqual(['D?', 'B?', 'A?', 'C?'])
+  expect(orderThreads(threads, ['9']).error).toMatch(/No open thread/)
+  expect(orderThreads(threads, ['2', 'b?']).error).toMatch(/already listed/)
+  expect(orderThreads(threads, ['9']).threads).toBe(threads)
+})
+
+test('a note line is one line, ending in its label and the query it cites', async () => {
+  expect(noteLine('  beta is\nper panel  ', 'unverified')).toBe('beta is per panel [unverified]')
+  expect(noteLine('beta is per panel', 'queried', 7)).toBe('beta is per panel [queried q 007]')
+  expect(noteLine('beta is per panel', 'trusted', 12)).toBe('beta is per panel [trusted q 012]')
+})
+
+test('a label is derived from the query: trusted only for a trusted run with a result, and never after the fact', async () => {
+  expect(deriveLabel(undefined)).toBe('unverified')
+  expect(deriveLabel({ hasCsv: false, isTrustedRun: true })).toBe('unverified')
+  expect(deriveLabel({ hasCsv: true, isTrustedRun: false })).toBe('queried')
+  expect(deriveLabel({ hasCsv: true, isTrustedRun: true })).toBe('trusted')
+  expect(deriveLabel({ hasCsv: true, isTrustedRun: true }, false)).toBe('queried')
+})
+
+test('query files are numbered after the highest one', async () => {
+  expect(nextRunNumber([])).toBe(1)
+  expect(nextRunNumber(['001_a.sql', '001_a.csv', '009_b.sql', 'notes.txt'])).toBe(10)
+  expect(parseRuns(['012_beta-params.sql'])).toMatchObject([{ number: 12, slug: 'beta-params', code: '012_beta-params.sql', language: 'sql' }])
+  expect(parseRuns(['readme.md'])).toEqual([])
+})
+
+test('Python run files are named like SQL ones; tables and plots belong to their run', () => {
+  expect(nextRunNumber(['003_a.sql', '004_b.py', '004_b.json', '004_b.t1.csv', '004_b.p1.png'])).toBe(5)
+  expect(nextRunNumber(['014_x.t1.csv'])).toBe(15)
+  const [run] = parseRuns(['014_x.py', '014_x.json', '014_x.t2.csv', '014_x.p1.png', '014_x.p3.svg', '014_x.png'])
+  expect(run).toMatchObject({ number: 14, slug: 'x', code: '014_x.py', result: '014_x.json', language: 'python', tables: ['014_x.t2.csv'], plots: ['014_x.p1.png', '014_x.p3.svg'] })
+  // A Python run's table is not its whole result: only a SQL run's .csv is.
+  expect(run?.data).toBeUndefined()
+})
+
+test('a Python run is computed when it ended ok, else unverified; SQL keeps its labels', () => {
+  const python = { hasCsv: false, isTrustedRun: false, language: 'python' } as const
+  expect(deriveLabel({ ...python, status: 'ok' })).toBe('computed')
+  expect(deriveLabel({ ...python, status: 'ok' }, false)).toBe('computed')
+  for (const status of ['error', 'interrupted', 'running', undefined]) expect(deriveLabel({ ...python, status })).toBe('unverified')
+  expect(deriveLabel({ hasCsv: true, isTrustedRun: false, language: 'sql' })).toBe('queried')
+})
+
+test('a computed tag parses and is written with its query', () => {
+  expect(noteLine('mean is 3', 'computed', 14)).toBe('mean is 3 [computed q 014]')
+  expect(parseNote('mean is 3 [computed q 014]')).toEqual({ text: 'mean is 3', label: 'computed', query: 14 })
+  expect(parseNote('mean is 3 [computed]')).toEqual({ text: 'mean is 3 [computed]' })
+})
+
+test('slugs are short kebab case', async () => {
+  expect(runSlug('Beta Params by_Panel!')).toBe('beta-params-by-panel')
+  expect(runSlug('***')).toBe('query')
+  expect(runSlug('a'.repeat(80))).toHaveLength(48)
+})
+
+test('CSV round-trips quotes, commas and newlines', async () => {
+  const rows = [
+    ['a', 'b,c'],
+    ['say "hi"', 'two\nlines'],
+    ['', 'x'],
+  ]
+  const csv = toCsv(['h1', 'h2'], rows)
+  expect(csv).toBe('h1,h2\na,"b,c"\n"say ""hi""","two\nlines"\n,x\n')
+  expect(parsePsqlOutput(0, csv, '')).toEqual({ columns: ['h1', 'h2'], rows })
+  expect(parsePsqlOutput(0, '', '')).toEqual({ columns: [], rows: [] })
+  expect(parsePsqlOutput(1, '', 'psql:queries/001_x.sql:1: ERROR:  relation "x" does not exist\n')).toEqual({ error: 'ERROR:  relation "x" does not exist' })
+})
+
+test('the target comes from .analysis, with defaults', async () => {
+  expect(readTarget('')).toEqual({ profile: 'Cint mkt', warehouse: '455a178462311474' })
+  expect(readTarget('profile: DEFAULT\nwarehouse: abc\n')).toEqual({
+    profile: 'DEFAULT',
+    warehouse: 'abc',
+  })
+})
+
+test('the CLI output gives columns and rows, or the error', async () => {
+  const ok = JSON.stringify([
+    { sql: 'x', state: 'SUCCEEDED', columns: ['a'], rows: [['1'], ['2']] },
+    { sql: 'SELECT 1', state: 'SUCCEEDED', columns: ['1'], rows: [['1']] },
+  ])
+  expect(parseCliOutput(ok, '')).toEqual({ columns: ['a'], rows: [['1'], ['2']] })
+
+  const failed = JSON.stringify([
+    { sql: 'x', state: 'FAILED', error: { message: '\n[PARSE_SYNTAX_ERROR] bad\n' } },
+  ])
+  expect(parseCliOutput(failed, '')).toEqual({ error: '[PARSE_SYNTAX_ERROR] bad' })
+  expect(parseCliOutput('not json', 'Error: no profile')).toEqual({ error: 'Error: no profile' })
+  expect(parseCliOutput('', '')).toEqual({ error: 'The Databricks CLI gave no output.' })
+})
+
+test('a note splits off its label and query; an old line has a query or nothing', async () => {
+  expect(parseNote('beta is per panel [queried q 007]')).toEqual({ text: 'beta is per panel', label: 'queried', query: 7 })
+  expect(parseNote('beta [trusted q 012]')).toEqual({ text: 'beta', label: 'trusted', query: 12 })
+  expect(parseNote('beta [unverified]')).toEqual({ text: 'beta', label: 'unverified' })
+  expect(parseNote('beta is per panel [q 007]')).toEqual({ text: 'beta is per panel', query: 7 })
+  expect(parseNote('beta is per panel')).toEqual({ text: 'beta is per panel' })
+  expect(parseNote('beta [trusted]')).toEqual({ text: 'beta [trusted]' })
+})
+
+test('venvCandidates walks from the folder up to the root, nearest first', () => {
+  expect(venvCandidates('/work/notes-src/analyses/alpha')).toEqual([
+    '/work/notes-src/analyses/alpha/.venv/bin/python',
+    '/work/notes-src/analyses/.venv/bin/python',
+    '/work/notes-src/.venv/bin/python',
+    '/work/.venv/bin/python',
+    '/.venv/bin/python',
+  ])
+  expect(venvCandidates('/')).toEqual(['/.venv/bin/python'])
+  expect(venvCandidates('/a/b/')).toEqual(['/a/b/.venv/bin/python', '/a/.venv/bin/python', '/.venv/bin/python'])
+})
+
+test('the rules say venv-assay is the only Python and how to add a package', () => {
+  const rules = analysisRules('/opt/venv-assay/bin/python')
+  expect(rules).toContain('venv-assay is the only Python for the tools')
+  expect(rules).toContain("Assay repo's python/pyproject.toml")
+  expect(rules).toContain(VENV_ASSAY_COMMAND)
+  expect(rules).toContain('never a Bash pip install and never another venv')
+})
+
+test('the rules are compact and carry the python path when known', () => {
+  expect(analysisRules(undefined).length).toBeLessThan(2900)
+  expect(analysisRules('/w/.venv/bin/python')).toContain('/w/.venv/bin/python -m pytest tests')
+  expect(analysisRules(undefined)).toContain('python -m pytest tests')
+  for (const part of ['one concept', 'mcp__plugin_assay_assay__park', 'mcp__plugin_assay_assay__focus', 'mcp__plugin_assay_assay__order', 'mcp__plugin_assay_assay__python', 'q(N)', 'never through Bash', 'matplotlib', 'Altair', '.head()', 'lib/<name>.py', 'tests/test_<name>.py'])
+    expect(analysisRules(undefined)).toContain(part)
+})
+
+test('a run result .json gives its status, or nothing when unreadable', () => {
+  expect(statusOf('{"status":"ok","tables":[]}')).toBe('ok')
+  expect(statusOf('{"status":"running"}')).toBe('running')
+  for (const text of ['', '{nope', 'null', '{"status":3}', '[]']) expect(statusOf(text)).toBeUndefined()
+})
+
+test('kernel events are read a line at a time, and a partial line waits', () => {
+  const ready = '{"event": "ready", "kernel": "k1", "pid": 42}\n'
+  expect(splitKernelEvents(ready)).toEqual({ events: [{ event: 'ready', kernel: 'k1', pid: 42 }], rest: '' })
+  expect(splitKernelEvents('{"event": "interr')).toEqual({ events: [], rest: '{"event": "interr' })
+  expect(splitKernelEvents('{"event": "dead", "message": "gone"}\nnoise\n{"event": "stopped"}\n{"ev')).toEqual({
+    events: [{ event: 'dead', message: 'gone' }, { event: 'stopped' }],
+    rest: '{"ev',
+  })
+  expect(splitKernelEvents('{"event": "missing"}\n').events).toEqual([{ event: 'missing', message: 'The kernel is missing.' }])
+  expect(splitKernelEvents('{"event": "ready"}\n{"event": "nope"}\n[1]\nnull\n').events).toEqual([])
+})
+
+test('the runner output is read, and a bad one says what it printed', () => {
+  const out = { status: 'ok', stdout: 'hi', tables: [{ file: '014_x.t1.csv', columns: ['a'], rows: [[1], ['2']], rowCount: 12000, truncated: false }], plots: ['014_x.p1.png', { file: '014_x.p2.svg' }], reads: [12] }
+  expect(parsePythonRun(`${JSON.stringify(out)}\n`)).toEqual({
+    status: 'ok',
+    stdout: 'hi',
+    tables: [{ file: '014_x.t1.csv', columns: ['a'], rows: [['1'], ['2']], rowCount: 12000, truncated: false }],
+    plots: ['014_x.p1.png', '014_x.p2.svg'],
+    reads: [12],
+  })
+  expect(parsePythonRun('{"status":"error","error":{"name":"KeyError"}}')).toEqual({ status: 'error', stdout: '', error: { name: 'KeyError' }, tables: [], plots: [], reads: [] })
+  expect(parsePythonRun('')).toEqual({ error: 'The kernel runner printed nothing.' })
+  expect(parsePythonRun('Traceback boom')).toEqual({ error: 'The kernel runner printed: Traceback boom' })
+  expect(parsePythonRun('{"status":"weird"}')).toEqual({ error: 'The kernel runner gave no status: {"status":"weird"}' })
+})
+
+test('a Python run reply: status and time, stdout, traceback tail, tables and plots', () => {
+  const base: PythonRun = { status: 'ok', stdout: '', tables: [], plots: [], reads: [] }
+  expect(formatPythonRun(14, base, 2300)).toBe('Run 014: ok (2.3 s).')
+  expect(formatPythonRun(14, { ...base, stdout: 'hello\n' }, 100)).toBe('Run 014: ok (0.1 s).\nhello')
+  const traceback = Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join('\n')
+  const failed = formatPythonRun(15, { ...base, status: 'error', error: { name: 'KeyError', message: "'x'", traceback } }, 50).split('\n')
+  expect(failed[0]).toBe('Run 015: error (0.1 s).')
+  expect(failed).toHaveLength(31)
+  expect(failed[1]).toBe('line 11')
+  expect(failed.at(-1)).toBe('line 40')
+  expect(formatPythonRun(15, { ...base, status: 'interrupted' }, 590000)).toBe('Run 015: interrupted (590.0 s).')
+  const rows = Array.from({ length: 50 }, (_, i) => [String(i), 'x'])
+  const full = formatPythonRun(16, { ...base, tables: [{ file: '016_t.t1.csv', columns: ['n', 'v'], rows, rowCount: 120, truncated: false }, { file: '016_t.t2.csv', columns: ['a'], rows: [['1']], rowCount: 1, truncated: false }], plots: ['016_t.p1.png'] }, 1000).split('\n')
+  expect(full[1]).toBe('Table 1 (016_t.t1.csv): 120 rows. Columns: n, v')
+  expect(full[2]).toBe('n   v')
+  expect(full[3]).toBe('0   x')
+  expect(full[52]).toBe('49  x')
+  expect(full[53]).toBe('Truncated: showing 50 of 120 rows. 016_t.t1.csv has all of them.')
+  expect(full[54]).toBe('Table 2 (016_t.t2.csv): 1 row. Columns: a')
+  expect(full.at(-1)).toBe('Plot: queries/016_t.p1.png (Read it to check the chart.)')
+})
+
+test('Python header lines are written and stripped', () => {
+  expect(pythonHeader({})).toBe('')
+  expect(pythonHeader({ author: 'user' })).toBe('# author: user\n')
+  expect(pythonHeader({ author: 'user', from: 12 })).toBe('# author: user\n# from: 012\n')
+  expect(pythonHeader({ author: 'user', replay: 14 })).toBe('# author: user\n# replay: 014\n')
+  expect(pythonBody('# author: user\n# from: 012\nx = 1\n# a comment\n')).toBe('x = 1\n# a comment\n')
+  expect(pythonBody('# note\n# author: user\nx = 1\n')).toBe('# note\n# author: user\nx = 1\n')
+})
+
+test('requests are parsed by kind, and refused with a reason', () => {
+  const json = (body: object) => parseRequestFile(JSON.stringify(body))
+  expect(json({ kind: 'sql', sql: 'SELECT 1', from: 3, slug: 's' })).toEqual({ kind: 'sql', sql: 'SELECT 1', engine: 'databricks', from: 3, slug: 's' })
+  expect(json({ kind: 'sql', sql: 'SELECT 1', engine: 'postgres' })).toEqual({ kind: 'sql', sql: 'SELECT 1', engine: 'postgres', slug: 'query' })
+  expect(json({ kind: 'python', code: 'x', from: 12, slug: 'a' })).toEqual({ kind: 'python', code: 'x', from: 12, slug: 'a' })
+  expect(json({ kind: 'python', code: 'x', from: 0 })).toEqual({ kind: 'python', code: 'x', slug: 'query' })
+  expect(json({ kind: 'interrupt' })).toEqual({ kind: 'interrupt' })
+  expect(json({ kind: 'restart' })).toEqual({ kind: 'restart' })
+  expect(json({ kind: 'replay', runs: [12, 14] })).toEqual({ kind: 'replay', runs: [12, 14] })
+  const refused = [
+    ['{nope', 'The request is not valid JSON.'],
+    ['[1]', 'Unknown request kind: undefined.'],
+    ['null', 'The request is not a JSON object.'],
+    [JSON.stringify({ kind: 'sql', sql: ' ' }), 'The SQL is empty.'],
+    [JSON.stringify({ kind: 'sql', sql: 'x', engine: 'mysql' }), 'Unknown engine: mysql.'],
+    [JSON.stringify({ kind: 'python', code: '' }), 'The code is empty.'],
+    [JSON.stringify({ kind: 'replay', runs: [] }), 'Name the runs to replay, by number.'],
+    [JSON.stringify({ kind: 'replay', runs: [1, 'x'] }), 'Name the runs to replay, by number.'],
+    [JSON.stringify({ kind: 'bogus' }), 'Unknown request kind: bogus.'],
+  ] as const
+  for (const [text, error] of refused) expect(parseRequestFile(text)).toEqual({ error })
+})
+
+test('run headers are read from SQL and Python comments', () => {
+  expect(parseRunHeader('-- author: user\n-- from: 012\n-- postgres\nSELECT 1\n')).toMatchObject({ author: 'user', from: 12, engine: 'postgres' })
+  expect(parseRunHeader('# author: user\n# replay: 014\nx = 1\n', 'python')).toMatchObject({ author: 'user', replay: 14 })
+  expect(parseRunHeader('SELECT 1\n-- author: user\n').author).toBe('claude')
+  expect(parseRunHeader('# note\n# from: 003\nx\n', 'python')).toMatchObject({ author: 'claude', from: 3 })
+  expect(parseRunHeader('').author).toBe('claude')
+})
+
+test('the run notice', () => {
+  expect(runNotice([])).toBeUndefined()
+  expect(runNotice([{ number: 14, language: 'python', from: 12 }, { number: 15, language: 'sql' }])).toBe(
+    'Since your last turn the user ran: 014 python (from 012), 015 sql. Their Python ran in your kernel, so its variables may have changed; read queries/<file> when it matters.',
+  )
+  expect(runNotice([{ number: 15, language: 'sql' }])).toBe('Since your last turn the user ran: 015 sql. Read queries/<file> when it matters.')
+  expect(runNotice([{ number: 16, language: 'python', replay: 14 }])).toContain('016 python (replay of 014)')
+})
+
+test('the Bash guard refuses commands that run Python code, and lets pytest, pip and package commands through', () => {
+  const refused = [
+    'python x.py',
+    'python3 analysis/x.py --flag',
+    'python3.12 script.py',
+    'ipython x.py',
+    '/work/.venv/bin/python x.py',
+    '.venv/bin/python3 x.py',
+    'uv run python x.py',
+    'uv run --with pandas python3 -c "print(1)"',
+    'python -c "print(1)"',
+    "python3 -c 'import os'",
+    'python -u x.py',
+    'python -',
+    'python <<EOF\nprint(1)\nEOF',
+    "python3 - <<'PY'\nimport os\nPY",
+    'python < x.py',
+    'cat x.py | python',
+    'curl -s http://x | python3',
+    'cd sub && python x.py',
+    'ls; python x.py',
+    'FOO=1 python x.py',
+    'env FOO=1 python x.py',
+    'time python x.py',
+    'sudo -n python x.py',
+    'bash -c "python x.py"',
+    'python -W ignore x.py',
+  ]
+  for (const command of refused) expect([command, bashRunsPython(command)]).toEqual([command, true])
+  const allowed = [
+    'python -m pytest tests',
+    'python3 -m pytest -q',
+    '/work/.venv/bin/python -m pytest tests',
+    'python -mpytest',
+    'python -m pip install x',
+    'python --version',
+    'python3 -V',
+    'pytest tests',
+    'claude-pkg uv add pandas',
+    'uv sync',
+    'uv add pandas',
+    'uv run pytest',
+    'uv run python -m pytest',
+    'ls -la',
+    'grep python x.txt',
+    'echo "python x.py"',
+    'cat notes.md | grep python',
+    'python',
+    'curl x | python -m json.tool',
+    'git commit -m "python x.py"',
+    'cat <<EOF\npython x.py\nEOF',
+    'pythonic x.py',
+    'ls x.py',
+  ]
+  for (const command of allowed) expect([command, bashRunsPython(command)]).toEqual([command, false])
+  expect(BASH_PYTHON_DENY).toBe('Run Python with mcp__plugin_assay_assay__python: it runs in the kernel the user sees, and every run is saved. pytest and package commands stay allowed.')
+})
+
+test('a note file name parses to its number and slug; anything else is not a note file', () => {
+  const cases: [string, { number: number; slug: string } | undefined][] = [
+    ['001-first-look.md', { number: 1, slug: 'first-look' }],
+    ['1234-a.md', { number: 1234, slug: 'a' }],
+    ['004-9-lives.md', { number: 4, slug: '9-lives' }],
+    ['01-short.md', undefined],
+    ['001-Upper.md', undefined],
+    ['001--dash.md', undefined],
+    ['001-x.txt', undefined],
+    ['001-.md', undefined],
+    ['notes.md', undefined],
+  ]
+  for (const [name, want] of cases) expect([name, parseNoteFileName(name)]).toEqual([name, want])
+  expect(noteFileName(4, 'slug')).toBe('004-slug.md')
+  expect(noteFileName(1234, 'slug')).toBe('1234-slug.md')
+})
+
+test('the next note number is the highest plus one, ignoring other names', () => {
+  expect(nextNoteNumber([])).toBe(1)
+  expect(nextNoteNumber(['001-a.md', '003-b.md', 'README.md', '9-x.md'])).toBe(4)
+  expect(nextNoteNumber(['010-a.md', '002-b.md'])).toBe(11)
+})
+
+test('links and citations are read in order of first appearance, outside fenced code', () => {
+  const text = ['See [[alpha]] and [[003-beta]], then [[alpha]] again.', 'It is 5 [q 12], also [q 012] and [q 7].', '```', '[[hidden]] [q 99]', '```', 'Last [[ gamma ]].'].join('\n')
+  expect(noteLinks(text)).toEqual(['alpha', '003-beta', 'gamma'])
+  expect(noteCitations(text)).toEqual([12, 7])
+  expect(noteLinks('no links [x](y)')).toEqual([])
+})
+
+test('a note file is its title heading, a blank line and the trimmed body', () => {
+  expect(noteFileText(' Panel  sizes ', '\n  Body [q 1].\n\n')).toBe('# Panel sizes\n\nBody [q 1].\n')
+  expect(noteFileText('Only', '  ')).toBe('# Only\n')
+})
+
+test('a link resolves by slug or by the whole stem', () => {
+  const names = ['001-first.md', '002-second-look.md']
+  expect(resolvesToNote('first', names)).toBe(true)
+  expect(resolvesToNote('002-second-look', names)).toBe(true)
+  expect(resolvesToNote('second', names)).toBe(false)
+  expect(resolvesToNote('003-first', names)).toBe(false)
+})
+
+test('the rules send prose to new_note, linked and cited, and edits to Edit', () => {
+  const rules = analysisRules(undefined)
+  for (const part of ['mcp__plugin_assay_assay__new_note', '[[slug]]', '[q NNN]', 'Edit it', 'notes.md stays one line per fact']) expect(rules).toContain(part)
+  expect(rules.length).toBeLessThan(2900)
+})
+
+test('a table aligns columns and cuts wide cells', async () => {
+  const table = formatTable(['id', 'name'], [['1', 'alpha'], ['22', 'x'.repeat(30)]], 10)
+  expect(table).toBe('id  name\n1   alpha\n22  xxxxxxxxx…')
+})
+
+test('trust requests are parsed by kind, and only the app sends them', () => {
+  const json = (body: object) => parseRequestFile(JSON.stringify(body))
+  expect(json({ kind: 'trust-list' })).toEqual({ kind: 'trust-list' })
+  expect(json({ kind: 'trust-check', name: ' Main.Panel.Sites ' })).toEqual({ kind: 'trust-check', name: 'main.panel.sites' })
+  expect(json({ kind: 'trust-answer', name: 'f', answer: 'trust' })).toEqual({ kind: 'trust-answer', name: 'f', answer: 'trust' })
+  expect(json({ kind: 'trust-answer', name: 'f', answer: 'reject' })).toEqual({ kind: 'trust-answer', name: 'f', answer: 'reject' })
+  expect(json({ kind: 'trust-check' })).toEqual({ error: 'Name the proposal.' })
+  expect(json({ kind: 'trust-answer', name: 'f', answer: 'Trust' })).toEqual({ error: 'The answer is trust or reject.' })
+  for (const kind of ['interrupt', 'restart', 'trust-list']) expect(isUrgent({ kind } as ServerRequest)).toBe(true)
+  expect(isUrgent({ kind: 'trust-check', name: 'f' })).toBe(true)
+  expect(isUrgent({ kind: 'sql', sql: 'x', engine: 'databricks', slug: 'q' })).toBe(false)
+  expect(isUrgent({ kind: 'replay', runs: [1] })).toBe(false)
+})

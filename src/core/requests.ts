@@ -117,3 +117,68 @@ export function parseRunRequest(input: unknown): RunRequest | { error: string } 
   if (engine !== 'databricks' && engine !== 'postgres') return { error: 'Invalid engine' }
   return { kind, sql, engine, ...origin }
 }
+
+// ---------------------------------------------------------------------------
+// The trust review's requests (docs/slice-5.md): the app lists the proposals, starts a check, and answers one
+// that passed. Only these start or answer a review: no tool of Claude's can.
+
+export type TrustAnswer = 'trust' | 'reject'
+export type TrustRequest = { kind: 'trust-list' } | { kind: 'trust-check'; name: string } | { kind: 'trust-answer'; name: string; answer: TrustAnswer }
+
+/** A proposal in the analysis: a calculation in `lib/trusted/` or a drafted entry in `lib/dictionaries/`. */
+export type Proposal = { name: string; kind: 'calculation' | 'dictionary'; folder: 'lib/trusted' | 'lib/dictionaries' }
+
+export function trustRequestText(id: string, request: TrustRequest): string {
+  return JSON.stringify({ id, ...request })
+}
+
+// ---------------------------------------------------------------------------
+// The server's side: a request file as it reads it (ported from the analysis mod's `parseRequest`).
+
+export type ServerRequest =
+  | { kind: 'sql'; sql: string; engine: Engine; from?: number; slug: string }
+  | { kind: 'python'; code: string; from?: number; slug: string }
+  | { kind: 'interrupt' }
+  | { kind: 'restart' }
+  | { kind: 'replay'; runs: number[] }
+  | TrustRequest
+
+/** Interrupt, restart and the trust requests are taken at once, even while a run is in progress. */
+export const isUrgent = (request: ServerRequest) => request.kind !== 'sql' && request.kind !== 'python' && request.kind !== 'replay'
+
+const isRunNumber = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value > 0
+
+/** A request file's text as a request, or why it is refused. */
+export function parseRequestFile(text: string): ServerRequest | { error: string } {
+  let body: unknown
+  try {
+    body = JSON.parse(text)
+  } catch {
+    return { error: 'The request is not valid JSON.' }
+  }
+  if (typeof body !== 'object' || body === null) return { error: 'The request is not a JSON object.' }
+  const { kind, sql, code, engine, from, slug, runs, name, answer } = body as Record<string, unknown>
+  const origin = isRunNumber(from) ? { from } : {}
+  const slugText = typeof slug === 'string' ? slug : 'query'
+  if (kind === 'sql') {
+    if (typeof sql !== 'string' || !sql.trim()) return { error: 'The SQL is empty.' }
+    if (engine !== undefined && engine !== 'databricks' && engine !== 'postgres') return { error: `Unknown engine: ${String(engine)}.` }
+    return { kind, sql, engine: engine ?? 'databricks', ...origin, slug: slugText }
+  }
+  if (kind === 'python') {
+    if (typeof code !== 'string' || !code.trim()) return { error: 'The code is empty.' }
+    return { kind, code, ...origin, slug: slugText }
+  }
+  if (kind === 'interrupt' || kind === 'restart' || kind === 'trust-list') return { kind }
+  if (kind === 'replay') {
+    if (!Array.isArray(runs) || runs.length === 0 || !runs.every(isRunNumber)) return { error: 'Name the runs to replay, by number.' }
+    return { kind, runs }
+  }
+  if (kind === 'trust-check' || kind === 'trust-answer') {
+    if (typeof name !== 'string' || !name.trim()) return { error: 'Name the proposal.' }
+    if (kind === 'trust-check') return { kind, name: name.trim().toLowerCase() }
+    if (answer !== 'trust' && answer !== 'reject') return { error: 'The answer is trust or reject.' }
+    return { kind, name: name.trim().toLowerCase(), answer }
+  }
+  return { error: `Unknown request kind: ${String(kind)}.` }
+}

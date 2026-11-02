@@ -96,3 +96,52 @@ export function deleteFact(text: string, index: number, expectedLine: string): s
   const lines = lineAt(text, index, expectedLine)
   return notesText(lines.filter((_, i) => i !== index))
 }
+
+// The labels the server writes, ported from the analysis mod's hooks/model.ts. Each fact ends in one, derived
+// from the run it cites, never chosen by Claude:
+//   [trusted q 007]    a run of a trusted calculation, with its .csv
+//   [queried q 005]    any other SQL run whose .csv exists
+//   [computed q 014]   a Python run that ended ok
+//   [unverified q 004] a SQL run without .csv, or a Python run that did not end ok; [unverified] cites none
+
+/** The tag a note line ends with: its label and the run it cites, if any. */
+export const noteTag = (label: Label, query?: number) => (query === undefined ? label : `${label} q ${queryLabel(query)}`)
+
+/** A note line: one line of text and its tag. */
+export const noteLine = (text: string, label: Label, query?: number) => `${oneLine(text)} [${noteTag(label, query)}]`
+
+/** What labelling a note needs to know of the run it cites. */
+export type QueryFacts = {
+  hasCsv: boolean
+  isTrustedRun: boolean
+  /** `python` for a run saved as .py; absent for SQL. */
+  language?: 'sql' | 'python'
+  /** A Python run's `status` in its .json; absent when there is no readable .json. */
+  status?: string
+}
+
+/**
+ * The label a note citing a run gets: computed for a Python run that ended ok, unverified for any other Python
+ * run; for SQL, trusted for a trusted run's result, queried for any other result, unverified with no run or no
+ * .csv. Old notes are relabelled with `mayTrust` false: nothing becomes trusted after the fact.
+ */
+export function deriveLabel(facts: QueryFacts | undefined, mayTrust = true): Label {
+  if (facts?.language === 'python') return facts.status === 'ok' ? 'computed' : 'unverified'
+  if (!facts?.hasCsv) return 'unverified'
+  return facts.isTrustedRun && mayTrust ? 'trusted' : 'queried'
+}
+
+/** The index of the fact `ref` names: its line number, its exact text or a part no other fact shares; else why not. */
+export function findFact(lines: readonly string[], ref: string): number | string {
+  const isFact = (line: string) => !parseFileNote(line)
+  if (/^\d+$/.test(ref)) {
+    const index = Number(ref) - 1
+    return lines[index] !== undefined && isFact(lines[index] ?? '') ? index : `No note ${ref} in notes.md.`
+  }
+  const wanted = ref.toLowerCase()
+  const exact = lines.findIndex(line => isFact(line) && (line.toLowerCase() === wanted || parseNote(line).text.toLowerCase() === wanted))
+  if (exact >= 0) return exact
+  const matches = lines.flatMap((line, i) => (isFact(line) && line.toLowerCase().includes(wanted) ? [i] : []))
+  if (matches.length > 1) return `${matches.length} notes match "${ref}"; give its line number.`
+  return matches[0] ?? `No note matches "${ref}".`
+}
