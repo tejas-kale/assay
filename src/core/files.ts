@@ -33,6 +33,31 @@ export function kindByName(name: string): FileKind | undefined {
   return undefined
 }
 
+/** A Mermaid chart file: Enter draws it and opens the chart in the default browser, instead of Neovim. */
+export const isMermaidFile = (path: string) => /\.(mmd|mermaid)$/i.test(path)
+
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
+
+/**
+ * A page holding one drawn chart, for the browser. Its policy allows no scripts, so the page shows the
+ * SVG and nothing it carries can run. `colors` are the app theme's, so the page matches the app.
+ */
+export function chartPage(title: string, svg: string, colors: { bg: string; text: string }): string {
+  return `<!doctype html>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">
+<title>${escapeHtml(title)}</title>
+<style>
+body { margin: 0; padding: 24px; background: ${colors.bg}; color: ${colors.text}; font: 13px -apple-system, sans-serif; }
+h1 { font-size: 13px; font-weight: 600; margin: 0 0 16px; }
+svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+</style></head>
+<body><h1>${escapeHtml(title)}</h1>
+${svg}
+</body></html>
+`
+}
+
 /** Text unless the first bytes hold a NUL. */
 export const kindByBytes = (head: Uint8Array): FileKind => (head.includes(0) ? 'other' : 'text')
 

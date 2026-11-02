@@ -64,6 +64,7 @@ const api: AppApi = {
     list: () => invoke(CHANNELS.filesList),
     open: path => invoke(CHANNELS.filesOpen, path),
     preview: path => invoke(CHANNELS.filesPreview, path),
+    openChart: (path, svg, colors) => invoke(CHANNELS.filesOpenChart, path, svg, colors),
   },
   searchContents: () => invoke(CHANNELS.searchContents),
   onCommand: cb => subscribe(CHANNELS.command, cb),

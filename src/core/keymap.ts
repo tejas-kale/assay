@@ -116,7 +116,7 @@ export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
   { pane: 'Trust', keys: [['j / k', 'scroll'], ['g / G', 'top / bottom']] },
   {
     pane: 'Files',
-    keys: [['j / k', 'move'], ['/', 'search'], ['Enter', 'open: text in Neovim, image preview'], ['Tab', 'preview in a pop-up'], ['r', 'refresh'], ['⌘2 again', 'switch to Threads']],
+    keys: [['j / k', 'move'], ['/', 'search'], ['Enter', 'open: text in Neovim, Mermaid chart in the browser, image preview'], ['Tab', 'preview in a pop-up'], ['r', 'refresh'], ['⌘2 again', 'switch to Threads']],
   },
   {
     pane: 'Search (⌘F)',

@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 
 import { formatAge } from '../../core/age.ts'
+import { isMermaidFile } from '../../core/files.ts'
+import { THEMES } from '../../core/theme.ts'
+import { currentMode } from '../appearance.ts'
+import { renderMermaid } from './Mermaid.tsx'
 import { INITIAL, filterItems, listNav } from '../../core/listNav.ts'
 import type { ListNavState } from '../../core/listNav.ts'
 import type { FileEntry } from '../../shared/ipc.ts'
@@ -14,6 +18,7 @@ const size = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : bytes < 1024 ** 2 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`
 
 const KIND_LABEL = { text: 'nvim', image: 'preview', other: 'open' } as const
+const chipLabel = (file: FileEntry) => (file.kind === 'text' && isMermaidFile(file.path) ? 'browser' : KIND_LABEL[file.kind])
 
 /**
  * Every file in the analysis, newest first. `/` searches, Enter opens: text in Neovim (a new
@@ -54,12 +59,28 @@ export function FilesTab({ refreshKey, reveal, onRevealed }: { refreshKey: unkno
     rootRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
   }, [selectedIndex, visible.length])
 
+  /** A Mermaid file: read it, draw it here, and open the chart as a page in the browser. */
+  const openChart = async (file: FileEntry) => {
+    const read = await window.app.files.preview(file.path)
+    if (!read.ok || read.kind !== 'text') return setMessage(read.ok ? 'Not a text file' : read.message)
+    const mode = currentMode()
+    const drawn = await renderMermaid(read.text, mode)
+    if ('error' in drawn) return setMessage(`Mermaid could not draw ${file.path}: ${drawn.error.split('\n')[0]}`)
+    const { bg, text } = THEMES[mode].ui
+    const result = await window.app.files.openChart(file.path, drawn.svg, { bg, text })
+    setMessage(result.ok ? `Opened the chart of ${file.path} in your browser` : result.message)
+  }
+
   const openFile = (file: FileEntry) => {
     setMessage(undefined)
+    if (file.kind === 'text' && isMermaidFile(file.path)) {
+      void openChart(file)
+      return
+    }
     void window.app.files.open(file.path).then(result => {
       if (!result.ok) setMessage(result.message)
       else if (result.how === 'image') setPreview({ path: file.path, dataUrl: result.dataUrl })
-      else setMessage(result.how === 'nvim' ? `Opened ${file.path} in Neovim` : `Opened ${file.path}`)
+      else setMessage(result.how === 'nvim' ? `Opened ${file.path} in Neovim` : result.how === 'browser' ? `Opened the chart of ${file.path} in your browser` : `Opened ${file.path}`)
     })
   }
 
@@ -132,7 +153,7 @@ export function FilesTab({ refreshKey, reveal, onRevealed }: { refreshKey: unkno
                 </span>
                 <span className="dim">{size(file.size)}</span>
                 <span className="dim file-age">{formatAge(file.mtimeMs, Date.now())}</span>
-                <span className={`chip chip-${file.kind}`}>{KIND_LABEL[file.kind]}</span>
+                <span className={`chip chip-${file.kind}`}>{chipLabel(file)}</span>
               </li>
             ))}
           </ul>

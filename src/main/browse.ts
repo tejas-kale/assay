@@ -1,13 +1,14 @@
 // The Files tab: lists the analysis folder and opens a file. Paths from the renderer are relative
 // and are checked to stay inside the analysis folder, symlinks included.
 import { execFile } from 'node:child_process'
-import { open, readdir, readFile, realpath, stat } from 'node:fs/promises'
-import { extname } from 'node:path'
+import { mkdir, open, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { basename, extname, join } from 'node:path'
 import { promisify } from 'node:util'
 
 import { shell } from 'electron'
 
-import { ghosttyArgs, ghosttyTabArgs, kindByBytes, kindByName, walkFiles } from '../core/files.ts'
+import { chartPage, ghosttyArgs, ghosttyTabArgs, isMermaidFile, kindByBytes, kindByName, walkFiles } from '../core/files.ts'
 import type { FileEntry, FileKind } from '../core/files.ts'
 import { resolveInside } from '../core/safePath.ts'
 import type { OpenFileResult, PreviewResult } from '../shared/ipc.ts'
@@ -95,6 +96,29 @@ export async function openFile(folder: string, target: string): Promise<OpenFile
     }
     const failed = await shell.openPath(real)
     return failed ? { ok: false, message: failed } : { ok: true, how: 'default' }
+  } catch (err) {
+    return { ok: false, message: messageOf(err) }
+  }
+}
+
+const MAX_CHART_BYTES = 10 * 1024 * 1024
+
+/**
+ * Opens a Mermaid file's chart, drawn by the renderer as `svg`, in the default browser: as a page in a temp
+ * folder, named after the file, which must be a Mermaid file inside the analysis.
+ */
+export async function openChart(folder: string, target: string, svg: string, colors: { bg: string; text: string }): Promise<OpenFileResult> {
+  try {
+    if (!isMermaidFile(target)) return { ok: false, message: 'Not a Mermaid file' }
+    if (svg.length > MAX_CHART_BYTES) return { ok: false, message: 'The chart is too large to open' }
+    const found = await realFileInside(folder, target)
+    if ('message' in found) return { ok: false, message: found.message }
+    const dir = join(tmpdir(), 'assay-charts')
+    await mkdir(dir, { recursive: true })
+    const page = join(dir, `${basename(folder)}-${basename(target).replace(/\.[^.]+$/, '')}.html`)
+    await writeFile(page, chartPage(target, svg, colors), 'utf8')
+    const failed = await shell.openPath(page)
+    return failed ? { ok: false, message: failed } : { ok: true, how: 'browser' }
   } catch (err) {
     return { ok: false, message: messageOf(err) }
   }

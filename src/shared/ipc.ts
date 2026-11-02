@@ -64,9 +64,9 @@ export type OpenResult =
   | { ok: true; outcome: 'focused-other-window'; path: string }
   | { ok: false; message: string }
 
-/** How a file opened: in Neovim in a new Ghostty window, as an image to preview, or in its default app. */
+/** How a file opened: in Neovim in a new Ghostty window, as a chart page in the browser (a Mermaid file), as an image to preview, or in its default app. */
 export type OpenFileResult =
-  | { ok: true; how: 'nvim' | 'default' }
+  | { ok: true; how: 'nvim' | 'browser' | 'default' }
   | { ok: true; how: 'image'; dataUrl: string }
   | { ok: false; message: string }
 
@@ -145,6 +145,8 @@ export type AppApi = {
     open(path: string): Promise<OpenFileResult>
     /** `FileEntry.path` (or any path inside the analysis) for a preview; nothing is opened. */
     preview(path: string): Promise<PreviewResult>
+    /** Opens a Mermaid file's chart, drawn here as `svg`, as a page in the default browser. `colors` style the page. */
+    openChart(path: string, svg: string, colors: { bg: string; text: string }): Promise<OpenFileResult>
   }
 
   /** The text of every note file and every run's code, for universal search to match bodies. */
@@ -235,6 +237,7 @@ export const CHANNELS = {
   filesList: 'files:list',
   filesOpen: 'files:open',
   filesPreview: 'files:preview',
+  filesOpenChart: 'files:openChart',
   searchContents: 'search:contents',
   windowNew: 'window:new',
   windowClose: 'window:close',

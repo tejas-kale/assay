@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { ghosttyArgs, ghosttyTabArgs, kindByBytes, kindByName, walkFiles } from './files.ts'
+import { chartPage, ghosttyArgs, ghosttyTabArgs, isMermaidFile, kindByBytes, kindByName, walkFiles } from './files.ts'
 import type { WalkPort } from './files.ts'
 
 test('kindByName knows images, text and binary data by extension, and leaves the rest to the bytes', () => {
@@ -56,4 +56,19 @@ test('ghosttyTabArgs passes the quoted command and the folder as arguments, not 
   assert.ok(!script.includes('/w/') && !script.includes('nvim'))
   assert.match(script, /new tab in front window with configuration cfg/)
   assert.match(script, /new window with configuration cfg/)
+})
+
+test('isMermaidFile: .mmd and .mermaid, any case, and nothing else', () => {
+  assert.ok(isMermaidFile('notes/flow.mmd'))
+  assert.ok(isMermaidFile('Flow.MERMAID'))
+  assert.ok(!isMermaidFile('notes/001-flow.md'))
+  assert.ok(!isMermaidFile('mmd'))
+})
+
+test('chartPage holds the SVG, escapes the title and allows no scripts', () => {
+  const page = chartPage('a <b> & "c"', '<svg id="x"></svg>', { bg: '#fff', text: '#000' })
+  assert.ok(page.includes('<svg id="x"></svg>'))
+  assert.ok(page.includes('<title>a &#60;b&#62; &#38; &#34;c&#34;</title>'))
+  assert.ok(page.includes("default-src 'none'"))
+  assert.ok(!page.includes('script-src'))
 })

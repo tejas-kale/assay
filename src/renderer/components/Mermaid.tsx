@@ -6,7 +6,7 @@ import { THEMES } from '../../core/theme.ts'
 import type { ThemeMode } from '../../core/theme.ts'
 import { currentMode, onModeChange } from '../appearance.ts'
 
-type Rendered = { svg: string } | { error: string }
+export type Rendered = { svg: string } | { error: string }
 
 let mermaidModule: Promise<typeof import('mermaid').default> | undefined
 let counter = 0
@@ -14,7 +14,7 @@ let counter = 0
 let queue: Promise<unknown> = Promise.resolve()
 
 /** The diagram as SVG text, drawn in the app's colours for `mode`, or mermaid's error message. */
-function renderMermaid(text: string, mode: ThemeMode): Promise<Rendered> {
+export function renderMermaid(text: string, mode: ThemeMode): Promise<Rendered> {
   const job = queue.then(async (): Promise<Rendered> => {
     const mermaid = await (mermaidModule ??= import('mermaid').then(m => m.default))
     const ui = THEMES[mode].ui
