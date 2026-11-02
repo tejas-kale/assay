@@ -199,7 +199,7 @@ test('venvCandidates walks from the folder up to the root, nearest first', () =>
 })
 
 test('the rules say venv-assay is the only Python and how to add a package', () => {
-  const rules = analysisRules('/opt/venv-assay/bin/python')
+  const rules = analysisRules('/opt/venv-assay/bin/python', 'analyses/a')
   expect(rules).toContain('venv-assay is the only Python for the tools')
   expect(rules).toContain("Assay repo's python/pyproject.toml")
   expect(rules).toContain(VENV_ASSAY_COMMAND)
@@ -207,11 +207,11 @@ test('the rules say venv-assay is the only Python and how to add a package', () 
 })
 
 test('the rules are compact and carry the python path when known', () => {
-  expect(analysisRules(undefined).length).toBeLessThan(2900)
-  expect(analysisRules('/w/.venv/bin/python')).toContain('/w/.venv/bin/python -m pytest tests')
-  expect(analysisRules(undefined)).toContain('python -m pytest tests')
+  expect(analysisRules(undefined, 'analyses/a').length).toBeLessThan(2900)
+  expect(analysisRules('/w/.venv/bin/python', 'analyses/a')).toContain('cd analyses/a && /w/.venv/bin/python -m pytest tests')
+  expect(analysisRules(undefined, 'analyses/a')).toContain('python -m pytest tests')
   for (const part of ['one concept', 'mcp__plugin_assay_assay__park', 'mcp__plugin_assay_assay__focus', 'mcp__plugin_assay_assay__order', 'mcp__plugin_assay_assay__python', 'q(N)', 'never through Bash', 'matplotlib', 'Altair', '.head()', 'lib/<name>.py', 'tests/test_<name>.py'])
-    expect(analysisRules(undefined)).toContain(part)
+    expect(analysisRules(undefined, 'analyses/a')).toContain(part)
 })
 
 test('a run result .json gives its status, or nothing when unreadable', () => {
@@ -310,12 +310,12 @@ test('run headers are read from SQL and Python comments', () => {
 })
 
 test('the run notice', () => {
-  expect(runNotice([])).toBeUndefined()
-  expect(runNotice([{ number: 14, language: 'python', from: 12 }, { number: 15, language: 'sql' }])).toBe(
-    'Since your last turn the user ran: 014 python (from 012), 015 sql. Their Python ran in your kernel, so its variables may have changed; read queries/<file> when it matters.',
+  expect(runNotice([], 'analyses/a')).toBeUndefined()
+  expect(runNotice([{ number: 14, language: 'python', from: 12 }, { number: 15, language: 'sql' }], 'analyses/a')).toBe(
+    'Since your last turn the user ran: 014 python (from 012), 015 sql. Their Python ran in your kernel, so its variables may have changed; read analyses/a/queries/<file> when it matters.',
   )
-  expect(runNotice([{ number: 15, language: 'sql' }])).toBe('Since your last turn the user ran: 015 sql. Read queries/<file> when it matters.')
-  expect(runNotice([{ number: 16, language: 'python', replay: 14 }])).toContain('016 python (replay of 014)')
+  expect(runNotice([{ number: 15, language: 'sql' }], 'analyses/a')).toBe('Since your last turn the user ran: 015 sql. Read analyses/a/queries/<file> when it matters.')
+  expect(runNotice([{ number: 16, language: 'python', replay: 14 }], 'analyses/a')).toContain('016 python (replay of 014)')
 })
 
 test('the Bash guard refuses commands that run Python code, and lets pytest, pip and package commands through', () => {
@@ -420,7 +420,7 @@ test('a link resolves by slug or by the whole stem', () => {
 })
 
 test('the rules send prose to new_note, linked and cited, and edits to Edit', () => {
-  const rules = analysisRules(undefined)
+  const rules = analysisRules(undefined, 'analyses/a')
   for (const part of ['mcp__plugin_assay_assay__new_note', '[[slug]]', '[q NNN]', 'Edit it', 'notes.md stays one line per fact']) expect(rules).toContain(part)
   expect(rules.length).toBeLessThan(2900)
 })

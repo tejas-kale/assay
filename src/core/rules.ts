@@ -22,7 +22,7 @@ export const VENV_ASSAY_HINT = `venv-assay is not built. On the Mac, run: ${VENV
 export type OpenAnalysis = { title: string; folder: string }
 
 /** The rules for a prompt in an analysis; `python` is the kernel's, when found, `folder` the open analysis's. */
-export const analysisRules = (python: string | undefined, folder?: string) =>
+export const analysisRules = (python: string | undefined, folder: string) =>
   [
     'Analysis reply rules: answer one concept per reply, in a few short lines.',
     `If this prompt asks several questions, answer only the first; park each other one with ${toolName('park')} before replying.`,
@@ -35,23 +35,21 @@ export const analysisRules = (python: string | undefined, folder?: string) =>
     'Keep it lean: show summaries, .head(), counts or charts. Never full frames or long prints.',
     'Plot with matplotlib: each figure is saved as a PNG that you can Read to check the chart. Altair charts are not captured.',
     'Move reusable or long code to lib/<name>.py with docstrings and type hints, and pytest tests in tests/test_<name>.py. In the kernel: from lib.<name> import ... Edit lib/ and tests/ only when this prompt asks for it.',
-    folder
-      ? `Run the tests from the analysis folder: cd ${folder} && ${python ?? 'python'} -m pytest tests`
-      : `Run the tests from the analysis folder, with the kernel's python: ${python ?? 'python'} -m pytest tests`,
+    `Run the tests from the analysis folder: cd ${folder} && ${python ?? 'python'} -m pytest tests`,
     `venv-assay is the only Python for the tools. If a package is missing, add it to the Assay repo's python/pyproject.toml and run ${VENV_ASSAY_COMMAND} on the Mac: never a Bash pip install and never another venv.`,
   ].join('\n')
 
 export type UserRun = { number: number; language: 'sql' | 'python'; from?: number; replay?: number }
 
 /** The line added to the rules when the user ran things since the last prompt; undefined when they did not. */
-export function runNotice(runs: readonly UserRun[], folder?: string): string | undefined {
+export function runNotice(runs: readonly UserRun[], folder: string): string | undefined {
   if (runs.length === 0) return undefined
   const items = runs.map(run => {
     const origin = run.replay ? ` (replay of ${queryLabel(run.replay)})` : run.from ? ` (from ${queryLabel(run.from)})` : ''
     return `${queryLabel(run.number)} ${run.language}${origin}`
   })
   const kernel = runs.some(run => run.language === 'python') ? ' Their Python ran in your kernel, so its variables may have changed;' : ''
-  return `Since your last turn the user ran: ${items.join(', ')}.${kernel} read ${folder ? `${folder}/` : ''}queries/<file> when it matters.`.replace(/\. read/, '. Read')
+  return `Since your last turn the user ran: ${items.join(', ')}.${kernel} read ${folder}/queries/<file> when it matters.`.replace(/\. read/, '. Read')
 }
 
 /** The line that says which analysis is open and where its files are, for a session that works from the root. */
@@ -81,6 +79,6 @@ export function calculationRules(list: CalculationList | undefined): string {
 }
 
 /** The whole context one prompt carries: the rules, the notice of the user's runs, and the trust rules. */
-export function promptContext(input: { python: string | undefined; notice?: string; home: string; list: CalculationList | undefined; open?: OpenAnalysis }): string {
-  return [[...(input.open ? [openAnalysisRule(input.open)] : []), analysisRules(input.python, input.open?.folder), ...(input.notice ? [input.notice] : [])].join('\n'), trustRules(input.home), calculationRules(input.list)].join('\n')
+export function promptContext(input: { python: string | undefined; notice?: string; home: string; list: CalculationList | undefined; open: OpenAnalysis }): string {
+  return [[openAnalysisRule(input.open), analysisRules(input.python, input.open.folder), ...(input.notice ? [input.notice] : [])].join('\n'), trustRules(input.home), calculationRules(input.list)].join('\n')
 }
