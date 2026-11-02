@@ -1,44 +1,76 @@
 # Assay
 
-Electron desktop app over the analysis mod's folders: Claude Code in a terminal, plus Notes and Threads.
-Slice 1 of `HANDOFF.md`; the spec is `docs/slice-1.md`.
+A Mac desktop app for data analysis with Claude Code, laid out like RStudio: Claude Code in a terminal on the left,
+Threads / Notes / Files top right, and Data / Plots / Code / History / Trust bottom right. It is a UI over the analysis
+mod's folders (`~/Code/config/claude/analysis`): the mod is the backend, the files are the contract, and the app keeps
+no database.
+
+**One rule above all: there is one place where code runs, and every run is recorded.** Claude's `sql` and `python`
+tools and the user's edits and re-runs all go through the mod, into numbered, immutable runs in `queries/`, in the one
+kernel the app shows. Protect this in every change.
+
+The code is the source of truth. `docs/slice-*.md` are the specs each slice was built from, kept as history.
 
 ## Install, run, test (on the Mac)
 
 - `npm install` (postinstall repairs Electron's unpack on Node 26, rebuilds node-pty for Electron and fixes `spawn-helper`)
 - `npm run dev`
-- `npm test` (logic only, no install needed), `npm run typecheck` (never run yet; expect to fix some types)
-
-## Install as an app (Spotlight, Dock, Launchpad)
-
-- `npm run install-app` builds `Assay.app`, ad-hoc signed, and copies it to `/Applications`. Run it again after pulling changes.
-- `npm run package` only builds it, into `dist/mac-arm64/`.
+- `npm test` (logic in `src/core`, no Electron needed), `npm run typecheck`
+- `npm run install-app` builds `Assay.app`, ad-hoc signed, into `/Applications`; run it again after pulling changes.
+  `npm run package` only builds it, into `dist/mac-arm64/`.
 
 ## Environment
 
-- The analysis folder, which holds `analyses/`, is set in Settings (Cmd+,). There is no default: the app asks on first run. Picking `analyses/` or one analysis inside it sets the folder above.
-- `ASSAY_CLAUDE_BIN`: the wrapper to run (default `claude`, found through your login shell)
+- The analysis folder, which holds `analyses/`, is set in Settings (Cmd+,). The app asks on first run. Picking
+  `analyses/` or one analysis inside it sets the folder above.
+- `ASSAY_CLAUDE_BIN`: the wrapper to run (default `claude`, the Podman wrapper from the config repo, found through your
+  login shell). The app sets `ASSAY_APP=1`, which makes the mod keep its own pane closed.
+- Colours follow the macOS light or dark setting live (Ayu Light / Ayu Dark), all in `src/core/theme.ts`.
 
-## Appearance
+## Keys
 
-The app follows the macOS light or dark setting live, using Ayu Light and Ayu Dark. All colours are in `src/core/theme.ts`.
+Every shortcut is in `src/core/keymap.ts`: `COMMANDS` (Cmd keys, caught in main before the terminal) and `PANE_KEYS`
+(single keys per pane). In the app, the palette's Show Shortcuts lists them all, and holding left Cmd shows hints.
 
-## Verify first (do by hand, in this order)
+## Where things are
 
-1. ghostty-web with fullscreen mode: open an analysis, run a long Claude session. Look for correct drawing,
-   mouse, text selection with Cmd+C, scrolling, and a clean redraw when you drag the window size.
-2. Cmd shortcuts: press Cmd+1/2/3, Cmd+P, Cmd+N in the terminal while Claude is waiting. Look for focus moving
-   with no stray characters in Claude's prompt, and Claude's own keys (Ctrl-C, Esc, arrows, Tab) still working.
-3. node-pty: after `npm run dev`, the terminal shows Claude's prompt. If it shows "Could not start the session",
-   run `npx electron-rebuild -f -w node-pty` and read the text.
-4. Closing: with Claude running, press Cmd+W. Look for the "Closing: waiting for the session to finish" banner,
-   then the window closing on its own once the wrapper's git import has finished. Press Cmd+W again during
-   the wait: a Keep waiting / Force quit dialog appears. Repeat with Cmd+Q.
-5. Starting from an analysis: pick one and look in the terminal for the wrapper finding `notes-src/.venv`,
-   the mod activating, and the forwarder reporting `owner`.
+- `src/core`: pure logic with tests (runs, facts, threads, note files, search, keymap, theme).
+- `src/main`: Electron main; all file access (`files.ts`, `browse.ts`) and IPC (`ipc.ts`). The renderer never reads a
+  path itself; `src/shared/ipc.ts` is the only contract between the two.
+- `src/renderer`: React UI. `terminal.ts` is the only file that imports `ghostty-web`.
+- The app talks to the mod through files: it writes `.assay/requests/<id>.json`, the mod answers in `.assay/replies/`,
+  and writes `.assay/runs.json` and `.assay/trust/<name>.json` for run status and the trust review.
+
+## The config repo
+
+The mod and the `claude` wrapper live in `~/Code/config` (`claude/analysis`, `claude/bin`). Its tests:
+`cd ~/Code/config/claude/analysis && /opt/homebrew/bin/claude plugin test .` (plain `claude` is the Podman wrapper and
+refuses it). The mod is mounted from that folder, so a change applies from the next session.
+
+## Not yet tried with a real Claude session
+
+Built and tested with a stub Claude and simulated mod replies only:
+
+1. `/an trust <name>` end to end: streamed checks, the "Trust?" question, the commit, and removing the `lib/` draft.
+2. The Python kernel in a real container session: start, runs, interrupt, restart, Replay; the Bash guard on Python.
+3. A re-run or edited query from the app reaching the session, its latency, and Postgres re-runs.
+4. `new_note` from Claude, and Claude editing a note open in the reader.
+5. Cmd+W and Cmd+Q closing a window while the wrapper finishes its git import.
+
+## Driving the app without a person
+
+- Run `npx electron-vite dev -- --inspect=9230 --remote-debugging-port=9222` with `ASSAY_CLAUDE_BIN` set to a stub
+  script, so no real Claude starts. Drive the renderer over CDP (port 9222) with `Runtime.evaluate`,
+  `Input.dispatchKeyEvent` and `Page.captureScreenshot`, and read the screenshots.
+- CDP key events never reach main's `before-input-event`, so send Cmd shortcuts through the main inspector (port 9230,
+  `includeCommandLineAPI: true` gives `require`):
+  `webContents.getAllWebContents()[0].emit('before-input-event', { preventDefault() {} }, { type: 'keyDown', code: 'KeyP', meta: true, shift: false, control: false, alt: false, isAutoRepeat: false })`.
+- **Never test against real analyses.** Settings live in the user data folder the installed app shares. In the main
+  inspector, call `app.setPath('userData', '<scratch>/ud')` with a `settings.json` whose root is a scratch copy, then
+  reload. Check that the picker lists the scratch analysis before pressing anything.
+- A change to main-process code needs the dev app restarted; the renderer hot-reloads.
 
 ## If the terminal fails
 
-If ghostty-web's WASM fails to load, or its `new Terminal` API differs from the guesses, the fix belongs in
-`src/renderer/terminal.ts` (its header lists every unverified assumption). It is the only file that imports
-ghostty-web, so swapping to xterm.js is a one-file change.
+`src/renderer/terminal.ts` holds every assumption about `ghostty-web` in its header. It is the only file that imports
+it, so swapping to xterm.js is a one-file change.
