@@ -352,6 +352,9 @@ As of 2026-11-02 (after slice 3).
   `claude-pkg venv-assay` from the mod's `notes-src/pyproject.toml`, mounted read-only at `/opt/venv-assay`. The
   mod's tools always use it; the kernel uses a project `.venv` only when it imports ipykernel. The runner runs from
   the mod's mount. `notes_src.egg-info` is untracked. Mod 194 tests pass.
+- **Mod pane fixes (config `dd5dae2`):** in the app the trust pane closes when the review ends (y, r or a tab
+  switch); the pane's Data tab shows Python runs (status, stdout, first table, plot names, `computed`). Mod 199 pass.
+  Not yet tried live.
 
 ### Left
 
