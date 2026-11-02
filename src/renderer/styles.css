@@ -1,6 +1,8 @@
 /* The colour variables (--bg, --text, ...) are set from core/theme.ts by appearance.ts. */
 :root {
   color-scheme: light dark;
+  /* The same list as MONO_FONT in core/theme.ts. */
+  --mono: "Maple Mono", Menlo, "SF Mono", Monaco, monospace;
   font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
 }
 
@@ -58,8 +60,8 @@ button, input { font: inherit; color: inherit; }
 .outcome { display: block; margin-top: 2px; }
 .section { padding: 8px 12px 2px; color: var(--dim); text-transform: uppercase; font-size: 11px; letter-spacing: 0.06em; }
 .subhead { padding: 6px 12px; border-bottom: 1px solid var(--line); }
-.filetext { margin: 0; padding: 8px 12px; white-space: pre-wrap; font: 12px/1.5 Menlo, monospace; }
-.searchline { padding: 3px 12px; color: var(--info); font-family: Menlo, monospace; }
+.filetext { margin: 0; padding: 8px 12px; white-space: pre-wrap; font: 12px/1.5 var(--mono); }
+.searchline { padding: 3px 12px; color: var(--info); font-family: var(--mono); }
 .status { padding: 4px 12px; }
 .status.warn { color: var(--warn); }
 
