@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { citedLabel, codeBody, parseCsv, parseRunHeader, parseRunResult, parseRunStatus, parseRuns, runLabel } from './runs.ts'
+import { citedLabel, codeBody, runningPythonRun, parseCsv, parseRunHeader, parseRunResult, parseRunStatus, parseRuns, runLabel } from './runs.ts'
 
 test('parseRuns pairs code and data by number, oldest first, and ignores other files', () => {
   const runs = parseRuns(['020_b.csv', '020_b.sql', '007_a.sql', '021_plot.py', 'notes.md', '.hidden', 'x_y.sql'])
@@ -164,4 +164,12 @@ test('citedLabel: what a note citing a run gets', () => {
   ]
   const of = citedLabel(runs)
   assert.deepEqual([of(1), of(2), of(3), of(4), of(99)], ['queried', 'unverified', 'computed', 'unverified', 'unverified'])
+})
+
+test('runningPythonRun finds the Python run the mod says is running, and nothing for SQL or none', () => {
+  const runs = parseRuns(['001_a.sql', '002_b.py'])
+  assert.equal(runningPythonRun(runs, { running: { number: 2, startedAt: 1 }, failed: {} })?.number, 2)
+  assert.equal(runningPythonRun(runs, { running: { number: 1, startedAt: 1 }, failed: {} }), undefined)
+  assert.equal(runningPythonRun(runs, { failed: {} }), undefined)
+  assert.equal(runningPythonRun(runs, { running: { number: 9, startedAt: 1 }, failed: {} }), undefined)
 })

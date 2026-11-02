@@ -274,3 +274,10 @@ export function citedLabel(runs: readonly Run[]): (n: number) => 'queried' | 'co
     return run.data ? 'queried' : 'unverified'
   }
 }
+
+/** The Python run `.assay/runs.json` says is running, if any. */
+export function runningPythonRun(runs: readonly Run[], status: RunStatus): Run | undefined {
+  const number = status.running?.number
+  const run = runs.find(r => r.number === number)
+  return run?.language === 'python' ? run : undefined
+}

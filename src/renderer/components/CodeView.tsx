@@ -1,6 +1,7 @@
 // Code with highlighting, in CodeMirror 6: read-only for reading, with Vim mode for edits.
 // SQL is shown formatted; the file on disk keeps Claude's exact text, and `o` shows that instead.
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { python } from '@codemirror/lang-python'
 import { sql, StandardSQL } from '@codemirror/lang-sql'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { EditorState } from '@codemirror/state'
@@ -94,7 +95,7 @@ export function CodeView({ code, language, focusKey, original, onToggleOriginal 
         extensions: [
           EditorState.readOnly.of(true),
           keymap.of([...readingKeys, ...defaultKeymap]),
-          language === 'sql' ? sql({ dialect: StandardSQL, upperCaseKeywords: true }) : [],
+          language === 'sql' ? sql({ dialect: StandardSQL, upperCaseKeywords: true }) : language === 'python' ? python() : [],
           syntaxHighlighting(highlight),
           EditorView.lineWrapping,
           theme,
@@ -135,6 +136,7 @@ export type EditorHandle = {
 /** The editable Code view: Vim mode, starting in normal mode. Rebuilt only when `initial` or the run changes. */
 export function CodeEditor(props: {
   initial: string
+  language: 'sql' | 'python'
   onChange: (text: string) => void
   handleRef: Ref<EditorHandle>
 }) {
@@ -164,7 +166,7 @@ export function CodeEditor(props: {
           vim(),
           history(),
           keymap.of([...defaultKeymap, ...historyKeymap]),
-          sql({ dialect: StandardSQL, upperCaseKeywords: true }),
+          props.language === 'python' ? python() : sql({ dialect: StandardSQL, upperCaseKeywords: true }),
           syntaxHighlighting(highlight),
           EditorView.lineWrapping,
           EditorView.updateListener.of(update => {
@@ -182,7 +184,7 @@ export function CodeEditor(props: {
       view.destroy()
     }
     // Only the starting text: later keystrokes must not rebuild the editor.
-  }, [props.initial])
+  }, [props.initial, props.language])
 
   return <div className="run-body code-view editing" ref={host} />
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { COMMANDS } from '../core/keymap.ts'
 import type { CommandId } from '../core/keymap.ts'
+import { runningPythonRun } from '../core/runs.ts'
 import type { AnalysisState, SettingsView } from '../shared/ipc.ts'
 import { GlobalHints, ShortcutsOverlay } from './components/KeyHints.tsx'
 import { Palette } from './components/Palette.tsx'
@@ -38,6 +38,8 @@ export function App() {
   settingsOpenRef.current = settingsOpen
   const settingsRef = useRef(settings)
   settingsRef.current = settings
+  const viewRef = useRef(view)
+  viewRef.current = view
 
   const loadState = useCallback(() => {
     window.app.state.get().then(
@@ -68,11 +70,6 @@ export function App() {
   /** Runs a command. Returns true when it moved focus itself. */
   const run = useCallback(
     (id: CommandId): boolean => {
-      const command = COMMANDS.find(c => c.id === id)
-      if (command?.unavailable) {
-        showToast(command.unavailable)
-        return false
-      }
       switch (id) {
         case 'focus.terminal':
           focusPane('terminal')
@@ -125,6 +122,26 @@ export function App() {
         case 'pin.toggle':
           setDataCommand({ id, n: ++counter.current })
           return false
+        case 'run.interrupt': {
+          const state = viewRef.current.type === 'workspace' ? viewRef.current.state : undefined
+          if (!state || !runningPythonRun(state.runs, state.runStatus)) {
+            showToast('Nothing is running.')
+            return false
+          }
+          setDataCommand({ id, n: ++counter.current })
+          focusPane('data')
+          return true
+        }
+        case 'kernel.restart':
+        case 'replay.open':
+          // The pane shows its own prompt or view and takes the keys: focus must be there for y, n and the list keys.
+          if (viewRef.current.type !== 'workspace') {
+            showToast('Open an analysis first.')
+            return false
+          }
+          setDataCommand({ id, n: ++counter.current })
+          focusPane('data')
+          return true
         case 'code.edit':
           // The pane switches to Code and focuses the editor itself once it has the run's text.
           setDataCommand({ id, n: ++counter.current })
