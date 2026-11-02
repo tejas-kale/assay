@@ -5,6 +5,9 @@ description: Close out an analysis session so the next one can resume. Use when 
 
 # Wrap up an analysis session
 
+The open analysis's folder, `analyses/<slug>/` from the root, is named in the rules on each prompt;
+`threads.md`, `notes.md` and `queries/` below are in it.
+
 1. Read `threads.md`. For each open thread this conversation answered, call
    `mcp__plugin_assay_assay__close` with the thread's number and a one-line outcome.
 2. For each fork that came up in this conversation and is not in `threads.md`, call
@@ -21,8 +24,7 @@ description: Close out an analysis session so the next one can resume. Use when 
    and the new `query`; to delete, call it with `delete: true`. Keeping needs no call.
 6. Write the session into the analysis's denote note in `~/Code/notes/claude/`, following
    that repo's `AGENTS.md`. `<path>` is the analysis folder relative to `~/Code/notes-src`:
-   `analyses/<folder>`, or `investigations/<folder>` or `explorations/<folder>` for older
-   ones. The note's tags are `analysis` and the folder name with everything but letters
+   `analyses/<folder>`. The note's tags are `analysis` and the folder name with everything but letters
    and digits removed, so `quarantine-high-anchor` gives `__analysis_quarantinehighanchor`.
    If a `claude/*__analysis_<tag>.md` exists, update it. Else, if an older
    `claude/*__investigation_<tag>.md` exists, update that one and change its `investigation`
