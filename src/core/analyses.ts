@@ -146,13 +146,14 @@ export async function createAnalysis(port: FsPort, root: string, title: string, 
   return { name, title: typed, path }
 }
 
-const lastPart = (path: string) => path.replace(/\/+$/, '').split('/').at(-1) ?? path
+/** The folder name (the slug) of an analysis path. */
+export const folderName = (path: string) => path.replace(/\/+$/, '').split('/').at(-1) ?? path
 
 /** The analysis in `path` and its analysis.yaml text; a folder without the file is refused, pointing at the migration. */
 async function read(port: Pick<FsPort, 'readFile'>, path: string): Promise<{ ref: AnalysisRef; text: string }> {
   const text = await port.readFile(join(path, ANALYSIS_FILE)).catch(() => undefined)
   if (text === undefined) throw new Error(`${path} has no ${ANALYSIS_FILE}. Run "npm run migrate:root" in the Assay repo to convert the old layout.`)
-  const name = lastPart(path)
+  const name = folderName(path)
   return { ref: { name, title: parseAnalysisFile(text).title ?? name, path }, text }
 }
 

@@ -4,7 +4,7 @@ import { access, readFile, rename, rm } from 'node:fs/promises'
 import { basename, dirname, join, relative } from 'node:path'
 
 import { bashRunsPython, BASH_PYTHON_DENY } from '../core/bashGuard.ts'
-import { openAnalysis } from '../core/analyses.ts'
+import { folderName, openAnalysis } from '../core/analyses.ts'
 import { isGuarded, normalPath, otherAnalysis, TRUST_TAB } from '../core/calculations.ts'
 import type { CalculationList } from '../core/calculations.ts'
 import { promptContext, runNotice, VENV_ASSAY } from '../core/rules.ts'
@@ -38,7 +38,7 @@ export function bashDecision(input: Record<string, unknown>, env: Env) {
 
 /** The open analysis for the rules and reasons: its title (the folder's name when analysis.yaml has none) and its folder from the root. */
 async function openRef(analysis: string, home: string): Promise<OpenAnalysis> {
-  const fallback = analysis.replace(/\/+$/, '').split('/').at(-1) ?? analysis
+  const fallback = folderName(analysis)
   const found = await openAnalysis({ readFile: path => readFile(path, 'utf8') }, analysis).catch(() => undefined)
   return { title: found?.title ?? fallback, folder: relative(home, analysis) }
 }
