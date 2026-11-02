@@ -1,0 +1,5 @@
+{
+  "name": "assay",
+  "version": "0.1.0",
+  "description": "Assay's backend: the sql and python tools in a shared kernel, notes, threads and the trust review"
+}
