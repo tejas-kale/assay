@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { AnalysisState, CloseState, PtyExit } from '../../shared/ipc.ts'
 import type { TerminalHandle } from '../terminal.ts'
 import { shortcutLabel } from '../../core/keymap.ts'
+import { noteGroups, notesTabLabel } from '../../core/notesView.ts'
 import { Banners } from './Banners.tsx'
 import { PaneHint } from './KeyHints.tsx'
 import { DATA_TABS, DataPane } from './DataPane.tsx'
@@ -39,7 +40,7 @@ type Props = {
 /** The notes-pane tab that shows a hit of this kind. */
 const tabOf = (reveal: Reveal | undefined): NotesTabName | undefined => {
   const kind = reveal?.target.kind
-  return kind === 'thread' ? 'threads' : kind === 'fact' || kind === 'note' ? 'notes' : kind === 'file' ? 'files' : undefined
+  return kind === 'thread' ? 'threads' : kind === 'note' ? 'notes' : kind === 'file' ? 'files' : undefined
 }
 
 export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, focusRequest, dataCommand, onToast, toast, hints, onShowRun, reveal, onRevealed }: Props) {
@@ -78,7 +79,7 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
         <div className="tabs" role="tablist">
           {(['threads', 'notes', 'files'] as const).map(id => (
             <button key={id} role="tab" tabIndex={-1} aria-selected={notesTab === id} onClick={() => onNotesTab(id)}>
-              {id === 'notes' ? 'Notes' : id === 'threads' ? 'Threads' : 'Files'}
+              {id === 'notes' ? notesTabLabel(noteGroups(state.rootNotes, state.noteLists)) : id === 'threads' ? 'Threads' : 'Files'}
             </button>
           ))}
           <span className="grow" />
@@ -90,7 +91,7 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
           </PaneHint>
         )}
         {notesTab === 'notes' ? (
-          <NotesTab key="notes" facts={state.facts} noteFiles={state.noteFiles} runs={state.runs} status={state.runStatus} onShowRun={onShowRun} reveal={revealFor('notes')} onRevealed={onRevealed} />
+          <NotesTab key="notes" slug={state.analysis.name} rootNotes={state.rootNotes} noteLists={state.noteLists} runs={state.runs} onShowRun={onShowRun} reveal={revealFor('notes')} onRevealed={onRevealed} />
         ) : notesTab === 'threads' ? (
           <ThreadsTab key="threads" threads={state.threads} reveal={revealFor('threads')} onRevealed={onRevealed} />
         ) : (

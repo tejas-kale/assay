@@ -7,9 +7,9 @@
 
 import type { Analysis, AnalysisRef } from '../core/analyses.ts'
 import type { CommandId } from '../core/keymap.ts'
-import type { Fact } from '../core/facts.ts'
 import type { FileEntry } from '../core/files.ts'
-import type { NoteFile } from '../core/noteFiles.ts'
+import type { CitationLabel } from '../core/citationLabels.ts'
+import type { NoteLists, RootNote } from '../core/rootNotes.ts'
 import type { CloseState } from '../core/session.ts'
 import type { Reply, RunRequest } from '../core/requests.ts'
 import type { Engine, KernelState, Run, RunResult, RunStatus, Table } from '../core/runs.ts'
@@ -17,12 +17,12 @@ import type { SearchContents } from '../core/search.ts'
 import type { ClosedThread, Threads } from '../core/threads.ts'
 import type { TrustReview } from '../core/trust.ts'
 
-export type { Analysis, AnalysisRef, ClosedThread, CloseState, CommandId, Engine, Fact, FileEntry, KernelState, NoteFile, Reply, Run, RunRequest, RunResult, RunStatus, SearchContents, Table, Threads, TrustReview }
+export type { CitationLabel, Analysis, AnalysisRef, ClosedThread, CloseState, CommandId, Engine, FileEntry, KernelState, NoteLists, Reply, RootNote, Run, RunRequest, RunResult, RunStatus, SearchContents, Table, Threads, TrustReview }
 
 /** Call to stop listening. */
 export type Unsubscribe = () => void
 
-/** Result of an edit to notes.md or threads.md. Main re-sends the state on every non-ok result too. */
+/** Result of an edit to threads.md or a note. Main re-sends the state on every non-ok result too. */
 export type EditResult =
   | { ok: true }
   /** `stale`: the item changed on disk; message is "Changed on disk, reloaded". `invalid`: empty input, or an edit of a file note. */
@@ -32,14 +32,15 @@ export type EditResult =
 export type AnalysisState = {
   /** The analysis this window holds. */
   analysis: AnalysisRef
-  facts: Fact[]
   threads: Threads
   /** The runs in `queries/`, oldest first. */
   runs: Run[]
   /** Which run is running and which failed, from the mod. */
   runStatus: RunStatus
-  /** The note files in `notes/`, in number order. */
-  noteFiles: NoteFile[]
+  /** Every note in `<root>/notes`, by ID. The Notes tab groups them by `noteLists`; the reader resolves links in them. */
+  rootNotes: RootNote[]
+  /** The `notes:` lists of this analysis's analysis.yaml. */
+  noteLists: NoteLists
   /** The latest trust review from `.assay/trust/`, for the Trust tab. */
   trust?: TrustReview
 }
@@ -77,10 +78,11 @@ export type PreviewResult =
   | { ok: true; kind: 'binary'; size: number }
   | { ok: false; message: string }
 
-export type NoteFileResult = { ok: true; text: string } | { ok: false; message: string }
+/** A note's text and the label of each citation in it (key `<analysis> q <N>`), derived when read. */
+export type NoteReadResult = { ok: true; text: string; labels: Record<string, CitationLabel> } | { ok: false; message: string }
 
-/** `name` is the new file's name inside `notes/`. */
-export type NoteFileCreateResult = { ok: true; name: string } | { ok: false; message: string }
+/** `name` is the new file's name inside `<root>/notes/`. */
+export type NoteCreateResult = { ok: true; name: string } | { ok: false; message: string }
 
 export type SettingsView = { root: string | undefined }
 export type SetRootResult = { ok: true; root: string } | { ok: false; message: string }
@@ -120,16 +122,10 @@ export type AppApi = {
   }
 
   /**
-   * Edits. `expected` args are what the renderer last saw for that item (`Fact.line`, the thread text,
-   * the `ClosedThread`); main applies the core function to freshly read text, so a stale view gets
+   * Edits. `expected` args are what the renderer last saw for that item (the thread text, the
+   * `ClosedThread`); main applies the core function to freshly read text, so a stale view gets
    * `{ ok: false, reason: 'stale' }` and a state push instead of an overwrite.
-   * Fact input is raw user text; a trailing `[q 12]` is read, the label is derived (see core/facts.ts).
    */
-  facts: {
-    add(input: string): Promise<EditResult>
-    edit(index: number, expectedLine: string, input: string): Promise<EditResult>
-    delete(index: number, expectedLine: string): Promise<EditResult>
-  }
   threads: {
     add(text: string): Promise<EditResult>
     editOpen(index: number, expected: string, next: string): Promise<EditResult>
@@ -151,7 +147,7 @@ export type AppApi = {
     openChart(path: string, svg: string, colors: { bg: string; text: string }): Promise<OpenFileResult>
   }
 
-  /** The text of every note file and every run's code, for universal search to match bodies. */
+  /** The text of every root note and every run's code, for universal search to match bodies. */
   searchContents(): Promise<SearchContents>
 
   /** One run's code and result by number; undefined when the run is gone. `table` picks table K (1-based) of a Python run. */
@@ -166,17 +162,19 @@ export type AppApi = {
     onReply(cb: (reply: Reply) => void): Unsubscribe
   }
 
-  /** Reads a linked note file, on request. `path` is `Fact.file.path`; main resolves it against the analysis folder. */
-  readNoteFile(path: string): Promise<NoteFileResult>
-
-  /** Note files in `notes/`, by `NoteFile.name`. Main re-sends the state after create, save and delete. */
-  noteFiles: {
-    read(name: string): Promise<NoteFileResult>
-    /** Number and slug are derived from the title; a slug already used gets -2, -3. Never overwrites. */
-    create(title: string): Promise<NoteFileCreateResult>
+  /** Root notes in `<root>/notes`, by `RootNote.name`. Main re-sends the state after add and save. */
+  notes: {
+    /** The note's text and its citations' labels, derived now. */
+    read(name: string): Promise<NoteReadResult>
+    /**
+     * Writes a new note for the open analysis and lists it under `written`. The ID is the time now and the file name
+     * follows from the title; bare `[q 12]` citations get this analysis's slug. Never overwrites.
+     */
+    add(title: string, text: string): Promise<NoteCreateResult>
     /** Writes `text` if the file still holds `expectedText`, else `stale` (message "Changed on disk, reloaded"). */
     save(name: string, expectedText: string, text: string): Promise<EditResult>
-    delete(name: string, expectedText: string): Promise<EditResult>
+    /** One run of another analysis under the root, for a citation's preview; undefined when it is gone. */
+    readRun(analysis: string, number: number): Promise<RunView | undefined>
   }
 
   /**
@@ -220,20 +218,16 @@ export const CHANNELS = {
   analysesOpen: 'analyses:open',
   ptyStart: 'pty:start',
   stateGet: 'state:get',
-  factsAdd: 'facts:add',
-  factsEdit: 'facts:edit',
-  factsDelete: 'facts:delete',
   threadsAdd: 'threads:add',
   threadsEditOpen: 'threads:editOpen',
   threadsDeleteOpen: 'threads:deleteOpen',
   threadsCloseOpen: 'threads:closeOpen',
   threadsDeleteClosed: 'threads:deleteClosed',
   threadsMoveOpen: 'threads:moveOpen',
-  noteFileRead: 'noteFile:read',
-  noteFilesRead: 'noteFiles:read',
-  noteFilesCreate: 'noteFiles:create',
-  noteFilesSave: 'noteFiles:save',
-  noteFilesDelete: 'noteFiles:delete',
+  notesRead: 'notes:read',
+  notesAdd: 'notes:add',
+  notesSave: 'notes:save',
+  notesRun: 'notes:run',
   runRead: 'run:read',
   plotRead: 'plot:read',
   runRequest: 'run:request',

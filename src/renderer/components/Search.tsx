@@ -5,10 +5,10 @@ import type { SearchContents, SearchTarget } from '../../core/search.ts'
 import type { AnalysisState, FileEntry } from '../../shared/ipc.ts'
 import { Preview } from './Preview.tsx'
 
-const KIND_LABEL: Record<SearchTarget['kind'], string> = { thread: 'thread', fact: 'fact', note: 'note', run: 'run', file: 'file' }
+const KIND_LABEL: Record<SearchTarget['kind'], string> = { thread: 'thread', note: 'note', run: 'run', file: 'file' }
 
 /**
- * Cmd+F: one search over threads, facts, note files, runs and files. Names match fuzzily; note text and
+ * Cmd+F: one search over threads, every root note, runs and files. Names match fuzzily; note text and
  * run code match the query as typed. Enter shows the hit in its own tab, Tab toggles a preview.
  */
 export function Search(props: { state: AnalysisState; onChoose: (target: SearchTarget) => void; onClose: () => void }) {
@@ -27,7 +27,7 @@ export function Search(props: { state: AnalysisState; onChoose: (target: SearchT
   }, [])
 
   const entries = useMemo(
-    () => searchEntries({ facts: state.facts, threads: state.threads, noteFiles: state.noteFiles, runs: state.runs, ...(files && { files }), ...(contents && { contents }) }),
+    () => searchEntries({ threads: state.threads, notes: state.rootNotes, runs: state.runs, ...(files && { files }), ...(contents && { contents }) }),
     [state, files, contents],
   )
   const hits = useMemo(() => search(entries, query), [entries, query])
@@ -52,7 +52,7 @@ export function Search(props: { state: AnalysisState; onChoose: (target: SearchT
           <input
             autoFocus
             value={query}
-            placeholder="Search threads, facts, notes, runs and files"
+            placeholder="Search threads, notes, runs and files"
             spellCheck={false}
             onChange={e => {
               setQuery(e.target.value)

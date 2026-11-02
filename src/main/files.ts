@@ -1,30 +1,31 @@
 // All file access for main. Paths here always come from main's own state (the window's analysis
-// folder), never from the renderer; the one renderer-supplied path is a note file's, which goes
-// through `readNoteFile`.
-import { mkdir, open, readFile, readdir, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
+// folder and its root), never from the renderer; a note's name from the renderer is checked against the
+// note file pattern first.
+import { mkdir, open, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 
+import { ANALYSIS_FILE } from '../core/analyses.ts'
 import type { AnalysisRef, FsPort } from '../core/analyses.ts'
 import { StaleEdit } from '../core/errors.ts'
-import { listFacts } from '../core/facts.ts'
-import { resolveInside } from '../core/safePath.ts'
 import { newRequestId, parseReply, requestText } from '../core/requests.ts'
 import { parseCsv, parseRunHeader, parseRunResult, parseRunStatus, parseRuns } from '../core/runs.ts'
 import type { Reply } from '../core/requests.ts'
 import type { ResultStatus, Run, RunHeader } from '../core/runs.ts'
-import { nextNoteNumber, noteFileName, parseNoteFile, parseNoteFileName, slugify } from '../core/noteFiles.ts'
-import type { NoteFile } from '../core/noteFiles.ts'
+import { NOTES_DIR, parseNoteFileName, parseNoteLists, parseRootNote } from '../core/rootNotes.ts'
+import type { NoteLists, RootNote } from '../core/rootNotes.ts'
 import { parseThreads } from '../core/threads.ts'
 import { latestReview, parseTrustReview } from '../core/trust.ts'
 import type { TrustReview } from '../core/trust.ts'
 import { statSignature } from '../core/watch.ts'
 import type { WatchPort } from '../core/watch.ts'
 import type { SearchContents } from '../core/search.ts'
-import type { AnalysisState, EditResult, NoteFileCreateResult, NoteFileResult, PlotResult, RequestResult, RunRequest, RunView } from '../shared/ipc.ts'
+import type { AnalysisState, EditResult, PlotResult, RequestResult, RunRequest, RunView } from '../shared/ipc.ts'
 
-export const NOTES = 'notes.md'
 export const THREADS = 'threads.md'
-const MAX_NOTE_FILE_BYTES = 2 * 1024 * 1024
+const MAX_NOTE_BYTES = 2 * 1024 * 1024
+
+/** The root of an analysis folder: `<root>/analyses/<slug>`. */
+export const rootOf = (analysisPath: string) => dirname(dirname(analysisPath))
 
 const isMissing = (err: unknown) => err instanceof Error && 'code' in err && err.code === 'ENOENT'
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err))
@@ -92,21 +93,22 @@ async function writeAtomic(path: string, text: string): Promise<void> {
 }
 
 export async function loadState(analysis: AnalysisRef): Promise<AnalysisState> {
-  const [notes, threads, queries, status, noteFiles, trust] = await Promise.all([
-    readText(join(analysis.path, NOTES)),
+  const root = rootOf(analysis.path)
+  const [threads, queries, status, rootNotes, noteLists, trust] = await Promise.all([
     readText(join(analysis.path, THREADS)),
     readQueryNames(analysis.path),
     readText(join(analysis.path, RUN_STATUS)).catch(() => ''),
-    readNoteFiles(analysis.path),
+    readRootNotes(root),
+    readNoteLists(analysis.path),
     readLatestTrust(analysis.path),
   ])
   return {
     analysis,
-    facts: listFacts(notes),
     threads: parseThreads(threads),
     runs: await withResults(analysis.path, await withHeaders(analysis.path, parseRuns(queries))),
     runStatus: parseRunStatus(status),
-    noteFiles,
+    rootNotes,
+    noteLists,
     ...(trust && { trust }),
   }
 }
@@ -308,23 +310,6 @@ export function editFile(folder: string, name: string, edit: (text: string) => s
   return result
 }
 
-/** Reads a note file linked from notes.md. Refuses anything that resolves outside the analysis folder, symlinks included. */
-export async function readNoteFile(folder: string, target: string): Promise<NoteFileResult> {
-  const refused: NoteFileResult = { ok: false, message: 'Note file is outside the analysis folder' }
-  const lexical = resolveInside(folder, target)
-  if (!lexical) return refused
-  try {
-    const [realFolder, realFile] = await Promise.all([realpath(folder), realpath(lexical)])
-    if (!resolveInside(realFolder, realFile)) return refused
-    const info = await stat(realFile)
-    if (!info.isFile()) return { ok: false, message: 'Not a file' }
-    if (info.size > MAX_NOTE_FILE_BYTES) return { ok: false, message: 'Note file is too large to show' }
-    return { ok: true, text: await readFile(realFile, 'utf8') }
-  } catch (err) {
-    return { ok: false, message: isMissing(err) ? 'Note file not found' : `Could not read: ${messageOf(err)}` }
-  }
-}
-
 /** Writes a request for the mod to pick up. The temp name starts with `.`, which the mod ignores. */
 export async function writeRequest(folder: string, request: RunRequest): Promise<RequestResult> {
   const id = newRequestId(Date.now(), Math.random)
@@ -375,127 +360,68 @@ export async function takeReplies(folder: string): Promise<{ replies: Reply[]; w
   return { replies, waiting }
 }
 
-export const NOTE_FILES = 'notes'
+export const notesDir = (root: string) => join(root, NOTES_DIR)
 
-/** File names in `notes/` that are note files, in number order. */
-async function noteFileNames(folder: string): Promise<string[]> {
+/** The note files in `<root>/notes`, sorted by name (so by ID). */
+export async function noteNames(root: string): Promise<string[]> {
   try {
-    return (await readdir(join(folder, NOTE_FILES)))
-      .filter(name => parseNoteFileName(name))
-      .sort((a, b) => (parseNoteFileName(a)?.number ?? 0) - (parseNoteFileName(b)?.number ?? 0) || a.localeCompare(b))
+    return (await readdir(notesDir(root))).filter(name => parseNoteFileName(name)).sort()
   } catch {
     return []
   }
 }
 
-// A parsed note file is kept by path until its mtime or size changes.
-const parsedNotes = new Map<string, { signature: string; note: NoteFile }>()
+// A parsed note is kept by path until its mtime or size changes.
+const parsed = new Map<string, { signature: string; note: RootNote }>()
 
-/** Every note file in `notes/`, parsed, in number order. A file that vanishes or cannot be read is left out. */
-export async function readNoteFiles(folder: string): Promise<NoteFile[]> {
+/** Every root note, parsed. A file that vanishes or cannot be read is left out. */
+export async function readRootNotes(root: string): Promise<RootNote[]> {
   const found = await Promise.all(
-    (await noteFileNames(folder)).map(async name => {
-      const path = join(folder, NOTE_FILES, name)
+    (await noteNames(root)).map(async name => {
+      const path = join(notesDir(root), name)
       try {
         const info = await stat(path)
         const signature = statSignature(info)
-        const cached = parsedNotes.get(path)
+        const cached = parsed.get(path)
         if (cached?.signature === signature) return cached.note
-        const note = parseNoteFile(name, (await readHead(path, MAX_NOTE_FILE_BYTES)).text, info)
-        parsedNotes.set(path, { signature, note })
+        const text = (await readFile(path, 'utf8')).slice(0, MAX_NOTE_BYTES)
+        const note = parseRootNote(name, text, info)
+        parsed.set(path, { signature, note })
         return note
       } catch {
-        parsedNotes.delete(path)
+        parsed.delete(path)
         return undefined
       }
     }),
   )
-  return found.filter((n): n is NoteFile => n !== undefined)
+  return found.filter((note): note is RootNote => note !== undefined)
 }
 
-/** A change signature of `notes/` (names, sizes, mtimes), for the poll: editing a file in place does not touch the folder. */
-export async function noteFilesSignature(folder: string): Promise<string> {
+/** A change signature of `notes/` (names, sizes, mtimes) for the poll: editing a file in place does not touch the folder. */
+export async function notesSignature(root: string): Promise<string> {
   const parts = await Promise.all(
-    (await noteFileNames(folder)).map(async name => {
-      const info = await stat(join(folder, NOTE_FILES, name)).catch(() => undefined)
-      return `${name}:${statSignature(info)}`
-    }),
+    (await noteNames(root)).map(async name => `${name}:${statSignature(await stat(join(notesDir(root), name)).catch(() => undefined))}`),
   )
   return parts.join('|')
 }
 
-const invalidEdit = (message: string): EditResult => ({ ok: false, reason: 'invalid', message })
-const noteFilePath = (name: string) => (parseNoteFileName(name) ? `${NOTE_FILES}/${name}` : undefined)
-
-/** Reads one note file by its name in `notes/`. */
-export async function readNoteFileByName(folder: string, name: string): Promise<NoteFileResult> {
-  const path = noteFilePath(name)
-  return path ? readNoteFile(folder, path) : { ok: false, message: 'Not a note file' }
+/** The `notes:` lists of the analysis; empty when analysis.yaml has none or cannot be read. */
+export async function readNoteLists(analysisPath: string): Promise<NoteLists> {
+  return parseNoteLists(await readFile(join(analysisPath, ANALYSIS_FILE), 'utf8').catch(() => ''))
 }
 
-/** Creates `notes/NNN-<slug>.md` with a title line. The number and slug are derived; the file is never overwritten. */
-export async function createNoteFile(folder: string, title: string): Promise<NoteFileCreateResult> {
-  const clean = title.replace(/\s+/g, ' ').trim()
-  if (clean === '') return { ok: false, message: 'A note needs a title' }
-  const dir = join(folder, NOTE_FILES)
-  try {
-    await mkdir(dir, { recursive: true })
-    const base = slugify(clean)
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const names = await noteFileNames(folder)
-      const slugs = new Set(names.map(n => parseNoteFileName(n)?.slug))
-      let slug = base
-      for (let k = 2; slugs.has(slug); k++) slug = `${base}-${k}`
-      const name = noteFileName(nextNoteNumber(names), slug)
-      try {
-        await writeFile(join(dir, name), `# ${clean}\n\n`, { encoding: 'utf8', flag: 'wx' })
-        return { ok: true, name }
-      } catch (err) {
-        // Another writer took the number: look again.
-        if (!(err instanceof Error && 'code' in err && err.code === 'EEXIST')) throw err
-      }
-    }
-    return { ok: false, message: 'Could not find a free note number' }
-  } catch (err) {
-    return { ok: false, message: `Could not create: ${messageOf(err)}` }
-  }
-}
 
-/** Saves a note file's text, if the file still holds `expectedText`. */
-export async function saveNoteFile(folder: string, name: string, expectedText: string, text: string): Promise<EditResult> {
-  const path = noteFilePath(name)
-  if (!path || !resolveInside(folder, path)) return invalidEdit('Not a note file')
-  if (text.length > MAX_NOTE_FILE_BYTES) return invalidEdit('The note is too large to save')
-  return editFile(folder, path, current => {
-    if (current !== expectedText) throw new StaleEdit()
-    return text
-  })
-}
-
-/** Deletes a note file, if it still holds `expectedText`. */
-export async function deleteNoteFile(folder: string, name: string, expectedText: string): Promise<EditResult> {
-  const path = noteFilePath(name)
-  const full = path && resolveInside(folder, path)
-  if (!full) return invalidEdit('Not a note file')
-  try {
-    if ((await readFile(full, 'utf8')) !== expectedText) return { ok: false, reason: 'stale', message: 'Changed on disk, reloaded' }
-    await unlink(full)
-    return { ok: true }
-  } catch (err) {
-    if (isMissing(err)) return { ok: false, reason: 'stale', message: 'Changed on disk, reloaded' }
-    return invalidEdit(`Could not delete: ${messageOf(err)}`)
-  }
-}
 
 const MAX_SEARCH_BYTES = 256 * 1024
-// Run code never changes, so it is read once per path; note files are few and are read each time.
+// Run code never changes, so it is read once per path; notes are few and are read each time.
 const runCodeCache = new Map<string, string>()
 
-/** The text of every note file and every run's code, each cut at MAX_SEARCH_BYTES, for universal search. */
+/** The text of every root note and every run's code, each cut at MAX_SEARCH_BYTES, for universal search. */
 export async function readSearchContents(folder: string): Promise<SearchContents> {
-  const [noteNames, runs] = await Promise.all([noteFileNames(folder), readQueryNames(folder).then(parseRuns)])
+  const root = rootOf(folder)
+  const [names, runs] = await Promise.all([noteNames(root), readQueryNames(folder).then(parseRuns)])
   const notes = await Promise.all(
-    noteNames.map(async name => ({ name, text: await readHead(join(folder, NOTE_FILES, name), MAX_SEARCH_BYTES).then(r => r.text, () => undefined) })),
+    names.map(async name => ({ name, text: await readHead(join(notesDir(root), name), MAX_SEARCH_BYTES).then(r => r.text, () => undefined) })),
   )
   const codes = await Promise.all(
     runs.map(async run => {

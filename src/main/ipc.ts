@@ -4,17 +4,15 @@ import { ipcMain } from 'electron'
 import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron'
 
 import { analysisSlug, createAnalysis, isoDay, listAnalyses, openAnalysis, renameAnalysis } from '../core/analyses.ts'
-import { addFact, deleteFact, editFact } from '../core/facts.ts'
-import type { LabelOf } from '../core/facts.ts'
 import { isIndex, parseRunRequest } from '../core/requests.ts'
-import { citedLabel } from '../core/runs.ts'
 import { addThread, closeOpen, deleteClosed, deleteOpen, editOpen, moveOpen } from '../core/threads.ts'
 import type { ClosedThread } from '../core/threads.ts'
 import { CHANNELS } from '../shared/ipc.ts'
-import type { EditResult, NoteFileCreateResult, NoteFileResult, OpenResult, PlotResult, RequestResult, SetRootResult, SettingsView } from '../shared/ipc.ts'
+import type { EditResult, NoteCreateResult, NoteReadResult, OpenResult, PlotResult, RequestResult, SetRootResult, SettingsView } from '../shared/ipc.ts'
 import { analysisRoot, chooseRootPath, saveRoot } from './settings.ts'
 import { listFiles, openChart, openFile, previewFile } from './browse.ts'
-import { NOTES, THREADS, createNoteFile, deleteNoteFile, editFile, fsPort, loadState, readNoteFile, readNoteFileByName, saveNoteFile, readPlot, readRun, readRuns, readSearchContents, writeRequest } from './files.ts'
+import { THREADS, editFile, fsPort, loadState, readPlot, readRun, readSearchContents, rootOf, writeRequest } from './files.ts'
+import { addRootNote, readCitedRun, readRootNote, saveRootNote } from './notes.ts'
 import { attachAnalysis, broadcast, contextFor, createWindow, pushState, requestClose, startPty } from './windows.ts'
 import type { WindowCtx } from './windows.ts'
 
@@ -46,15 +44,10 @@ function listen(channel: string, fn: (ctx: WindowCtx, ...args: unknown[]) => voi
   })
 }
 
-/** Runs an edit on the window's own notes.md or threads.md, then re-sends the state whatever the result. */
-async function edit(
-  ctx: WindowCtx,
-  file: string,
-  makeEdit: (labelOf: LabelOf) => (text: string) => string,
-): Promise<EditResult> {
+/** Runs an edit on the window's own threads.md, then re-sends the state whatever the result. */
+async function edit(ctx: WindowCtx, file: string, makeEdit: () => (text: string) => string): Promise<EditResult> {
   if (!ctx.analysis) return invalid('No analysis is open')
-  const labelOf = file === NOTES ? citedLabel(await readRuns(ctx.analysis.path)) : () => 'unverified' as const
-  const result = await editFile(ctx.analysis.path, file, makeEdit(labelOf))
+  const result = await editFile(ctx.analysis.path, file, makeEdit())
   await pushState(ctx)
   return result
 }
@@ -135,18 +128,6 @@ export function registerIpc() {
 
   handle(CHANNELS.stateGet, ctx => (ctx.analysis ? loadState(ctx.analysis) : undefined))
 
-  handle(CHANNELS.factsAdd, (ctx, input) =>
-    isText(input) ? edit(ctx, NOTES, labelOf => text => addFact(text, input, labelOf)) : invalid('Invalid input'),
-  )
-  handle(CHANNELS.factsEdit, (ctx, index, line, input) =>
-    isIndex(index) && isText(line) && isText(input)
-      ? edit(ctx, NOTES, labelOf => text => editFact(text, index, line, input, labelOf))
-      : invalid('Invalid input'),
-  )
-  handle(CHANNELS.factsDelete, (ctx, index, line) =>
-    isIndex(index) && isText(line) ? edit(ctx, NOTES, () => text => deleteFact(text, index, line)) : invalid('Invalid input'),
-  )
-
   handle(CHANNELS.threadsAdd, (ctx, thread) =>
     isText(thread) ? edit(ctx, THREADS, () => text => addThread(text, thread)) : invalid('Invalid input'),
   )
@@ -209,31 +190,25 @@ export function registerIpc() {
     const parsed = parseRunRequest(request)
     return 'error' in parsed ? { ok: false, message: parsed.error } : writeRequest(ctx.analysis.path, parsed)
   })
-  handle(CHANNELS.noteFileRead, (ctx, path): Promise<NoteFileResult> | NoteFileResult => {
-    if (!ctx.analysis || typeof path !== 'string') return { ok: false, message: 'Invalid path' }
-    return readNoteFile(ctx.analysis.path, path)
-  })
-  handle(CHANNELS.noteFilesRead, (ctx, name): Promise<NoteFileResult> | NoteFileResult => {
+  handle(CHANNELS.notesRead, (ctx, name): Promise<NoteReadResult> | NoteReadResult => {
     if (!ctx.analysis || typeof name !== 'string' || name.length > 255) return { ok: false, message: 'Invalid name' }
-    return readNoteFileByName(ctx.analysis.path, name)
+    return readRootNote(rootOf(ctx.analysis.path), name)
   })
-  handle(CHANNELS.noteFilesCreate, async (ctx, title): Promise<NoteFileCreateResult> => {
-    if (!ctx.analysis || !isText(title)) return { ok: false, message: 'Invalid title' }
-    const result = await createNoteFile(ctx.analysis.path, title)
+  handle(CHANNELS.notesAdd, async (ctx, title, text): Promise<NoteCreateResult> => {
+    if (!ctx.analysis || !isText(title) || !isText(text)) return { ok: false, message: 'Invalid input' }
+    const result = await addRootNote(rootOf(ctx.analysis.path), ctx.analysis, title, text)
     await pushState(ctx)
     return result
   })
-  handle(CHANNELS.noteFilesSave, async (ctx, name, expected, text): Promise<EditResult> => {
+  handle(CHANNELS.notesSave, async (ctx, name, expected, text): Promise<EditResult> => {
     if (!ctx.analysis || typeof name !== 'string' || typeof expected !== 'string' || typeof text !== 'string') return invalid('Invalid input')
-    const result = await saveNoteFile(ctx.analysis.path, name, expected, text)
+    const result = await saveRootNote(rootOf(ctx.analysis.path), name, expected, text)
     await pushState(ctx)
     return result
   })
-  handle(CHANNELS.noteFilesDelete, async (ctx, name, expected): Promise<EditResult> => {
-    if (!ctx.analysis || typeof name !== 'string' || typeof expected !== 'string') return invalid('Invalid input')
-    const result = await deleteNoteFile(ctx.analysis.path, name, expected)
-    await pushState(ctx)
-    return result
+  handle(CHANNELS.notesRun, (ctx, analysis, number) => {
+    if (!ctx.analysis || typeof analysis !== 'string' || analysis.length > 200 || !isIndex(number)) return undefined
+    return readCitedRun(rootOf(ctx.analysis.path), analysis, number)
   })
 
   handle(CHANNELS.windowNew, () => {

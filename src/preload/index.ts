@@ -35,11 +35,6 @@ const api: AppApi = {
     get: () => invoke(CHANNELS.stateGet),
     onChange: cb => subscribe(CHANNELS.stateChanged, cb),
   },
-  facts: {
-    add: input => invoke(CHANNELS.factsAdd, input),
-    edit: (index, expectedLine, input) => invoke(CHANNELS.factsEdit, index, expectedLine, input),
-    delete: (index, expectedLine) => invoke(CHANNELS.factsDelete, index, expectedLine),
-  },
   threads: {
     add: text => invoke(CHANNELS.threadsAdd, text),
     editOpen: (index, expected, next) => invoke(CHANNELS.threadsEditOpen, index, expected, next),
@@ -48,12 +43,11 @@ const api: AppApi = {
     deleteClosed: (index, expected) => invoke(CHANNELS.threadsDeleteClosed, index, expected),
     moveOpen: (index, expected, delta) => invoke(CHANNELS.threadsMoveOpen, index, expected, delta),
   },
-  readNoteFile: path => invoke(CHANNELS.noteFileRead, path),
-  noteFiles: {
-    read: name => invoke(CHANNELS.noteFilesRead, name),
-    create: title => invoke(CHANNELS.noteFilesCreate, title),
-    save: (name, expectedText, text) => invoke(CHANNELS.noteFilesSave, name, expectedText, text),
-    delete: (name, expectedText) => invoke(CHANNELS.noteFilesDelete, name, expectedText),
+  notes: {
+    read: name => invoke(CHANNELS.notesRead, name),
+    add: (title, text) => invoke(CHANNELS.notesAdd, title, text),
+    save: (name, expectedText, text) => invoke(CHANNELS.notesSave, name, expectedText, text),
+    readRun: (analysis, number) => invoke(CHANNELS.notesRun, analysis, number),
   },
   readRun: (number, options) => invoke(CHANNELS.runRead, number, options),
   readPlot: (number, k) => invoke(CHANNELS.plotRead, number, k),

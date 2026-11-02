@@ -70,6 +70,8 @@ button, input { font: inherit; color: inherit; }
 .chip-queried { color: var(--info); border-color: var(--info); }
 .chip-unverified { color: var(--warn); border-color: var(--warn); }
 .chip-computed { color: var(--syn-number); border-color: var(--syn-number); }
+.chip-stale { color: var(--bad); border-color: var(--bad); }
+.chip-missing { color: var(--bad); border-color: var(--line); text-decoration: line-through; }
 .chip-running { color: var(--accent); border-color: var(--accent); }
 .chip-you { color: var(--text); }
 .editing-flag { color: var(--accent); }
@@ -168,7 +170,15 @@ table.grid th.cur-col { color: var(--accent); }
 .note-reader .target.sel { background: var(--sel); outline: 1px solid var(--accent); border-radius: 3px; }
 .note-reader .wikilink { color: var(--info); }
 .note-reader .chip { margin-left: 4px; }
-.note-backlinks { padding-bottom: 8px; }
+.note-add { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; }
+.note-add input, .note-add textarea { font: inherit; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; }
+.note-add textarea { min-height: 8em; resize: vertical; }
+.note-row-age { white-space: nowrap; }
+.cited-run { width: min(1000px, 92vw); height: 76vh; display: flex; flex-direction: column; outline: none; }
+.cited-run .preview { flex: 1; min-height: 0; }
+.cited-run .hint { padding: 6px 4px 0; }
+.cited-result { max-height: 40%; overflow: auto; border-top: 1px solid var(--line); }
+.cited-result pre { margin: 0; padding: 6px 12px; font: 12px/1.4 var(--mono); white-space: pre-wrap; }
 .note-editor { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .note-editor .code-view { flex: 1; min-height: 0; }
 /* Trust tab: a pytest-style review. */

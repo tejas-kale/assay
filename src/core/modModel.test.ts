@@ -5,8 +5,6 @@ import { test } from 'node:test'
 import { expect } from '../testing/expect.ts'
 import { BASH_PYTHON_DENY, bashRunsPython } from './bashGuard.ts'
 import { parseCliOutput, parsePsqlOutput, readTarget } from './engines.ts'
-import { deriveLabel, noteLine, parseNote } from './facts.ts'
-import { nextNoteNumber, noteCitations, noteFileName, noteFileText, noteLinks, parseNoteFileName, resolvesToNote } from './noteFiles.ts'
 import type { PythonRun } from './pythonRuns.ts'
 import { formatPythonRun, formatTable, parsePythonRun, pythonBody, pythonHeader, runSlug, splitKernelEvents, toCsv, venvCandidates } from './pythonRuns.ts'
 import { isUrgent, parseRequestFile } from './requests.ts'
@@ -90,20 +88,6 @@ test('order moves the named threads to the top in turn, the rest keep their orde
   expect(orderThreads(threads, ['9']).threads).toBe(threads)
 })
 
-test('a note line is one line, ending in its label and the query it cites', async () => {
-  expect(noteLine('  beta is\nper panel  ', 'unverified')).toBe('beta is per panel [unverified]')
-  expect(noteLine('beta is per panel', 'queried', 7)).toBe('beta is per panel [queried q 007]')
-  expect(noteLine('beta is per panel', 'trusted', 12)).toBe('beta is per panel [trusted q 012]')
-})
-
-test('a label is derived from the query: trusted only for a trusted run with a result, and never after the fact', async () => {
-  expect(deriveLabel(undefined)).toBe('unverified')
-  expect(deriveLabel({ hasCsv: false, isTrustedRun: true })).toBe('unverified')
-  expect(deriveLabel({ hasCsv: true, isTrustedRun: false })).toBe('queried')
-  expect(deriveLabel({ hasCsv: true, isTrustedRun: true })).toBe('trusted')
-  expect(deriveLabel({ hasCsv: true, isTrustedRun: true }, false)).toBe('queried')
-})
-
 test('query files are numbered after the highest one', async () => {
   expect(nextRunNumber([])).toBe(1)
   expect(nextRunNumber(['001_a.sql', '001_a.csv', '009_b.sql', 'notes.txt'])).toBe(10)
@@ -118,20 +102,6 @@ test('Python run files are named like SQL ones; tables and plots belong to their
   expect(run).toMatchObject({ number: 14, slug: 'x', code: '014_x.py', result: '014_x.json', language: 'python', tables: ['014_x.t2.csv'], plots: ['014_x.p1.png', '014_x.p3.svg'] })
   // A Python run's table is not its whole result: only a SQL run's .csv is.
   expect(run?.data).toBeUndefined()
-})
-
-test('a Python run is computed when it ended ok, else unverified; SQL keeps its labels', () => {
-  const python = { hasCsv: false, isTrustedRun: false, language: 'python' } as const
-  expect(deriveLabel({ ...python, status: 'ok' })).toBe('computed')
-  expect(deriveLabel({ ...python, status: 'ok' }, false)).toBe('computed')
-  for (const status of ['error', 'interrupted', 'running', undefined]) expect(deriveLabel({ ...python, status })).toBe('unverified')
-  expect(deriveLabel({ hasCsv: true, isTrustedRun: false, language: 'sql' })).toBe('queried')
-})
-
-test('a computed tag parses and is written with its query', () => {
-  expect(noteLine('mean is 3', 'computed', 14)).toBe('mean is 3 [computed q 014]')
-  expect(parseNote('mean is 3 [computed q 014]')).toEqual({ text: 'mean is 3', label: 'computed', query: 14 })
-  expect(parseNote('mean is 3 [computed]')).toEqual({ text: 'mean is 3 [computed]' })
 })
 
 test('slugs are short kebab case', async () => {
@@ -175,15 +145,6 @@ test('the CLI output gives columns and rows, or the error', async () => {
   expect(parseCliOutput(failed, '')).toEqual({ error: '[PARSE_SYNTAX_ERROR] bad' })
   expect(parseCliOutput('not json', 'Error: no profile')).toEqual({ error: 'Error: no profile' })
   expect(parseCliOutput('', '')).toEqual({ error: 'The Databricks CLI gave no output.' })
-})
-
-test('a note splits off its label and query; an old line has a query or nothing', async () => {
-  expect(parseNote('beta is per panel [queried q 007]')).toEqual({ text: 'beta is per panel', label: 'queried', query: 7 })
-  expect(parseNote('beta [trusted q 012]')).toEqual({ text: 'beta', label: 'trusted', query: 12 })
-  expect(parseNote('beta [unverified]')).toEqual({ text: 'beta', label: 'unverified' })
-  expect(parseNote('beta is per panel [q 007]')).toEqual({ text: 'beta is per panel', query: 7 })
-  expect(parseNote('beta is per panel')).toEqual({ text: 'beta is per panel' })
-  expect(parseNote('beta [trusted]')).toEqual({ text: 'beta [trusted]' })
 })
 
 test('venvCandidates walks from the folder up to the root, nearest first', () => {
@@ -374,49 +335,6 @@ test('the Bash guard refuses commands that run Python code, and lets pytest, pip
   ]
   for (const command of allowed) expect([command, bashRunsPython(command)]).toEqual([command, false])
   expect(BASH_PYTHON_DENY).toBe('Run Python with mcp__plugin_assay_assay__python: it runs in the kernel the user sees, and every run is saved. pytest and package commands stay allowed.')
-})
-
-test('a note file name parses to its number and slug; anything else is not a note file', () => {
-  const cases: [string, { number: number; slug: string } | undefined][] = [
-    ['001-first-look.md', { number: 1, slug: 'first-look' }],
-    ['1234-a.md', { number: 1234, slug: 'a' }],
-    ['004-9-lives.md', { number: 4, slug: '9-lives' }],
-    ['01-short.md', undefined],
-    ['001-Upper.md', undefined],
-    ['001--dash.md', undefined],
-    ['001-x.txt', undefined],
-    ['001-.md', undefined],
-    ['notes.md', undefined],
-  ]
-  for (const [name, want] of cases) expect([name, parseNoteFileName(name)]).toEqual([name, want])
-  expect(noteFileName(4, 'slug')).toBe('004-slug.md')
-  expect(noteFileName(1234, 'slug')).toBe('1234-slug.md')
-})
-
-test('the next note number is the highest plus one, ignoring other names', () => {
-  expect(nextNoteNumber([])).toBe(1)
-  expect(nextNoteNumber(['001-a.md', '003-b.md', 'README.md', '9-x.md'])).toBe(4)
-  expect(nextNoteNumber(['010-a.md', '002-b.md'])).toBe(11)
-})
-
-test('links and citations are read in order of first appearance, outside fenced code', () => {
-  const text = ['See [[alpha]] and [[003-beta]], then [[alpha]] again.', 'It is 5 [q 12], also [q 012] and [q 7].', '```', '[[hidden]] [q 99]', '```', 'Last [[ gamma ]].'].join('\n')
-  expect(noteLinks(text)).toEqual(['alpha', '003-beta', 'gamma'])
-  expect(noteCitations(text)).toEqual([12, 7])
-  expect(noteLinks('no links [x](y)')).toEqual([])
-})
-
-test('a note file is its title heading, a blank line and the trimmed body', () => {
-  expect(noteFileText(' Panel  sizes ', '\n  Body [q 1].\n\n')).toBe('# Panel sizes\n\nBody [q 1].\n')
-  expect(noteFileText('Only', '  ')).toBe('# Only\n')
-})
-
-test('a link resolves by slug or by the whole stem', () => {
-  const names = ['001-first.md', '002-second-look.md']
-  expect(resolvesToNote('first', names)).toBe(true)
-  expect(resolvesToNote('002-second-look', names)).toBe(true)
-  expect(resolvesToNote('second', names)).toBe(false)
-  expect(resolvesToNote('003-first', names)).toBe(false)
 })
 
 test('the rules send findings to the note tools, cited and linked, and never to Write or Edit', () => {

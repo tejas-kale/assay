@@ -62,7 +62,7 @@ export function Preview(props: {
           <>
             <CodeView
               code={shown.text}
-              language={path === undefined ? undefined : languageOfPath(path)}
+              language={path === undefined ? (source?.type === 'text' ? source.language : undefined) : languageOfPath(path)}
               focusKey={path ?? shown.text}
               original={original}
               onToggleOriginal={() => setOriginal(o => !o)}

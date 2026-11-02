@@ -89,11 +89,11 @@ export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
   },
   {
     pane: 'Notes',
-    keys: [['⌘2 again', 'switch to Files'], ['j / k', 'move'], ['/', 'search'], ['Enter', 'open file note or read note'], ['Tab', 'preview in a pop-up'], ['a', 'add fact'], ['n', 'new note'], ['e', 'edit'], ['d', 'delete']],
+    keys: [['⌘2 again', 'switch to Files'], ['j / k', 'move'], ['/', 'search'], ['Enter', 'read note'], ['a', 'add note (⌘Enter saves)'], ['e', 'edit']],
   },
   {
     pane: 'Note reader',
-    keys: [['Tab / ⇧Tab', 'next / previous link or citation'], ['Enter', 'follow: note, or run in the data pane'], ['Backspace', 'previous note'], ['j / k', 'scroll'], ['e', 'edit'], ['Esc', 'back to the list']],
+    keys: [['Tab / ⇧Tab', 'next / previous link or citation'], ['Enter', 'follow: note, run in the data pane, or another analysis\'s run in a pop-up'], ['Backspace', 'previous note'], ['j / k', 'scroll'], ['e', 'edit'], ['Esc', 'back to the list']],
   },
   { pane: 'Preview pop-up', keys: [['h j k l  w b', 'move'], ['g / G', 'top / bottom'], ['o', 'original / formatted SQL'], ['Esc / Tab / q', 'close']] },
   { pane: 'Note editor', keys: [['⌘S', 'save'], ['Esc', 'leave (in Vim normal mode)']] },

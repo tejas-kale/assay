@@ -1,29 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 
-import { backlinks, noteBlocks, noteBody, noteTargets, resolveLink, targetIndices } from '../../core/noteFiles.ts'
-import type { NoteTarget, Segment } from '../../core/noteFiles.ts'
-import { runLabel } from '../../core/runs.ts'
-import { NOTES_DIR, factPreview } from '../../core/search.ts'
-import type { PreviewSource } from '../../core/search.ts'
-import type { EditResult, Fact, NoteFile, Run, RunStatus } from '../../shared/ipc.ts'
+import { formatAge } from '../../core/age.ts'
+import { citationKey } from '../../core/citationLabels.ts'
+import { citationAction, citationText, linkTitle, noteGroups } from '../../core/notesView.ts'
+import { idTime, noteBlocks, noteBody, noteTargets, targetIndices } from '../../core/rootNotes.ts'
+import type { NoteTarget, Segment } from '../../core/rootNotes.ts'
+import type { CitationLabel, NoteLists, RootNote, Run, RunView } from '../../shared/ipc.ts'
+import { CitedRunPopup } from './CitedRun.tsx'
 import { CodeEditor } from './CodeView.tsx'
 import type { EditorHandle } from './CodeView.tsx'
 import { MermaidDiagram } from './Mermaid.tsx'
-import { InlineInput, SearchLine, isPaneKey, useListPane, useReveal } from './common.tsx'
+import { SearchLine, isPaneKey, useListPane } from './common.tsx'
 import type { Reveal } from './common.tsx'
-import { PreviewPopup } from './Preview.tsx'
 
-type Item = { kind: 'fact'; fact: Fact } | { kind: 'note'; note: NoteFile }
+type Item = { group: 'written' | 'found'; note: RootNote }
 
 type Mode =
   | { type: 'list' }
   | { type: 'add' }
-  | { type: 'edit'; fact: Fact }
-  /** `text` is the note's text when the prompt opened, so a change since then makes the delete refuse. */
-  | { type: 'confirmDelete'; item: Item; text?: string }
-  | { type: 'file'; title: string; text: string }
-  | { type: 'newNote' }
   /** The reader. `trail` is the notes opened before this one by following links. */
   | { type: 'read'; name: string; trail: string[] }
   /** The editor. `initial` is the text read when it opened. */
@@ -31,166 +26,85 @@ type Mode =
 
 const pad = (n: number) => String(n).padStart(3, '0')
 
-const idOf = (item: Item) => (item.kind === 'fact' ? `fact:${item.fact.index}` : `note:${item.note.name}`)
+/** Written then Found, each newest first: the Notes tab's rows. */
+export function useNoteItems(rootNotes: RootNote[], lists: NoteLists): Item[] {
+  return useMemo(() => {
+    const groups = noteGroups(rootNotes, lists)
+    return [...groups.written.map((note): Item => ({ group: 'written', note })), ...groups.found.map((note): Item => ({ group: 'found', note }))]
+  }, [rootNotes, lists])
+}
 
 export function NotesTab(props: {
-  facts: Fact[]
-  noteFiles: NoteFile[]
+  /** The open analysis's slug: its citations focus a run, others open a preview. */
+  slug: string
+  rootNotes: RootNote[]
+  noteLists: NoteLists
   runs: Run[]
-  status: RunStatus
   /** Makes run `number` the data pane's current (held) run and focuses the pane. */
   onShowRun: (number: number) => void
-  /** A universal-search hit to select: a fact, or a note file to open in the reader. */
+  /** A universal-search hit: a root note to open in the reader. */
   reveal?: Reveal | undefined
   onRevealed: () => void
 }) {
-  const { facts, noteFiles, reveal } = props
-  const items = useMemo<Item[]>(
-    () => [...facts.map((fact): Item => ({ kind: 'fact', fact })), ...noteFiles.map((note): Item => ({ kind: 'note', note }))],
-    [facts, noteFiles],
-  )
-  const deleteItem = async ({ item, text }: { item: Item; text?: string }): Promise<EditResult> => {
-    if (item.kind === 'fact') return window.app.facts.delete(item.fact.index, item.fact.line)
-    if (text === undefined) return { ok: false, reason: 'invalid', message: 'The note could not be read' }
-    return window.app.noteFiles.delete(item.note.name, text)
-  }
-  const { nav, setNav, mode, setMode, message, setMessage, rootRef, visible, selectedIndex, selected, finish, cancel, confirmDeleteKey, navigate } =
-    useListPane<Item, Mode>({
-      items,
-      textOf: i => (i.kind === 'fact' ? i.fact.text : `${i.note.title} ${pad(i.note.number)}`),
-      targetGone: m => {
-        if (m.type === 'edit') return !facts.some(f => f.index === m.fact.index)
-        if (m.type === 'confirmDelete') return !items.some(i => idOf(i) === idOf(m.item))
-        if (m.type === 'read' || m.type === 'editNote') return !noteFiles.some(n => n.name === m.name)
-        return false
-      },
-      confirmDelete: deleteItem,
-    })
-  const latest = useRef({ mode, selected })
-  latest.current = { mode, selected }
-  /** The pop-up preview Tab opened; closing it gives the keys back to the list. */
-  const [popup, setPopup] = useState<PreviewSource>()
-
-  useReveal(
-    reveal,
+  const { rootNotes, reveal } = props
+  const items = useNoteItems(rootNotes, props.noteLists)
+  const { nav, setNav, mode, setMode, message, setMessage, rootRef, visible, selectedIndex, selected, cancel, navigate } = useListPane<Item, Mode>({
     items,
-    (item, target) =>
-      (target.kind === 'fact' && item.kind === 'fact' && item.fact.index === target.index) ||
-      (target.kind === 'note' && item.kind === 'note' && item.note.name === target.name),
-    (index, item) => {
-      setNav({ selected: index, search: undefined })
-      setMode(item.kind === 'note' ? { type: 'read', name: item.note.name, trail: [] } : { type: 'list' })
-    },
-    props.onRevealed,
-  )
+    textOf: i => i.note.title,
+    targetGone: m => (m.type === 'read' || m.type === 'editNote') && !rootNotes.some(n => n.name === m.name),
+    confirmDelete: () => Promise.resolve({ ok: true }),
+  })
+
+  // A search hit opens its note in the reader, whether or not this analysis lists it.
+  useEffect(() => {
+    if (reveal?.target.kind !== 'note') return
+    const { name } = reveal.target
+    if (rootNotes.some(n => n.name === name)) setMode({ type: 'read', name, trail: [] })
+    props.onRevealed()
+  }, [reveal?.n])
 
   /** Reads a note's text, then opens its editor. */
   const openEditor = (name: string, trail: string[], from: 'read' | 'list') =>
-    void window.app.noteFiles.read(name).then(result => {
+    void window.app.notes.read(name).then(result => {
       if (result.ok) setMode({ type: 'editNote', name, initial: result.text, trail, from })
       else setMessage(result.message)
     })
 
   function onKeyDown(e: KeyboardEvent) {
     if (!isPaneKey(e)) return
-    if (mode.type === 'read' || mode.type === 'editNote') return
-    if (mode.type === 'file') {
-      if (e.key === 'Escape') setMode({ type: 'list' })
-      else if (e.key === 'j') rootRef.current?.scrollBy(0, 40)
-      else if (e.key === 'k') rootRef.current?.scrollBy(0, -40)
-      else return
-      e.preventDefault()
-      return
-    }
-    if (confirmDeleteKey(e)) return
     if (mode.type !== 'list') return
-
     setMessage(undefined)
-    if (previewKey(e)) return
     if (!nav.search?.active) {
       switch (e.key) {
         case 'a':
           e.preventDefault()
           setMode({ type: 'add' })
           return
-        case 'n':
-          e.preventDefault()
-          setMode({ type: 'newNote' })
-          return
         case 'e':
           e.preventDefault()
-          if (!selected) return
-          if (selected.kind === 'note') openEditor(selected.note.name, [], 'list')
-          else if (selected.fact.file) setMessage('A note file cannot be edited here')
-          else setMode({ type: 'edit', fact: selected.fact })
-          return
-        case 'd':
-          e.preventDefault()
-          if (!selected) return
-          if (selected.kind === 'fact') setMode({ type: 'confirmDelete', item: selected })
-          else {
-            // The text is read now, so a change made while the prompt is open stops the delete.
-            const item = selected
-            void window.app.noteFiles.read(item.note.name).then(result => {
-              // Skip when the user left the list or moved while the read ran.
-              const current = latest.current
-              if (result.ok && current.mode.type === 'list' && current.selected && idOf(current.selected) === idOf(item))
-                setMode({ type: 'confirmDelete', item, text: result.text })
-              else if (result.ok) return
-              else setMessage(result.message)
-            })
-          }
+          if (selected) openEditor(selected.note.name, [], 'list')
           return
       }
     }
     const effect = navigate(e)
-    if (effect?.type === 'open' && selected) {
-      if (selected.kind === 'note') setMode({ type: 'read', name: selected.note.name, trail: [] })
-      else if (selected.fact.file) {
-        const { title } = selected.fact.file
-        void window.app.readNoteFile(selected.fact.file.path).then(result => {
-          if (result.ok) setMode({ type: 'file', title, text: result.text })
-          else setMessage(result.message)
-        })
-      }
-    }
+    if (effect?.type === 'open' && selected) setMode({ type: 'read', name: selected.note.name, trail: [] })
   }
 
-  /** Tab opens the selected item in a pop-up preview. */
-  function previewKey(e: KeyboardEvent): boolean {
-    if (e.key !== 'Tab' || e.shiftKey) return false
-    e.preventDefault()
-    if (previewSource) setPopup(previewSource)
-    return true
-  }
-
-  const previewSource: PreviewSource | undefined = !selected
-    ? undefined
-    : selected.kind === 'note'
-      ? { type: 'path', path: `${NOTES_DIR}/${selected.note.name}` }
-      : factPreview(selected.fact, props.runs)
-
-  const readNote = mode.type === 'read' ? noteFiles.find(n => n.name === mode.name) : undefined
-  const editNote = mode.type === 'editNote' ? noteFiles.find(n => n.name === mode.name) : undefined
-  // The reader and the editor carry the focus target themselves, so Cmd+2 reaches them rather than the list.
-  const ownsFocus = mode.type === 'read' || mode.type === 'editNote'
+  const readNote = mode.type === 'read' ? rootNotes.find(n => n.name === mode.name) : undefined
+  const editNote = mode.type === 'editNote' ? rootNotes.find(n => n.name === mode.name) : undefined
+  // The reader, the editor and the add form carry the focus target themselves, so Cmd+2 reaches them rather than the list.
+  const ownsFocus = mode.type === 'read' || mode.type === 'editNote' || mode.type === 'add'
+  const now = Date.now()
 
   return (
     <div className="list" tabIndex={-1} ref={rootRef} {...(ownsFocus ? {} : { 'data-focus-target': '' })} onKeyDown={onKeyDown}>
-      {mode.type === 'file' ? (
-        <>
-          <div className="subhead">
-            {mode.title} <span className="dim">(read only, Esc to go back)</span>
-          </div>
-          <pre className="filetext">{mode.text}</pre>
-        </>
-      ) : mode.type === 'read' && readNote ? (
+      {mode.type === 'read' && readNote ? (
         <NoteReader
           key={readNote.name}
           note={readNote}
-          notes={noteFiles}
+          notes={rootNotes}
+          slug={props.slug}
           runs={props.runs}
-          status={props.status}
           canGoBack={mode.trail.length > 0}
           onOpen={name => setMode({ type: 'read', name, trail: [...mode.trail, readNote.name] })}
           onShowRun={props.onShowRun}
@@ -206,7 +120,7 @@ export function NotesTab(props: {
           key={editNote.name}
           note={editNote}
           initial={mode.initial}
-          onLeave={() => (mode.from === 'read' ? (setMode({ type: 'read', name: mode.name, trail: mode.trail })) : cancel())}
+          onLeave={() => (mode.from === 'read' ? setMode({ type: 'read', name: mode.name, trail: mode.trail }) : cancel())}
           onStale={unsaved => {
             // The reload drops the user's text, so it goes to the clipboard first.
             const { name, trail } = mode
@@ -217,99 +131,91 @@ export function NotesTab(props: {
             setMode({ type: 'read', name, trail })
           }}
         />
+      ) : mode.type === 'add' ? (
+        <NoteAdd
+          onCancel={cancel}
+          onSubmit={(title, text) =>
+            void window.app.notes.add(title, text).then(result => {
+              if (result.ok) setNav(s => ({ ...s, selected: 0 }))
+              else setMessage(result.message)
+              cancel()
+            })
+          }
+        />
       ) : (
         <>
           <SearchLine search={nav.search} />
-          {items.length === 0 && mode.type !== 'add' && <div className="empty">No facts yet. Press a to add one, n for a note.</div>}
-          <ul role="listbox" aria-label="Facts and note files">
+          {items.length === 0 && <div className="empty">No notes yet. Press a to add one.</div>}
+          <ul role="listbox" aria-label="Written and found notes">
             {visible.map((item, i) => {
+              const { note } = item
               const selectedRow = i === selectedIndex
-              if (item.kind === 'note') {
-                const { note } = item
-                return (
-                  <li key={idOf(item)} role="presentation" className="note-row-wrap">
-                    {visible[i - 1]?.kind !== 'note' && <div className="subhead group">Note files</div>}
-                    <div role="option" aria-selected={selectedRow} className={selectedRow ? 'row sel' : 'row'}>
-                      <span className="grow">{note.title}</span>
-                      <span className="dim">{pad(note.number)}</span>
-                    </div>
-                  </li>
-                )
-              }
-              const { fact } = item
-              return mode.type === 'edit' && mode.fact.index === fact.index ? (
-                <li key={fact.index} className="row">
-                  <InlineInput
-                    label="Edit"
-                    initial={fact.text}
-                    onCancel={cancel}
-                    onSubmit={value => void window.app.facts.edit(fact.index, mode.fact.line, value).then(finish)}
-                  />
-                </li>
-              ) : (
-                <li key={idOf(item)} role="option" aria-selected={selectedRow} className={selectedRow ? 'row sel' : 'row'}>
-                  {fact.label && <span className={`chip chip-${fact.label}`}>{fact.label}</span>}
-                  {fact.file && <span className="chip chip-file">note file</span>}
-                  <span className="grow">{fact.text}</span>
-                  {fact.query !== undefined && <span className="dim">q {fact.query}</span>}
+              return (
+                <li key={note.name} role="presentation" className="note-row-wrap">
+                  {visible[i - 1]?.group !== item.group && <div className="subhead group">{item.group === 'written' ? 'Written' : 'Found'}</div>}
+                  <div role="option" aria-selected={selectedRow} className={selectedRow ? 'row sel' : 'row'}>
+                    <span className="grow">{note.title}</span>
+                    <span className="dim note-row-age">{formatAge(idTime(note.id).getTime(), now)}</span>
+                  </div>
                 </li>
               )
             })}
           </ul>
-          {mode.type === 'add' && (
-            <InlineInput
-              label="Add fact (end with [q 12] to cite a query)"
-              onCancel={cancel}
-              onSubmit={value =>
-                void window.app.facts.add(value).then(result => {
-                  if (result.ok) setNav(s => ({ ...s, selected: facts.length }))
-                  finish(result)
-                })
-              }
-            />
-          )}
-          {mode.type === 'newNote' && (
-            <InlineInput
-              label="New note title"
-              onCancel={cancel}
-              onSubmit={title =>
-                void window.app.noteFiles.create(title).then(result => {
-                  if (!result.ok) {
-                    setMessage(result.message)
-                    cancel()
-                  } else openEditor(result.name, [], 'list')
-                })
-              }
-            />
-          )}
-          {mode.type === 'confirmDelete' && (
-            <div className="status warn">
-              Delete "{mode.item.kind === 'fact' ? mode.item.fact.text : mode.item.note.title}"? y to confirm, any other key cancels
-            </div>
-          )}
           {message && <div className="status warn">{message}</div>}
         </>
-      )}
-      {popup && (
-        <PreviewPopup
-          source={popup}
-          onClose={() => {
-            setPopup(undefined)
-            requestAnimationFrame(() => rootRef.current?.focus())
-          }}
-        />
       )}
       {ownsFocus && message && <div className="status warn">{message}</div>}
     </div>
   )
 }
 
+/** Title and text of a new note. Enter in the title moves to the text; ⌘Enter saves; Esc cancels. */
+function NoteAdd(props: { onSubmit: (title: string, text: string) => void; onCancel: () => void }) {
+  const [title, setTitle] = useState('')
+  const [text, setText] = useState('')
+  const body = useRef<HTMLTextAreaElement>(null)
+  const submit = () => {
+    if (title.trim() !== '') props.onSubmit(title, text)
+  }
+  const keys = (e: KeyboardEvent) => {
+    if (e.nativeEvent.isComposing) return
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      props.onCancel()
+    } else if (e.key === 'Enter' && e.metaKey) {
+      e.preventDefault()
+      submit()
+    }
+  }
+  return (
+    <div className="note-add" data-focus-target tabIndex={-1}>
+      <input
+        autoFocus
+        aria-label="Note title"
+        placeholder="Title (the finding, in a line)"
+        value={title}
+        spellCheck={false}
+        onChange={e => setTitle(e.target.value)}
+        onKeyDown={e => {
+          keys(e)
+          if (e.key === 'Enter' && !e.metaKey && !e.nativeEvent.isComposing) {
+            e.preventDefault()
+            body.current?.focus()
+          }
+        }}
+      />
+      <textarea ref={body} aria-label="Note text" placeholder="Text. Cite runs as [q 12]; link notes as [[ID]]." value={text} onChange={e => setText(e.target.value)} onKeyDown={keys} />
+      <div className="hint">Enter in title: to text · ⌘Enter save · Esc cancel</div>
+    </div>
+  )
+}
+
 /** The reader: the note as text, with links and citations to move between (Tab) and follow (Enter). */
 function NoteReader(props: {
-  note: NoteFile
-  notes: NoteFile[]
+  note: RootNote
+  notes: RootNote[]
+  slug: string
   runs: Run[]
-  status: RunStatus
   canGoBack: boolean
   onOpen: (name: string) => void
   onShowRun: (number: number) => void
@@ -317,26 +223,28 @@ function NoteReader(props: {
   onEdit: () => void
   onLeave: () => void
 }) {
-  const { note, notes, runs, status } = props
+  const { note, notes, slug, runs } = props
   const root = useRef<HTMLDivElement>(null)
   const [text, setText] = useState<string>()
+  const [labels, setLabels] = useState<ReadonlyMap<string, CitationLabel>>(new Map())
   const [error, setError] = useState<string>()
   const [sel, setSel] = useState(-1)
+  const [cited, setCited] = useState<{ title: string; label: CitationLabel | undefined; view: RunView }>()
 
-  // Read again when this note's own file changed: Claude and the user may both edit it.
+  // Read again when this note's own file changed, or the runs did (a label follows its run): Claude and the user may both edit it.
   useEffect(() => {
-    void window.app.noteFiles.read(note.name).then(result => {
+    void window.app.notes.read(note.name).then(result => {
       if (result.ok) {
         setText(result.text)
+        setLabels(new Map(Object.entries(result.labels) as [string, CitationLabel][]))
         setError(undefined)
       } else setError(result.message)
     })
-  }, [note.name, note.mtimeMs, note.size, error ? status : undefined])
+  }, [note.name, note.mtimeMs, note.size, runs])
   useEffect(() => root.current?.focus(), [])
 
   const blocks = useMemo(() => noteBlocks(noteBody(text ?? '')), [text])
-  const linkedFrom = useMemo(() => backlinks(note, notes), [note, notes])
-  const targets = useMemo(() => noteTargets(blocks, linkedFrom), [blocks, linkedFrom])
+  const targets = useMemo(() => noteTargets(blocks), [blocks])
   const indices = useMemo(() => targetIndices(blocks), [blocks])
   const [flash, setFlash] = useState<string>()
   const current = sel >= 0 && sel < targets.length ? sel : -1
@@ -347,17 +255,27 @@ function NoteReader(props: {
 
   const follow = (target: NoteTarget | undefined) => {
     if (!target) return
-    if (target.type === 'backlink') props.onOpen(target.name)
-    else if (target.type === 'link') {
-      const found = resolveLink(target.target, notes)
+    if (target.type === 'link') {
+      const found = notes.find(n => n.id === target.id)
       if (found) props.onOpen(found.name)
-      else setFlash(`No note "${target.target}"`)
-    } else if (runs.some(r => r.number === target.number)) props.onShowRun(target.number)
-    else setFlash(`No run ${pad(target.number)}`)
+      else setFlash(`No note ${target.id}`)
+      return
+    }
+    const action = citationAction(target, slug, labels)
+    if (action.type === 'missing') setFlash(`No run ${target.analysis} q ${pad(target.number)}`)
+    else if (action.type === 'focus') {
+      if (runs.some(r => r.number === action.number)) props.onShowRun(action.number)
+      else setFlash(`No run ${pad(action.number)}`)
+    } else {
+      void window.app.notes.readRun(action.analysis, action.number).then(view => {
+        if (view) setCited({ title: citationText(target, slug), label: labels.get(citationKey(target)), view })
+        else setFlash(`No run ${target.analysis} q ${pad(target.number)}`)
+      })
+    }
   }
 
   function onKeyDown(e: KeyboardEvent) {
-    if (e.metaKey || e.ctrlKey || e.altKey) return
+    if (e.metaKey || e.ctrlKey || e.altKey || cited) return
     setFlash(undefined)
     if (e.key === 'Tab') {
       if (targets.length > 0) setSel(((e.shiftKey ? current - 1 : current + 1) + targets.length) % targets.length)
@@ -377,21 +295,19 @@ function NoteReader(props: {
       const mine = indices.get(s) ?? -1
       const cls = mine === current ? 'target sel' : 'target'
       if (s.type === 'link') {
-        const found = resolveLink(s.target, notes)
+        const title = linkTitle(s.id, notes)
+        // An unresolved link stays as written.
         return (
-          <span key={i} className={`${cls} wikilink`}>
-            {found ? found.title : s.target}
-            {!found && <span className="chip chip-unverified">missing</span>}
+          <span key={i} className={title === undefined ? cls : `${cls} wikilink`}>
+            {title ?? `[[${s.id}]]`}
           </span>
         )
       }
-      const run = runs.find(r => r.number === s.number)
-      const label = run
-        ? runLabel(run, { author: run.author ?? 'claude', engine: run.engine ?? 'databricks', ...(run.trusted !== undefined && { trusted: run.trusted }) }, status)
-        : undefined
+      const label = labels.get(citationKey(s))
       return (
         <span key={i} className={`${cls} citation`}>
-          q {pad(s.number)} <span className={`chip chip-${label ?? 'unverified'}`}>{label ?? 'no run'}</span>
+          {citationText(s, slug)}
+          {label && <span className={`chip chip-${label}`}>{label}</span>}
         </span>
       )
     })
@@ -399,7 +315,7 @@ function NoteReader(props: {
   return (
     <div className="note-reader" tabIndex={-1} ref={root} data-focus-target onKeyDown={onKeyDown}>
       <div className="subhead">
-        {note.title} <span className="dim">{pad(note.number)} (e edit, Esc back{props.canGoBack ? ', Backspace previous' : ''})</span>
+        {note.title} <span className="dim">{note.id} (e edit, Esc back{props.canGoBack ? ', Backspace previous' : ''})</span>
       </div>
       {error && <div className="status warn">{error}</div>}
       <div className="note-body">
@@ -421,27 +337,22 @@ function NoteReader(props: {
           ),
         )}
       </div>
-      {linkedFrom.length > 0 && (
-        <div className="note-backlinks">
-          <div className="subhead group">Linked from</div>
-          {linkedFrom.map((b, i) => {
-            const mine = indices.size + i
-            return (
-              <div key={b.name} className={mine === current ? 'row target sel' : 'row target'}>
-                <span className="grow">{b.title}</span>
-                <span className="dim">{pad(b.number)}</span>
-              </div>
-            )
-          })}
-        </div>
-      )}
       {flash && <div className="status warn">{flash}</div>}
+      {cited && (
+        <CitedRunPopup
+          {...cited}
+          onClose={() => {
+            setCited(undefined)
+            requestAnimationFrame(() => root.current?.focus())
+          }}
+        />
+      )}
     </div>
   )
 }
 
 /** The editor: Vim mode over the note's Markdown. Cmd+S saves; Esc in normal mode leaves. */
-function NoteEditor(props: { note: NoteFile; initial: string; onLeave: () => void; onStale: (unsaved: string) => void }) {
+function NoteEditor(props: { note: RootNote; initial: string; onLeave: () => void; onStale: (unsaved: string) => void }) {
   const handle = useRef<EditorHandle>(null)
   const baseline = useRef(props.initial)
   const text = useRef(props.initial)
@@ -454,7 +365,7 @@ function NoteEditor(props: { note: NoteFile; initial: string; onLeave: () => voi
       setStatus('Nothing to save')
       return
     }
-    const result = await window.app.noteFiles.save(props.note.name, baseline.current, next)
+    const result = await window.app.notes.save(props.note.name, baseline.current, next)
     if (result.ok) {
       baseline.current = next
       setStatus('Saved')

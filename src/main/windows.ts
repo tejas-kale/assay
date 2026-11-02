@@ -8,13 +8,14 @@ import { fileURLToPath } from 'node:url'
 
 import { cmdHold } from '../core/cmdHold.ts'
 import { commandForInput } from '../core/keymap.ts'
+import { ANALYSIS_FILE } from '../core/analyses.ts'
 import type { AnalysisRef } from '../core/analyses.ts'
 import { spawnSpec } from '../core/session.ts'
 import { THEMES } from '../core/theme.ts'
 import { pollFiles, pollSignature } from '../core/watch.ts'
 import { CHANNELS } from '../shared/ipc.ts'
 import type { OpenResult, PtyExit } from '../shared/ipc.ts'
-import { NOTES, QUERIES, REPLIES_DIR, RUN_STATUS, THREADS, TRUST_DIR, loadState, noteFilesSignature, takeReplies, watchPort } from './files.ts'
+import { QUERIES, REPLIES_DIR, RUN_STATUS, THREADS, TRUST_DIR, loadState, notesSignature, rootOf, takeReplies, watchPort } from './files.ts'
 import { startSession } from './session.ts'
 import { analysisRoot } from './settings.ts'
 import type { PtySession } from './session.ts'
@@ -240,7 +241,7 @@ export function attachAnalysis(ctx: WindowCtx, analysis: AnalysisRef): OpenResul
   ctx.stopPoll = pollFiles(
     watchPort,
     // The queries folder's mtime changes when a run's file is added or renamed into place.
-    [NOTES, THREADS, QUERIES, RUN_STATUS, TRUST_DIR].map(name => join(analysis.path, name)),
+    [ANALYSIS_FILE, THREADS, QUERIES, RUN_STATUS, TRUST_DIR].map(name => join(analysis.path, name)),
     () => void pushState(ctx),
   )
   // A reply file's arrival changes the folder's mtime; each one is delivered once, then deleted.
@@ -253,8 +254,8 @@ export function attachAnalysis(ctx: WindowCtx, analysis: AnalysisRef): OpenResul
   const stopReplies = pollFiles(watchPort, [join(analysis.path, REPLIES_DIR)], deliverReplies)
   // Replies that were already waiting when the window attached.
   deliverReplies()
-  // A note file edited in place leaves the folder's mtime alone, so its names, sizes and mtimes are compared.
-  const stopNotes = pollSignature(watchPort, () => noteFilesSignature(analysis.path), () => void pushState(ctx))
+  // A note edited in place leaves the folder's mtime alone, so the names, sizes and mtimes in `<root>/notes` are compared.
+  const stopNotes = pollSignature(watchPort, () => notesSignature(rootOf(analysis.path)), () => void pushState(ctx))
   const stopState = ctx.stopPoll
   ctx.stopPoll = () => {
     stopState()

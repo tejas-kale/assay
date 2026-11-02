@@ -48,7 +48,7 @@ Every shortcut is in `src/core/keymap.ts`: `COMMANDS` (Cmd keys, caught in main 
 
 ## Where things are
 
-- `src/core`: pure logic with tests (runs, facts, threads, note files, search, keymap, theme).
+- `src/core`: pure logic with tests (runs, root notes, threads, search, keymap, theme).
 - `src/main`: Electron main; all file access (`files.ts`, `browse.ts`) and IPC (`ipc.ts`). The renderer never reads a
   path itself; `src/shared/ipc.ts` is the only contract between the two.
 - `src/renderer`: React UI. `terminal.ts` is the only file that imports `ghostty-web`.
