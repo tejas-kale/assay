@@ -1,21 +1,28 @@
 # Assay
 
 A Mac desktop app for data analysis with Claude Code, laid out like RStudio: Claude Code in a terminal on the left,
-Threads / Notes / Files top right, and Data / Plots / Code / History / Trust bottom right. It is a UI over the analysis
-mod's folders (`~/Code/config/claude/analysis`): the mod is the backend, the files are the contract, and the app keeps
-no database.
+Threads / Notes / Files top right, and Data / Plots / Code / History / Trust bottom right. Its backend is this repo's
+Claude Code plugin (`plugin/`): an MCP server, hooks and skills that Claude loads in the session the app starts. The
+files are the contract between the two, and the app keeps no database.
 
 **One rule above all: there is one place where code runs, and every run is recorded.** Claude's `sql` and `python`
-tools and the user's edits and re-runs all go through the mod, into numbered, immutable runs in `queries/`, in the one
-kernel the app shows. Protect this in every change.
+tools and the user's edits and re-runs all go through the server, into numbered, immutable runs in `queries/`, in the
+one kernel the app shows. Protect this in every change.
 
 The code is the source of truth. `docs/slice-*.md` are the specs each slice was built from, kept as history.
 
 ## Install, run, test (on the Mac)
 
-- `npm install` (postinstall repairs Electron's unpack on Node 26, rebuilds node-pty for Electron and fixes `spawn-helper`)
+- `npm install` (postinstall repairs Electron's unpack on Node 26, rebuilds node-pty for Electron, fixes `spawn-helper`
+  and runs `npm run build:server`)
+- `npm run build:server` bundles the MCP server and the hook scripts with esbuild into `out/server/index.mjs` and
+  `out/hooks/*.mjs`, which the plugin runs in the container with plain `node`. Run it after pulling server changes: the
+  wrapper mounts this checkout, so the next session uses the new bundle.
 - `npm run dev`
-- `npm test` (logic in `src/core`, no Electron needed), `npm run typecheck`
+- `npm test` (logic in `src/core`, the server in `src/server`, the hooks in `src/hooks`; no Electron needed),
+  `npm run typecheck`. With `ASSAY_TEST_VENV` naming a Linux venv that has ipykernel (`python/tests/test_venv.sh
+  <dir>` builds one in `<dir>/src/.venv`), the MCP test runs a real kernel.
+- Python helpers: `python/tests/test_venv.sh <scratch>`, then `<scratch>/src/.venv/bin/python -m pytest python/tests`.
 - `npm run install-app` builds `Assay.app`, ad-hoc signed, into `/Applications`; run it again after pulling changes.
   `npm run package` only builds it, into `dist/mac-arm64/`.
 
@@ -24,7 +31,9 @@ The code is the source of truth. `docs/slice-*.md` are the specs each slice was 
 - The analysis folder, which holds `analyses/`, is set in Settings (Cmd+,). The app asks on first run. Picking
   `analyses/` or one analysis inside it sets the folder above.
 - `ASSAY_CLAUDE_BIN`: the wrapper to run (default `claude`, the Podman wrapper from the config repo, found through your
-  login shell). The app sets `ASSAY_APP=1`, which makes the mod keep its own pane closed.
+  login shell), started with `--plugin-dir /opt/assay/plugin`. The app sets `ASSAY_APP=1` (the wrapper then mounts
+  `$ASSAY_DIR`, default `~/Code/assay`, at `/opt/assay`), `ASSAY_ANALYSIS` (the open analysis) and `ASSAY_ROOT` (the
+  Settings folder, which holds `dictionaries/` and `trusted/`).
 - Colours follow the macOS light or dark setting live (Ayu Light / Ayu Dark), all in `src/core/theme.ts`.
 
 ## Keys
@@ -38,21 +47,33 @@ Every shortcut is in `src/core/keymap.ts`: `COMMANDS` (Cmd keys, caught in main 
 - `src/main`: Electron main; all file access (`files.ts`, `browse.ts`) and IPC (`ipc.ts`). The renderer never reads a
   path itself; `src/shared/ipc.ts` is the only contract between the two.
 - `src/renderer`: React UI. `terminal.ts` is the only file that imports `ghostty-web`.
-- The app talks to the mod through files: it writes `.assay/requests/<id>.json`, the mod answers in `.assay/replies/`,
-  and writes `.assay/runs.json` and `.assay/trust/<name>.json` for run status and the trust review.
+- `src/server`: the MCP server `assay`, one per Claude session (plugin `.mcp.json`). Claude's tools are
+  `mcp__plugin_assay_assay__<tool>` (Claude Code's name for a plugin's MCP tools): `sql`, `python`, `trusted`, `park`,
+  `close`, `focus`, `order`, `note`, `revise_note`, `new_note`, `link_note`. It owns the kernel
+  (`python/analysis_kernel.py serve`), started with the server and ended with it.
+- `src/hooks`: UserPromptSubmit (the rules on each typed prompt, the trusted calculations, the user's runs since the
+  last prompt), PreToolUse on Bash (no Python through Bash) and on Write/Edit/NotebookEdit (nothing into
+  `$ASSAY_ROOT/trusted` or `dictionaries`). `plugin/skills`: `assay:resume`, `assay:wrap-up`.
+- `python/`: `analysis_db`, `analysis_kernel`, `analysis_trust`, built into venv-assay by `claude-pkg venv-assay`.
+- The app talks to the server through files: it writes `.assay/requests/<id>.json` (`sql`, `python`, `interrupt`,
+  `restart`, `replay`, `trust-list`, `trust-check`, `trust-answer`), the server answers in `.assay/replies/`, and
+  writes `.assay/runs.json` and `.assay/trust/<name>.json` for run status and the trust review. For the prompt hook
+  only, it writes `.assay/user-runs.json` (the user's runs, emptied by the hook) and `.assay/session.json` (the
+  kernel's python). No tool of Claude's can start or answer a review: only the Trust tab's buttons do.
 
 ## The config repo
 
-The mod and the `claude` wrapper live in `~/Code/config` (`claude/analysis`, `claude/bin`). Its tests:
-`cd ~/Code/config/claude/analysis && /opt/homebrew/bin/claude plugin test .` (plain `claude` is the Podman wrapper and
-refuses it). The mod is mounted from that folder, so a change applies from the next session.
+The `claude` wrapper and `claude-pkg` live in `~/Code/config` (`claude/bin`). With `ASSAY_APP=1` the wrapper mounts this
+checkout read-only at `/opt/assay` and passes `ASSAY_ROOT` and `ASSAY_ANALYSIS` through; `claude-pkg venv-assay`
+builds venv-assay from `python/` here. The analysis mod (`claude/analysis`) is no longer loaded.
 
 ## Not yet tried with a real Claude session
 
-Built and tested with a stub Claude and simulated mod replies only:
+Built and tested with a stub Claude, simulated replies and the MCP SDK's client only (slice 5's Mac checklist, in
+`docs/slice-5.md`, covers them):
 
-1. `/an trust <name>` end to end: streamed checks, the "Trust?" question, the commit, and removing the `lib/` draft.
-2. The Python kernel in a real container session: start, runs, interrupt, restart, Replay; the Bash guard on Python.
+1. The plugin in the Podman container: the server, the hooks and the skills under the wrapper.
+2. The Trust tab's Check, Trust and Reject against a real proposal, the commit, and removing the `lib/` draft.
 3. A re-run or edited query from the app reaching the session, its latency, and Postgres re-runs.
 4. `new_note` from Claude, and Claude editing a note open in the reader.
 5. Cmd+W and Cmd+Q closing a window while the wrapper finishes its git import.
