@@ -24,12 +24,12 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
   }, [focusToken, analyses])
 
   const ranked = fuzzyRank(analyses ?? [], query, a => `${a.title} ${a.name}`)
-  const name = query.trim()
-  const cleaned = cleanTitle(name)
+  const cleaned = cleanTitle(query)
+  const title = cleaned.ok ? cleaned.title : ''
   const isTitle = cleaned.ok
   const canCreate = analyses !== undefined && ranked.length === 0 && isTitle
   // Shift+Enter creates the typed title even when fuzzy matches exist, unless an analysis already has it.
-  const canForceCreate = analyses !== undefined && isTitle && !analyses.some(a => a.title === name)
+  const canForceCreate = analyses !== undefined && isTitle && !analyses.some(a => a.title === title)
   const count = canCreate ? 1 : ranked.length
   const index = Math.max(0, Math.min(selected, count - 1))
 
@@ -46,7 +46,7 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
 
   function create() {
     setBusy(true)
-    window.app.analyses.create(name).then(handle, err => handle({ ok: false, message: String(err) }))
+    window.app.analyses.create(title).then(handle, err => handle({ ok: false, message: String(err) }))
   }
 
   function submit() {
@@ -58,8 +58,8 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
       window.app.analyses.open(target.path).then(handle, err => handle({ ok: false, message: String(err) }))
     } else if (canCreate) {
       create()
-    } else if (name !== '') {
-      setMessage(`No match. ${cleaned.ok ? '' : cleaned.message}`.trim())
+    } else if (!cleaned.ok && query.trim() !== '') {
+      setMessage(`No match. ${cleaned.message}`)
     }
   }
 
@@ -115,15 +115,15 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
         ))}
         {canCreate && (
           <li role="option" aria-selected className="row sel">
-            <span className="grow">Create new analysis "{name}"</span>
+            <span className="grow">Create new analysis "{title}"</span>
             <span className="dim">Enter</span>
           </li>
         )}
         {analyses !== undefined && count === 0 && (
-          <li className="empty">{name === '' ? 'No analyses yet. Type a title to create one.' : 'No match, and that is not a valid title.'}</li>
+          <li className="empty">{query.trim() === '' ? 'No analyses yet. Type a title to create one.' : 'No match, and that is not a valid title.'}</li>
         )}
       </ul>
-      {canForceCreate && <div className="hint">Shift+Enter creates "{name}" as a new analysis</div>}
+      {canForceCreate && <div className="hint">Shift+Enter creates "{title}" as a new analysis</div>}
       {message && <div className="status warn">{message}</div>}
       <div className="hint">Up/Down or Ctrl-N/Ctrl-P move  Enter opens</div>
     </div>
