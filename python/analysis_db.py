@@ -11,6 +11,7 @@ It lives in the Assay repo (``python/``); venv-assay installs it editable from t
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -43,7 +44,11 @@ def read_target(text: str) -> dict[str, str]:
         raw = found.group(1)
         double = re.match(r'"((?:[^"\\]|\\.)*)"', raw)
         if double:
-            return re.sub(r"\\(.)", r"\1", double.group(1))
+            # JSON string rules, as the server's scalar() reads them: "\n" is a newline.
+            try:
+                return str(json.loads(double.group(0)))
+            except ValueError:
+                return double.group(1)
         single = re.match(r"'((?:[^']|'')*)'", raw)
         if single:
             return single.group(1).replace("''", "'")
