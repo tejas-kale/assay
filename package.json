@@ -13,7 +13,8 @@
     "install-app": "npm run package && rm -rf /Applications/Assay.app && ditto dist/mac-arm64/Assay.app /Applications/Assay.app",
     "build:server": "node scripts/build-server.mjs",
     "migrate:root": "node scripts/migrate-root.ts",
-    "migrate:notes": "node scripts/migrate-notes.ts"
+    "migrate:notes": "node scripts/migrate-notes.ts",
+    "import:denote": "node scripts/import-denote.ts"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

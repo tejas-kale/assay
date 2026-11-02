@@ -62,6 +62,17 @@ test('segments split out links and qualified citations, not bare ones or code', 
   ])
 })
 
+test('a link may carry a label after a bar, which the reader shows instead of the title', () => {
+  assert.deepEqual(noteSegments('Drops columns from [[20261006T090118|vw_panel]] and [[20261006T090131| ]].'), [
+    { type: 'text', text: 'Drops columns from ' },
+    { type: 'link', id: '20261006T090118', label: 'vw_panel' },
+    { type: 'text', text: ' and ' },
+    { type: 'link', id: '20261006T090131' },
+    { type: 'text', text: '.' },
+  ])
+  assert.deepEqual(parseRootNote('20261102T181500-x.md', '# X\n\n[[20261006T090118|vw_panel]]\n', { mtimeMs: 0, size: 0 })?.links, ['20261006T090118'])
+})
+
 test('parseRootNote reads ID, title, links and citations once each', () => {
   const text = '# Churn\n\n[[20261001T090000]] [a q 1] [a q 001] [b q 1] [[20261001T090000]]\n'
   assert.deepEqual(parseRootNote('20261102T181500-churn.md', text, { mtimeMs: 5, size: 9 }), {

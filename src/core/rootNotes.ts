@@ -1,5 +1,5 @@
 // Root notes: `<root>/notes/<ID>-<slug>.md`, one kind of note shared by every analysis. The ID is a denote-style
-// local timestamp (`20261102T181500`); notes link each other as `[[ID]]` and cite runs as `[<analysis-slug> q N]`.
+// local timestamp (`20261102T181500`); notes link each other as `[[ID]]` (or `[[ID|label]]`) and cite runs as `[<analysis-slug> q N]`.
 // Used by the server, the app and the migration.
 import { StaleEdit } from './errors.ts'
 
@@ -22,7 +22,7 @@ export type RootNote = {
 }
 
 export type Citation = { analysis: string; number: number }
-export type Segment = { type: 'text'; text: string } | { type: 'link'; id: string } | ({ type: 'citation' } & Citation)
+export type Segment = { type: 'text'; text: string } | { type: 'link'; id: string; label?: string } | ({ type: 'citation' } & Citation)
 export type Block =
   | { type: 'heading'; level: number; segments: Segment[] }
   | { type: 'paragraph'; segments: Segment[] }
@@ -31,7 +31,7 @@ export type Block =
 
 const ID = /^\d{8}T\d{6}$/
 const FILE_NAME = /^(\d{8}T\d{6})-([a-z0-9][a-z0-9-]*)\.md$/
-const INLINE = /\[\[(\d{8}T\d{6})\]\]|\[([a-z0-9][a-z0-9-]*) q (\d+)\]/g
+const INLINE = /\[\[(\d{8}T\d{6})(?:\|([^\]\n]*))?\]\]|\[([a-z0-9][a-z0-9-]*) q (\d+)\]/g
 const BARE = /\[q (\d+)\]/g
 const FENCE = /^\s*(```|~~~)/
 
@@ -151,8 +151,9 @@ export function noteSegments(text: string): Segment[] {
     let from = 0
     for (const match of line.matchAll(INLINE)) {
       if (match.index > from) push({ type: 'text', text: line.slice(from, match.index) })
-      if (match[1] !== undefined) push({ type: 'link', id: match[1] })
-      else push({ type: 'citation', analysis: match[2] ?? '', number: Number(match[3]) })
+      const label = match[2]?.trim()
+      if (match[1] !== undefined) push({ type: 'link', id: match[1], ...(label ? { label } : {}) })
+      else push({ type: 'citation', analysis: match[3] ?? '', number: Number(match[4]) })
       from = match.index + match[0].length
     }
     if (from < line.length || eol) push({ type: 'text', text: line.slice(from) + eol })

@@ -299,7 +299,7 @@ function NoteReader(props: {
         // An unresolved link stays as written.
         return (
           <span key={i} className={title === undefined ? cls : `${cls} wikilink`}>
-            {title ?? `[[${s.id}]]`}
+            {title === undefined ? `[[${s.id}${s.label ? `|${s.label}` : ''}]]` : (s.label ?? title)}
           </span>
         )
       }
