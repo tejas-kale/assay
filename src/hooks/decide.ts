@@ -4,7 +4,7 @@ import { access, readFile, rename, rm } from 'node:fs/promises'
 import { basename, dirname, join, relative } from 'node:path'
 
 import { bashRunsPython, BASH_PYTHON_DENY } from '../core/bashGuard.ts'
-import { parseAnalysisFile } from '../core/analyses.ts'
+import { openAnalysis } from '../core/analyses.ts'
 import { isGuarded, normalPath, otherAnalysis, TRUST_TAB } from '../core/calculations.ts'
 import type { CalculationList } from '../core/calculations.ts'
 import { promptContext, runNotice, VENV_ASSAY } from '../core/rules.ts'
@@ -36,10 +36,11 @@ export function bashDecision(input: Record<string, unknown>, env: Env) {
   return bashRunsPython(field(toolInput(input), 'command')) ? deny(BASH_PYTHON_DENY) : undefined
 }
 
-/** The open analysis: its title (the folder's name when analysis.yaml has none) and its folder from the root. */
-async function openAnalysis(analysis: string, home: string): Promise<OpenAnalysis> {
-  const text = await readFile(join(analysis, 'analysis.yaml'), 'utf8').catch(() => '')
-  return { title: parseAnalysisFile(text).title ?? (analysis.split('/').at(-1) || analysis), folder: relative(home, analysis) }
+/** The open analysis for the rules and reasons: its title (the folder's name when analysis.yaml has none) and its folder from the root. */
+async function openRef(analysis: string, home: string): Promise<OpenAnalysis> {
+  const fallback = analysis.replace(/\/+$/, '').split('/').at(-1) ?? analysis
+  const found = await openAnalysis({ readFile: path => readFile(path, 'utf8') }, analysis).catch(() => undefined)
+  return { title: found?.title ?? fallback, folder: relative(home, analysis) }
 }
 
 /** PreToolUse on Write, Edit and NotebookEdit: never into the shared dictionaries/ or trusted/, nor into another analysis. */
@@ -53,7 +54,7 @@ export async function writeDecision(input: Record<string, unknown>, env: Env) {
   const root = home.replace(/\/+$/, '')
   const other = otherAnalysis(realPath(path, base), realPath(root, '/'), realPath(env.ASSAY_ANALYSIS, '/'), '/')
   if (other) {
-    const open = await openAnalysis(env.ASSAY_ANALYSIS, root)
+    const open = await openRef(env.ASSAY_ANALYSIS, root)
     return deny(`${other} is not the open analysis. The open analysis is "${open.title}" (${open.folder}/): write only there.`)
   }
   if (!isGuarded(path, root, base)) return undefined
@@ -112,7 +113,7 @@ export async function promptDecision(env: Env, proc: Proc) {
   const home = env.ASSAY_ROOT
   if (!analysis || !home) return undefined
   const [runs, python, list] = await Promise.all([takeUserRuns(analysis), kernelPython(analysis), calculations(proc, env, analysis, home)])
-  const open = await openAnalysis(analysis, home)
+  const open = await openRef(analysis, home)
   const notice = runNotice(runs, open.folder)
   // The kernel's python, else venv-assay's when it is built (as the mod's rules named it).
   const venvPython = `${env.ASSAY_VENV || VENV_ASSAY}/bin/python`

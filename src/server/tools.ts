@@ -11,7 +11,8 @@ import { queryLabel } from '../core/pythonRuns.ts'
 import type { Engine } from '../core/runs.ts'
 import { oneLine } from '../core/text.ts'
 import { closeThread, focusThread, orderThreads, parkThread } from '../core/threads.ts'
-import { Assay, MARKER, NOTE_FILES, NOTES } from './assay.ts'
+import { ANALYSIS_FILE } from '../core/analyses.ts'
+import { Assay, NOTE_FILES, NOTES } from './assay.ts'
 
 export type ToolSpec = { name: string; description: string; inputSchema: { type: 'object'; properties: Record<string, object>; required: readonly string[] } }
 
@@ -182,7 +183,7 @@ const integer = (args: Args, key: string) => (typeof args[key] === 'number' && N
 
 /** One tool call: its reply text. */
 export async function callTool(assay: Assay, name: string, args: Args): Promise<string> {
-  if (!assay.hasMarker()) return `${assay.shown('')} has no ${MARKER}. Run "npm run migrate:root" in the Assay repo, then open the analysis again.`
+  if (!assay.hasMarker()) return `${assay.shown('')} has no ${ANALYSIS_FILE}. Run "npm run migrate:root" in the Assay repo, then open the analysis again.`
   switch (name) {
     case 'sql': {
       const sql = field(args, 'sql')

@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 
+import { ANALYSIS_FILE } from '../core/analyses.ts'
 import { dictionaryText, newSeen, parseTrustedHeader, TRUSTED } from '../core/calculations.ts'
 import type { CalculationList, DictionaryAnswer, Seen } from '../core/calculations.ts'
 import { checkArgs, runHeader, signature } from '../core/calculations.ts'
@@ -23,7 +24,6 @@ import { formatThreads, parseThreads } from '../core/threads.ts'
 import type { Threads } from '../core/threads.ts'
 import type { Child, Proc } from './proc.ts'
 
-export const MARKER = 'analysis.yaml'
 export const NOTES = 'notes.md'
 export const THREADS = 'threads.md'
 export const QUERIES = 'queries'
@@ -131,7 +131,7 @@ export class Assay {
 
   /** Whether the folder is an analysis (it holds analysis.yaml). Synchronous, so concurrent calls keep their order. */
   hasMarker() {
-    return existsSync(this.at(MARKER))
+    return existsSync(this.at(ANALYSIS_FILE))
   }
 
   get python() {
@@ -353,7 +353,7 @@ export class Assay {
       ...(onClaim ? { onClaim } : {}),
       hasTables: engine === 'databricks',
       run: async sqlFile => {
-        const command = Assay.queryCommand(engine, readTarget(await this.readText(MARKER)), sqlFile)
+        const command = Assay.queryCommand(engine, readTarget(await this.readText(ANALYSIS_FILE)), sqlFile)
         const ran = await this.config.proc.run(command.argv, { cwd: this.config.analysis, timeoutMs: QUERY_TIMEOUT_MS })
         return ran.isStdoutTruncated ? { error: 'The result is over 4 MiB. Aggregate it or add a LIMIT.' } : command.read(ran)
       },
