@@ -21,7 +21,7 @@
 // a terminal keeps the theme it was created with and everything else still works.
 import * as ghostty from 'ghostty-web'
 
-import { inputOverride } from '../core/terminalKeys.ts'
+import { inputOverride, leavesTerminal } from '../core/terminalKeys.ts'
 import { THEMES, cellRecolor } from '../core/theme.ts'
 import type { CellColors, ThemeMode } from '../core/theme.ts'
 import { currentMode, onModeChange } from './appearance.ts'
@@ -117,6 +117,13 @@ export async function createTerminal(el: HTMLElement): Promise<TerminalHandle> {
     term.loadAddon(fitAddon)
   }
 
+  // The library listens on `el` and its textarea is the target, so stopping here in the capture phase
+  // keeps the key from the library without preventDefault, and the app menu still gets it.
+  const releaseKey = (event: KeyboardEvent) => {
+    if (leavesTerminal(event)) event.stopPropagation()
+  }
+  el.addEventListener('keydown', releaseKey, true)
+
   // Input goes to these, whether it comes from the library or from a key rewritten here.
   const dataListeners = new Set<(data: string) => void>()
   // The library treats `true` as "handled": it skips its own encoding and calls preventDefault.
@@ -194,6 +201,7 @@ export async function createTerminal(el: HTMLElement): Promise<TerminalHandle> {
       clearTimeout(timer)
       stopFollowingTheme()
       observer.disconnect()
+      el.removeEventListener('keydown', releaseKey, true)
       resizeListeners.clear()
       dataListeners.clear()
       term.dispose()
