@@ -100,3 +100,39 @@ test('it refuses while slice 6 is not applied', async () => {
   expect(failed?.stderr).toContain('migrate:root')
   expect(await readdir(join(root, 'analyses/alpha'))).toContain('notes.md')
 })
+
+// A crash at any write leaves a partial state; a rerun must reach the uninterrupted result.
+test('a rerun after a crash at any point ends where an uninterrupted run ends', async () => {
+  const { applyPlan, nodeApplyFs, planNotes, nodeFsPort } = await import('./migrateNotes.ts')
+  const whole = await scratchRoot()
+  let steps = 0
+  await applyPlan(whole, await planNotes(nodeFsPort, whole), {
+    ...nodeApplyFs,
+    mkdir: path => (steps++, nodeApplyFs.mkdir(path)),
+    createFile: (path, text) => (steps++, nodeApplyFs.createFile(path, text)),
+    writeFile: (path, text) => (steps++, nodeApplyFs.writeFile(path, text)),
+    remove: path => (steps++, nodeApplyFs.remove(path)),
+  })
+  const expected = await tree(whole)
+  expect(steps > 10).toBe(true)
+
+  for (let crashAt = 0; crashAt < steps; crashAt++) {
+    const root = await scratchRoot()
+    let count = 0
+    const tick = () => {
+      if (count++ === crashAt) throw new Error('crash')
+    }
+    const crashing = {
+      ...nodeApplyFs,
+      mkdir: (path: string) => (tick(), nodeApplyFs.mkdir(path)),
+      createFile: (path: string, text: string) => (tick(), nodeApplyFs.createFile(path, text)),
+      writeFile: (path: string, text: string) => (tick(), nodeApplyFs.writeFile(path, text)),
+      remove: (path: string) => (tick(), nodeApplyFs.remove(path)),
+    }
+    await applyPlan(root, await planNotes(nodeFsPort, root), crashing).then(() => undefined, () => undefined)
+    await applyPlan(root, await planNotes(nodeFsPort, root))
+    expect(await tree(root)).toEqual(expected)
+    // And a further rerun finds nothing to do.
+    expect((await planNotes(nodeFsPort, root)).analyses).toEqual([])
+  }
+})

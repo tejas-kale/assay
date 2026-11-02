@@ -8,24 +8,21 @@ import { citationLabels } from '../core/citationLabels.ts'
 import { queryLabel } from '../core/pythonRuns.ts'
 import {
   addFound,
-  addWritten,
   fileOf,
-  freeId,
   isNoteId,
-  noteFileName,
   noteIds,
+  noteCitations,
   noteSegments,
-  noteText,
   noteTitle,
-  NOTES_DIR,
   oneTitle,
+  NOTES_DIR,
   parseNoteLists,
   qualifyCitations,
   removeWritten,
   retitle,
   reviseBody,
+  writeRootNote,
 } from '../core/rootNotes.ts'
-import type { Citation } from '../core/rootNotes.ts'
 import type { Assay } from './assay.ts'
 
 type Args = Record<string, unknown>
@@ -48,7 +45,7 @@ const editYaml = (assay: Assay, change: (yaml: string) => string) =>
 /** The warnings for a note's text: runs that do not exist and links to no note. Neither refuses the write. */
 async function warnings(assay: Assay, own: string, noteBody: string): Promise<string[]> {
   const segments = noteSegments(noteBody)
-  const cited = segments.filter((segment): segment is { type: 'citation' } & Citation => segment.type === 'citation')
+  const cited = noteCitations(noteBody)
   const labels = await citationLabels({ fs: { readdir: path => readdir(path), readFile: path => readFile(path, 'utf8') }, root: assay.config.root }, cited)
   const unknown = [...new Set(cited.filter(c => labels.get(`${c.analysis} q ${c.number}`) === 'missing').map(c => `${c.analysis} q ${queryLabel(c.number)}`))]
   const known = new Set(noteIds(await names(assay)))
@@ -61,21 +58,21 @@ async function warnings(assay: Assay, own: string, noteBody: string): Promise<st
 
 /** `note { title, text }`: a new root note, qualified, listed under `written`. */
 export async function writeNote(assay: Assay, args: Args): Promise<string> {
-  const title = oneTitle(text(args, 'title') ?? '')
-  if (!title) return 'Give the note a title.'
-  const body = qualifyCitations(text(args, 'text') ?? '', slugOf(assay))
-  const content = noteText(title, body)
-  await mkdir(dir(assay), { recursive: true })
-  // Claimed one at a time, listing the folder inside the queue, so two notes in one second get two IDs.
-  const { id, file } = await assay.serially(async () => {
-    const taken = new Set(noteIds(await names(assay)))
-    const id = freeId(new Date(), taken)
-    const file = noteFileName(id, title)
-    await writeFile(join(dir(assay), file), content, { encoding: 'utf8', flag: 'wx' })
-    return { id, file }
-  })
-  await editYaml(assay, yaml => addWritten(yaml, id))
-  return [`Wrote ${shown(file)}. Link it with [[${id}]].`, ...(await warnings(assay, id, content))].join('\n')
+  // One note at a time, folder listing included, so two notes in one second (different titles, so different file names) get two IDs.
+  const written = await assay.serially(() =>
+    writeRootNote(
+      {
+        readdir: path => readdir(path),
+        mkdir: async path => void (await mkdir(path, { recursive: true })),
+        createFile: (path, content) => writeFile(path, content, { encoding: 'utf8', flag: 'wx' }),
+        editYaml: async change => assay.write(ANALYSIS_FILE, change(await assay.readText(ANALYSIS_FILE))),
+      },
+      { dir: dir(assay), slug: slugOf(assay), title: text(args, 'title') ?? '', body: text(args, 'text') ?? '' },
+    ),
+  )
+  if (!written.ok) return written.reason === 'title' ? 'Give the note a title.' : 'Could not find a free note ID.'
+  if (written.listed !== true) throw new Error(written.listed)
+  return [`Wrote ${shown(written.file)}. Link it with [[${written.id}]].`, ...(await warnings(assay, written.id, written.text))].join('\n')
 }
 
 /** `revise_note`: an exact replacement in the body, a new title, or delete (only a note this analysis wrote). */

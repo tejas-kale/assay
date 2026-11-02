@@ -122,7 +122,7 @@ export function parseRootNote(name: string, text: string, stat: { mtimeMs: numbe
 const sameCitation = (a: Citation, b: Citation) => a.analysis === b.analysis && a.number === b.number
 
 /** The lines with their endings, each marked `fenced` when it is a fence line or inside fenced code. */
-function lines(text: string): { line: string; eol: string; fenced: boolean }[] {
+export function noteLines(text: string): { line: string; eol: string; fenced: boolean }[] {
   let fenced = false
   const all = text.split('\n')
   return all.map((line, i) => {
@@ -143,7 +143,7 @@ export function noteSegments(text: string): Segment[] {
     if (segment.type === 'text' && last?.type === 'text') last.text += segment.text
     else out.push(segment)
   }
-  for (const { line, eol, fenced } of lines(text)) {
+  for (const { line, eol, fenced } of noteLines(text)) {
     if (fenced) {
       push({ type: 'text', text: line + eol })
       continue
@@ -160,9 +160,12 @@ export function noteSegments(text: string): Segment[] {
   return out.filter(s => s.type !== 'text' || s.text !== '')
 }
 
+/** The citations of `text` as segments, in order, outside fenced code. */
+export const noteCitations = (text: string) => noteSegments(text).filter((segment): segment is { type: 'citation' } & Citation => segment.type === 'citation')
+
 /** Every bare `[q N]` outside fenced code written as `[<slug> q N]`. */
 export function qualifyCitations(text: string, slug: string): string {
-  return lines(text)
+  return noteLines(text)
     .map(({ line, eol, fenced }) => (fenced ? line : line.replace(BARE, (_, n: string) => `[${slug} q ${Number(n)}]`)) + eol)
     .join('')
 }
@@ -306,4 +309,53 @@ export const addFound = (yaml: string, ids: readonly string[]) => {
 export const removeWritten = (yaml: string, id: string) => {
   const lists = parseNoteLists(yaml)
   return setNoteLists(yaml, { written: lists.written.filter(each => each !== id), found: lists.found })
+}
+
+/** What writing a note needs from the outside; core never imports node fs. */
+export type NoteWriterIo = {
+  /** Entry names of the notes folder; rejects when it does not exist. */
+  readdir(path: string): Promise<string[]>
+  mkdir(path: string): Promise<void>
+  /** Creates a file and never overwrites: rejects with code `EEXIST` when it is there. */
+  createFile(path: string, text: string): Promise<void>
+  /** Changes analysis.yaml; rejects when it cannot. */
+  editYaml(change: (yaml: string) => string): Promise<void>
+}
+export type WriteNoteResult =
+  | { ok: false; reason: 'title' | 'size' | 'id' }
+  /** `listed` is true, or why analysis.yaml could not take the ID (the file is written either way). */
+  | { ok: true; id: string; file: string; text: string; listed: true | string }
+
+const isExists = (err: unknown) => err instanceof Error && 'code' in err && err.code === 'EEXIST'
+
+/**
+ * Writes a new note into `dir`: its ID is `now` (a second later while taken), bare citations are qualified with
+ * `slug`, and the ID goes into `notes.written` of analysis.yaml. Never overwrites: an ID another writer takes first
+ * is looked at again. `maxLength` refuses a longer text.
+ */
+export async function writeRootNote(
+  io: NoteWriterIo,
+  options: { dir: string; slug: string; title: string; body: string; now?: Date; maxLength?: number },
+): Promise<WriteNoteResult> {
+  const title = oneTitle(options.title)
+  if (title === '') return { ok: false, reason: 'title' }
+  const text = noteText(title, qualifyCitations(options.body, options.slug))
+  if (options.maxLength !== undefined && text.length > options.maxLength) return { ok: false, reason: 'size' }
+  await io.mkdir(options.dir)
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const id = freeId(options.now ?? new Date(), noteIds(await io.readdir(options.dir).catch(() => [] as string[])))
+    const file = noteFileName(id, title)
+    try {
+      await io.createFile(`${options.dir}/${file}`, text)
+    } catch (err) {
+      if (isExists(err)) continue
+      throw err
+    }
+    const listed = await io.editYaml(yaml => addWritten(yaml, id)).then(
+      () => true as const,
+      (err: unknown) => (err instanceof Error ? err.message : String(err)),
+    )
+    return { ok: true, id, file, text, listed }
+  }
+  return { ok: false, reason: 'id' }
 }

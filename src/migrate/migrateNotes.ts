@@ -5,7 +5,7 @@
 import { mkdir, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 
 import { ANALYSIS_FILE, listAnalyses, type FsPort } from '../core/analyses.ts'
-import { addWritten, freeId, noteFileName, noteIds, noteText, NOTES_DIR } from '../core/rootNotes.ts'
+import { addWritten, freeId, idTime, noteBody, noteFileName, noteIds, noteLines, noteText, noteTitle, NOTES_DIR, parseNoteLists } from '../core/rootNotes.ts'
 
 const OLD_MARKER = '.analysis'
 const OLD_PARENTS = ['analyses', 'investigations', 'explorations']
@@ -51,7 +51,6 @@ export const nodeFsPort: FsPort = {
 // ---- old formats ----
 
 const FILE_NAME = /^(\d{3,})-([a-z0-9][a-z0-9-]*)\.md$/
-const FENCE = /^\s*(```|~~~)/
 const NOTE_TAG = /^(.*?)\s*\[(?:(trusted|queried|computed|unverified)(?: q (\d+))?|q (\d+))\]$/
 const FILE_NOTE = /^\[(.*)\]\(<(.+)>\)$/
 
@@ -77,22 +76,10 @@ export function parseFactLine(line: string): { title: string; body: (slug: strin
 }
 
 /** `fn` applied to every line of `text` outside fenced code. */
-function outsideFences(text: string, fn: (line: string) => string): string {
-  let fenced = false
-  return text
-    .split('\n')
-    .map(line => {
-      if (FENCE.test(line)) {
-        fenced = !fenced
-        return line
-      }
-      return fenced ? line : fn(line)
-    })
-    .join('\n')
-}
-
-const titleLine = (text: string) => /^# +(\S.*)$/.exec(text.split('\n', 1)[0] ?? '')
-const bodyOf = (text: string) => (titleLine(text) ? text.slice(text.indexOf('\n') + 1).replace(/^\n/, '') : text)
+const outsideFences = (text: string, fn: (line: string) => string) =>
+  noteLines(text)
+    .map(({ line, eol, fenced }) => (fenced ? line : fn(line)) + eol)
+    .join('')
 
 type OldFile = { name: string; stem: string; slug: string; number: number; title: string; body: string; mtimeMs: number }
 
@@ -126,7 +113,17 @@ export async function planNotes(port: FsPort, root: string): Promise<Plan> {
     }
   }
 
-  const taken = new Set(noteIds(await port.readdir(join(root, NOTES_DIR)).catch(() => [] as string[])))
+  // Notes already in the root. One whose file name is the one a note would get is that note, written by an interrupted
+  // run: it keeps its ID, so a rerun plans what the first run planned. Any other note's ID is simply taken.
+  const existing = new Set(await port.readdir(join(root, NOTES_DIR)).catch(() => [] as string[]))
+  const existingIds = new Set(noteIds([...existing]))
+  const claimed = new Set<string>()
+  const claim = (date: Date, title: string) => {
+    let id = freeId(date, claimed)
+    while (existingIds.has(id) && !existing.has(noteFileName(id, title))) id = freeId(new Date(idTime(id).getTime() + 1000), claimed)
+    claimed.add(id)
+    return id
+  }
   const plan: Plan = { analyses: [], unresolved: [] }
   const analyses = (await listAnalyses(port, root)).sort((a, b) => a.name.localeCompare(b.name))
 
@@ -146,7 +143,7 @@ export async function planNotes(port: FsPort, root: string): Promise<Plan> {
         continue
       }
       const text = await port.readFile(path)
-      files.push({ name, stem: name.slice(0, -3), slug: match[2] ?? '', number: Number(match[1]), title: titleLine(text)?.[1]?.trim() || match[2] || '', body: bodyOf(text), mtimeMs: info.mtimeMs })
+      files.push({ name, stem: name.slice(0, -3), slug: match[2] ?? '', number: Number(match[1]), title: noteTitle(text) ?? match[2] ?? '', body: noteBody(text), mtimeMs: info.mtimeMs })
     }
     files.sort((a, b) => a.number - b.number || a.name.localeCompare(b.name))
     const facts = (factsText ?? '').split('\n').filter(line => line.trim() !== '')
@@ -155,8 +152,7 @@ export async function planNotes(port: FsPort, root: string): Promise<Plan> {
     const notes: PlannedNote[] = []
     const ids = new Map<OldFile, string>()
     for (const file of files) {
-      const id = freeId(new Date(file.mtimeMs), taken)
-      taken.add(id)
+      const id = claim(new Date(file.mtimeMs), file.title)
       ids.set(file, id)
     }
     // `[[slug]]` and `[[NNN-slug]]` name a file of this analysis; the first file wins a repeated slug.
@@ -175,8 +171,7 @@ export async function planNotes(port: FsPort, root: string): Promise<Plan> {
       const mtime = (await port.stat(join(analysis.path, NOTES_MD)))?.mtimeMs ?? Date.now()
       facts.forEach((line, i) => {
         const { title, body } = parseFactLine(line)
-        const id = freeId(new Date(mtime - (facts.length - i) * 1000), taken)
-        taken.add(id)
+        const id = claim(new Date(mtime - (facts.length - i) * 1000), title)
         notes.push({ id, file: noteFileName(id, title), text: noteText(title, body(analysis.name)), from: `${NOTES_MD} line ${i + 1}` })
       })
     }
@@ -189,17 +184,45 @@ export async function planNotes(port: FsPort, root: string): Promise<Plan> {
   return plan
 }
 
-/** Writes the plan. Per analysis: the root notes first, then analysis.yaml, and only then the old files go. */
-export async function applyPlan(root: string, plan: Plan): Promise<void> {
-  await mkdir(join(root, NOTES_DIR), { recursive: true })
+/** The writes `applyPlan` makes, so a test can stop it part way. */
+export type ApplyFs = {
+  mkdir(path: string): Promise<void>
+  /** Creates the file and never overwrites: rejects with code `EEXIST` when it is there. */
+  createFile(path: string, text: string): Promise<void>
+  readFile(path: string): Promise<string>
+  setTime(path: string, ms: number): Promise<void>
+  writeFile(path: string, text: string): Promise<void>
+  remove(path: string): Promise<void>
+}
+export const nodeApplyFs: ApplyFs = {
+  mkdir: async path => void (await mkdir(path, { recursive: true })),
+  createFile: (path, text) => writeFile(path, text, { flag: 'wx' }),
+  readFile: path => readFile(path, 'utf8'),
+  setTime: (path, ms) => utimes(path, new Date(ms), new Date(ms)),
+  writeFile: (path, text) => writeFile(path, text),
+  remove: path => rm(path, { recursive: true, force: true }),
+}
+
+/**
+ * Writes the plan. Per analysis: the root notes first, then analysis.yaml, and only then the old files go. A note
+ * file that is already there is not written again when an interrupted run left it (same text, or its ID is already
+ * listed in analysis.yaml); any other file in the way stops the migration, never overwritten.
+ */
+export async function applyPlan(root: string, plan: Plan, fs: ApplyFs = nodeApplyFs): Promise<void> {
+  await fs.mkdir(join(root, NOTES_DIR))
   for (const analysis of plan.analyses) {
+    const listed = parseNoteLists(await fs.readFile(join(analysis.path, ANALYSIS_FILE))).written
     for (const note of analysis.notes) {
       const path = join(root, NOTES_DIR, note.file)
-      await writeFile(path, note.text, { flag: 'wx' })
-      if (note.mtimeMs !== undefined) await utimes(path, new Date(note.mtimeMs), new Date(note.mtimeMs))
+      await fs.createFile(path, note.text).catch(async (err: unknown) => {
+        if (!(err instanceof Error && 'code' in err && err.code === 'EEXIST')) throw err
+        if (listed.includes(note.id) || (await fs.readFile(path)) === note.text) return
+        throw new Error(`${NOTES_DIR}/${note.file} exists with other text: not overwritten.`)
+      })
+      if (note.mtimeMs !== undefined) await fs.setTime(path, note.mtimeMs)
     }
-    await writeFile(join(analysis.path, ANALYSIS_FILE), analysis.yaml)
-    for (const path of analysis.remove) await rm(join(analysis.path, path), { recursive: true, force: true })
+    await fs.writeFile(join(analysis.path, ANALYSIS_FILE), analysis.yaml)
+    for (const path of analysis.remove) await fs.remove(join(analysis.path, path))
   }
 }
 

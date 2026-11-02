@@ -10,10 +10,9 @@ import type { AnalysisRef } from '../core/analyses.ts'
 import { citationLabels } from '../core/citationLabels.ts'
 import type { CitationLabel } from '../core/citationLabels.ts'
 import { StaleEdit } from '../core/errors.ts'
-import { addWritten, freeId, noteFileName, noteIds, noteSegments, noteText, oneTitle, parseNoteFileName, qualifyCitations } from '../core/rootNotes.ts'
-import type { Citation } from '../core/rootNotes.ts'
+import { noteCitations, parseNoteFileName, writeRootNote } from '../core/rootNotes.ts'
 import type { EditResult, NoteCreateResult, NoteReadResult, RunView } from '../shared/ipc.ts'
-import { editFile, notesDir, noteNames, readRun } from './files.ts'
+import { editFile, notesDir, readRun } from './files.ts'
 
 const MAX_NOTE_BYTES = 2 * 1024 * 1024
 const ANALYSES = 'analyses'
@@ -64,7 +63,7 @@ export async function readRootNote(root: string, name: string): Promise<NoteRead
     const path = join(notesDir(root), name)
     if ((await stat(path)).size > MAX_NOTE_BYTES) return { ok: false, message: 'The note is too large to show' }
     const text = await readFile(path, 'utf8')
-    const cited = noteSegments(text).filter((segment): segment is { type: 'citation' } & Citation => segment.type === 'citation')
+    const cited = noteCitations(text)
     const labels: Record<string, CitationLabel> = Object.fromEntries(await citationLabels(labelDeps(root), cited))
     return { ok: true, text, labels }
   } catch (err) {
@@ -77,27 +76,23 @@ export async function readRootNote(root: string, name: string): Promise<NoteRead
  * qualified with the analysis's slug, and the ID goes into `notes.written`. The file is never overwritten.
  */
 export async function addRootNote(root: string, analysis: AnalysisRef, title: string, body: string, now = new Date()): Promise<NoteCreateResult> {
-  const clean = oneTitle(title)
-  if (clean === '') return { ok: false, message: 'A note needs a title' }
-  const text = noteText(clean, qualifyCitations(body, analysis.name))
-  if (text.length > MAX_NOTE_BYTES) return { ok: false, message: 'The note is too large to save' }
   try {
-    await mkdir(notesDir(root), { recursive: true })
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const id = freeId(now, noteIds(await noteNames(root)))
-      const name = noteFileName(id, clean)
-      try {
-        await writeFile(join(notesDir(root), name), text, { encoding: 'utf8', flag: 'wx' })
-      } catch (err) {
-        // Another writer took the ID: look again.
-        if (isCode(err, 'EEXIST')) continue
-        throw err
-      }
-      const listed = await editFile(analysis.path, ANALYSIS_FILE, yaml => addWritten(yaml, id))
-      if (!listed.ok) return { ok: false, message: `Wrote notes/${name}, but could not list it in analysis.yaml: ${listed.message}` }
-      return { ok: true, name }
-    }
-    return { ok: false, message: 'Could not find a free note ID' }
+    let failure: string | undefined
+    const written = await writeRootNote(
+      {
+        readdir: path => readdir(path),
+        mkdir: async path => void (await mkdir(path, { recursive: true })),
+        createFile: (path, text) => writeFile(path, text, { encoding: 'utf8', flag: 'wx' }),
+        editYaml: async change => {
+          const listed = await editFile(analysis.path, ANALYSIS_FILE, change)
+          if (!listed.ok) throw new Error(listed.message)
+        },
+      },
+      { dir: notesDir(root), slug: analysis.name, title, body, now, maxLength: MAX_NOTE_BYTES },
+    )
+    if (!written.ok) return { ok: false, message: { title: 'A note needs a title', size: 'The note is too large to save', id: 'Could not find a free note ID' }[written.reason] }
+    if (written.listed !== true) failure = `Wrote notes/${written.file}, but could not list it in analysis.yaml: ${written.listed}`
+    return failure ? { ok: false, message: failure } : { ok: true, name: written.file }
   } catch (err) {
     return { ok: false, message: `Could not create: ${messageOf(err)}` }
   }
