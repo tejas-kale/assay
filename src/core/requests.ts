@@ -19,7 +19,47 @@ export function sqlRequest({ id, sql, engine, from, slug }: SqlRequest): string 
   return JSON.stringify({ id, kind: 'sql', sql, engine, ...(from !== undefined && { from }), ...(slug !== undefined && { slug }) })
 }
 
-export type Reply = { id: string; number: number } | { id: string; error: string }
+export type PythonRequest = { id: string; code: string; from?: number; slug?: string }
+
+/** The request file's text for a Python run; `code` has no header lines (the mod adds them). */
+export function pythonRequest({ id, code, from, slug }: PythonRequest): string {
+  if (code.trim() === '') throw new Error('The code is empty')
+  return JSON.stringify({ id, kind: 'python', code, ...(from !== undefined && { from }), ...(slug !== undefined && { slug }) })
+}
+
+export const interruptRequest = (id: string) => JSON.stringify({ id, kind: 'interrupt' })
+export const restartRequest = (id: string) => JSON.stringify({ id, kind: 'restart' })
+
+export function replayRequest(id: string, runs: readonly number[]): string {
+  if (runs.length === 0) throw new Error('No runs to replay')
+  return JSON.stringify({ id, kind: 'replay', runs })
+}
+
+/** What the renderer asks main to write: one of the request kinds, without its id. */
+export type RunRequest =
+  | ({ kind: 'sql' } & Omit<SqlRequest, 'id'>)
+  | ({ kind: 'python' } & Omit<PythonRequest, 'id'>)
+  | { kind: 'interrupt' }
+  | { kind: 'restart' }
+  | { kind: 'replay'; runs: number[] }
+
+/** The request file's text for any kind. */
+export function requestText(id: string, request: RunRequest): string {
+  switch (request.kind) {
+    case 'sql':
+      return sqlRequest({ id, sql: request.sql, engine: request.engine, ...(request.from !== undefined && { from: request.from }), ...(request.slug !== undefined && { slug: request.slug }) })
+    case 'python':
+      return pythonRequest({ id, code: request.code, ...(request.from !== undefined && { from: request.from }), ...(request.slug !== undefined && { slug: request.slug }) })
+    case 'interrupt':
+      return interruptRequest(id)
+    case 'restart':
+      return restartRequest(id)
+    case 'replay':
+      return replayRequest(id, request.runs)
+  }
+}
+
+export type Reply = { id: string; number: number } | { id: string; ok: true } | { id: string; error: string }
 
 export function parseReply(text: string): Reply | undefined {
   let raw: unknown
@@ -35,14 +75,14 @@ export function parseReply(text: string): Reply | undefined {
   if (typeof number === 'number') return { id, number }
   const error: unknown = Reflect.get(raw, 'error')
   if (typeof error === 'string') return { id, error }
+  if (Reflect.get(raw, 'ok') === true) return { id, ok: true }
   return undefined
 }
 
-const PYTHON_LATER = 'Python runs need the kernel (slice 3)'
+const TRUSTED_PYTHON = "Run a trusted calculation with Claude's trusted tool"
 
-/** Undefined when the run can be re-run as SQL, else the reason it cannot. `body` is the run's `sqlBody`. */
+/** Undefined when the run can be re-run (SQL or Python), else the reason it cannot. `body` is the run's `codeBody`. */
 export function canRerun(run: Run, header: RunHeader, body?: string): string | undefined {
-  if (run.language === 'python') return PYTHON_LATER
-  if (header.trusted && body !== undefined && /^-- python:/m.test(body)) return PYTHON_LATER
+  if (run.language !== 'python' && header.trusted && body !== undefined && /^-- python:/m.test(body)) return TRUSTED_PYTHON
   return undefined
 }

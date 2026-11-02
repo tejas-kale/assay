@@ -5,6 +5,7 @@ export type CommandId =
   | 'palette.open'
   | 'code.run'
   | 'code.edit'
+  | 'run.interrupt'
   | 'window.new'
   | 'tab.data'
   | 'tab.plots'
@@ -27,8 +28,6 @@ export type Command = {
   id: CommandId
   title: string
   accelerator?: KeySpec
-  /** Set while the command's slice is not built: the palette lists it and runs nothing but this message. */
-  unavailable?: string
 }
 
 export const COMMANDS: readonly Command[] = [
@@ -38,6 +37,7 @@ export const COMMANDS: readonly Command[] = [
   { id: 'palette.open', title: 'Command palette', accelerator: { code: 'KeyP' } },
   { id: 'code.run', title: 'Run current code', accelerator: { code: 'Enter' } },
   { id: 'code.edit', title: 'Edit current code', accelerator: { code: 'KeyE' } },
+  { id: 'run.interrupt', title: 'Interrupt run', accelerator: { code: 'Period' } },
   { id: 'window.new', title: 'New window', accelerator: { code: 'KeyN' } },
   { id: 'window.close', title: 'Close window', accelerator: { code: 'KeyW' } },
   { id: 'settings.open', title: 'Settings', accelerator: { code: 'Comma' } },
@@ -50,8 +50,8 @@ export const COMMANDS: readonly Command[] = [
   { id: 'tab.files', title: 'Show Files tab', accelerator: { code: 'KeyF', shift: true } },
   { id: 'shortcuts.show', title: 'Show Shortcuts' },
   { id: 'pin.toggle', title: 'Pin current run' },
-  { id: 'kernel.restart', title: 'Restart kernel', unavailable: 'Restart kernel is not available until slice 3' },
-  { id: 'replay.open', title: 'Replay', unavailable: 'Replay is not available until slice 3' },
+  { id: 'kernel.restart', title: 'Restart kernel' },
+  { id: 'replay.open', title: 'Replay' },
 ]
 
 /** The parts of Electron's `Input` that matter here. */
@@ -65,7 +65,7 @@ export function commandForInput(input: KeyInput): CommandId | undefined {
   )?.id
 }
 
-const KEY_SYMBOLS: Record<string, string> = { Enter: '↩', Comma: ',' }
+const KEY_SYMBOLS: Record<string, string> = { Enter: '↩', Comma: ',', Period: '.' }
 
 /** A command's shortcut as the Mac writes it, such as `⇧⌘P`; empty when it has none. */
 export function shortcutLabel(id: CommandId): string {
@@ -87,7 +87,12 @@ export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
   },
   {
     pane: 'Data',
-    keys: [['h j k l', 'move cell'], ['J / K', 'page'], ['g / G  0 / $', 'first / last'], ['Enter', 'whole row'], ['y', 'copy cell'], ['c', 'its Code'], ['p', 'pin / follow latest']],
+    keys: [['h j k l', 'move cell'], ['J / K', 'page'], ['g / G  0 / $', 'first / last'], ['Enter', 'whole row'], ['y', 'copy cell'], ['c', 'its Code'], ['p', 'pin / follow latest'], ['[ / ]', 'previous / next table'], ['s', 'stdout and error']],
+  },
+  { pane: 'Plots', keys: [['j / k', 'previous / next plot'], ['c', 'its Code'], ['p', 'pin / follow latest']] },
+  {
+    pane: 'Replay',
+    keys: [['j / k', 'move'], ['space', 'choose or drop'], ['a', 'all / none'], ['Enter', 'ask to replay'], ['y / n', 'confirm / back'], ['Esc', 'leave']],
   },
   {
     pane: 'Code',

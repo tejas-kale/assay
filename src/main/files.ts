@@ -8,13 +8,13 @@ import type { FsPort } from '../core/analyses.ts'
 import { StaleEdit } from '../core/errors.ts'
 import { listFacts } from '../core/facts.ts'
 import { resolveInside } from '../core/safePath.ts'
-import { newRequestId, parseReply, sqlRequest } from '../core/requests.ts'
-import { parseCsv, parseRunHeader, parseRunStatus, parseRuns } from '../core/runs.ts'
+import { newRequestId, parseReply, requestText } from '../core/requests.ts'
+import { parseCsv, parseRunHeader, parseRunResult, parseRunStatus, parseRuns } from '../core/runs.ts'
 import type { Reply } from '../core/requests.ts'
-import type { Run, RunHeader } from '../core/runs.ts'
+import type { ResultStatus, Run, RunHeader } from '../core/runs.ts'
 import { parseThreads } from '../core/threads.ts'
 import type { WatchPort } from '../core/watch.ts'
-import type { AnalysisState, EditResult, NoteFileResult, RequestResult, RunRequest, RunView } from '../shared/ipc.ts'
+import type { AnalysisState, EditResult, NoteFileResult, PlotResult, RequestResult, RunRequest, RunView } from '../shared/ipc.ts'
 
 export const NOTES = 'notes.md'
 export const THREADS = 'threads.md'
@@ -95,7 +95,7 @@ export async function loadState(analysis: { name: string; path: string }): Promi
     analysis,
     facts: listFacts(notes),
     threads: parseThreads(threads),
-    runs: await withHeaders(analysis.path, parseRuns(queries)),
+    runs: await withResults(analysis.path, await withHeaders(analysis.path, parseRuns(queries))),
     runStatus: parseRunStatus(status),
   }
 }
@@ -114,17 +114,50 @@ async function withHeaders(folder: string, runs: Run[]): Promise<Run[]> {
       if (!header) {
         try {
           const { text, cut } = await readHead(path, HEADER_BYTES)
-          header = parseRunHeader(text)
+          header = parseRunHeader(text, run.language)
           // The mod may still be writing the file: only a finished one (ends in a newline, or is longer than the head read) is kept.
           if (text.endsWith('\n') || (cut && text !== '')) headers.set(path, header)
         } catch {
           return run
         }
       }
-      const { author, from, trusted, engine } = header
-      return { ...run, author, engine, ...(from !== undefined && { from }), ...(trusted !== undefined && { trusted }) }
+      const { author, from, replay, trusted, engine } = header
+      return {
+        ...run,
+        author,
+        engine,
+        ...(from !== undefined && { from }),
+        ...(replay !== undefined && { replay }),
+        ...(trusted !== undefined && { trusted }),
+      }
     }),
   )
+}
+
+// A Python run's status is final once its `.json` says so; a running one is read again on every push.
+const finished = new Map<string, ResultStatus>()
+
+/** Fills each Python run's `status` from its result `.json` (rewritten every 0.5 s by rename while it runs). */
+async function withResults(folder: string, runs: Run[]): Promise<Run[]> {
+  return Promise.all(
+    runs.map(async run => {
+      if (!run.result) return run
+      const path = join(folder, QUERIES, run.result)
+      let status = finished.get(path)
+      if (!status) {
+        const result = parseRunResult(await readText(path).catch(() => ''))
+        if (!result) return run
+        status = result.status
+        if (status !== 'running') finished.set(path, status)
+      }
+      return { ...run, status }
+    }),
+  )
+}
+
+/** The runs with headers and statuses, for deriving the label a note citing a run gets. */
+export async function readRuns(folder: string): Promise<Run[]> {
+  return withResults(folder, parseRuns(await readQueryNames(folder)))
 }
 
 export const QUERIES = 'queries'
@@ -152,23 +185,54 @@ async function readHead(path: string, max: number): Promise<{ text: string; cut:
 }
 
 /** One run's code and saved result. The number is looked up in the folder listing, so no renderer path is used. */
-export async function readRun(folder: string, number: number): Promise<RunView | undefined> {
+export async function readRun(folder: string, number: number, options: { table?: number } = {}): Promise<RunView | undefined> {
   const run = parseRuns(await readQueryNames(folder)).find(r => r.number === number)
   if (!run) return undefined
   const dir = join(folder, QUERIES)
   const view: RunView = { run }
+  const readTable = async (file: string) => {
+    const { text, cut } = await readHead(join(dir, file), MAX_DATA_BYTES)
+    // A cut file may end mid-row: drop the partial last line.
+    const table = parseCsv(cut ? text.slice(0, text.lastIndexOf('\n') + 1) : text, MAX_DATA_ROWS)
+    return { ...table, truncated: table.truncated || cut }
+  }
   try {
     if (run.code) view.code = (await readHead(join(dir, run.code), MAX_CODE_BYTES)).text
-    if (run.data) {
-      const { text, cut } = await readHead(join(dir, run.data), MAX_DATA_BYTES)
-      // A cut file may end mid-row: drop the partial last line.
-      const table = parseCsv(cut ? text.slice(0, text.lastIndexOf('\n') + 1) : text, MAX_DATA_ROWS)
-      view.table = { ...table, truncated: table.truncated || cut }
+    if (run.data) view.table = await readTable(run.data)
+    if (run.result) {
+      const result = parseRunResult(await readText(join(dir, run.result)))
+      if (result) {
+        view.result = result
+        view.run = { ...run, status: result.status }
+      }
+      const k = options.table ?? 1
+      const file = run.tables[k - 1]
+      if (file !== undefined) {
+        view.tableIndex = k
+        view.table = await readTable(file)
+      }
     }
   } catch (err) {
     view.error = `Could not read: ${messageOf(err)}`
   }
   return view
+}
+
+const MAX_PLOT_BYTES = 20 * 1024 * 1024
+
+/** Plot K (1-based) of a Python run as a data URL. The file is found in the listing, so only a `queries/` name can be read. */
+export async function readPlot(folder: string, number: number, k: number): Promise<PlotResult> {
+  const run = parseRuns(await readQueryNames(folder)).find(r => r.number === number)
+  const file = run?.plots[k - 1]
+  if (file === undefined) return { ok: false, message: 'No such plot' }
+  try {
+    const path = join(folder, QUERIES, file)
+    if ((await stat(path)).size > MAX_PLOT_BYTES) return { ok: false, message: 'The plot is too large to show' }
+    const mime = file.endsWith('.svg') ? 'image/svg+xml' : 'image/png'
+    return { ok: true, dataUrl: `data:${mime};base64,${(await readFile(path)).toString('base64')}` }
+  } catch (err) {
+    return { ok: false, message: isMissing(err) ? 'The plot file is not there yet' : `Could not read: ${messageOf(err)}` }
+  }
 }
 
 /** File names in `queries/`, which fact labels are derived from. */
@@ -234,7 +298,7 @@ export async function readNoteFile(folder: string, target: string): Promise<Note
   }
 }
 
-/** Writes a SQL request for the mod to pick up. The temp name starts with `.`, which the mod ignores. */
+/** Writes a request for the mod to pick up. The temp name starts with `.`, which the mod ignores. */
 export async function writeRequest(folder: string, request: RunRequest): Promise<RequestResult> {
   const id = newRequestId(Date.now(), Math.random)
   try {
@@ -245,7 +309,7 @@ export async function writeRequest(folder: string, request: RunRequest): Promise
     await writeFile(join(assay, '.gitignore'), '*\n', { encoding: 'utf8', flag: 'wx' }).catch(() => undefined)
     const path = join(dir, `${id}.json`)
     const temp = join(dir, `.${id}.json.tmp`)
-    await writeFile(temp, sqlRequest({ id, ...request }), 'utf8')
+    await writeFile(temp, requestText(id, request), 'utf8')
     await rename(temp, path)
     return { ok: true, id }
   } catch (err) {

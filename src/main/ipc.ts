@@ -5,13 +5,15 @@ import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron'
 
 import { createAnalysis, listAnalyses } from '../core/analyses.ts'
 import { addFact, deleteFact, editFact } from '../core/facts.ts'
+import type { LabelOf } from '../core/facts.ts'
+import { citedLabel } from '../core/runs.ts'
 import { addThread, closeOpen, deleteClosed, deleteOpen, editOpen, moveOpen } from '../core/threads.ts'
 import type { ClosedThread } from '../core/threads.ts'
 import { CHANNELS } from '../shared/ipc.ts'
-import type { EditResult, NoteFileResult, OpenResult, RequestResult, SetRootResult, SettingsView } from '../shared/ipc.ts'
+import type { EditResult, NoteFileResult, OpenResult, PlotResult, RequestResult, SetRootResult, SettingsView } from '../shared/ipc.ts'
 import { analysisRoot, chooseRootPath, saveRoot } from './settings.ts'
 import { listFiles, openFile } from './browse.ts'
-import { NOTES, THREADS, editFile, fsPort, loadState, readNoteFile, readQueryNames, readRun, writeRequest } from './files.ts'
+import { NOTES, THREADS, editFile, fsPort, loadState, readNoteFile, readPlot, readRun, readRuns, writeRequest } from './files.ts'
 import { attachAnalysis, broadcast, contextFor, createWindow, pushState, requestClose, startPty } from './windows.ts'
 import type { WindowCtx } from './windows.ts'
 
@@ -48,11 +50,11 @@ function listen(channel: string, fn: (ctx: WindowCtx, ...args: unknown[]) => voi
 async function edit(
   ctx: WindowCtx,
   file: string,
-  makeEdit: (queries: string[]) => (text: string) => string,
+  makeEdit: (labelOf: LabelOf) => (text: string) => string,
 ): Promise<EditResult> {
   if (!ctx.analysis) return invalid('No analysis is open')
-  const queries = file === NOTES ? await readQueryNames(ctx.analysis.path) : []
-  const result = await editFile(ctx.analysis.path, file, makeEdit(queries))
+  const labelOf = file === NOTES ? citedLabel(await readRuns(ctx.analysis.path)) : () => 'unverified' as const
+  const result = await editFile(ctx.analysis.path, file, makeEdit(labelOf))
   await pushState(ctx)
   return result
 }
@@ -120,11 +122,11 @@ export function registerIpc() {
   handle(CHANNELS.stateGet, ctx => (ctx.analysis ? loadState(ctx.analysis) : undefined))
 
   handle(CHANNELS.factsAdd, (ctx, input) =>
-    isText(input) ? edit(ctx, NOTES, q => text => addFact(text, input, q)) : invalid('Invalid input'),
+    isText(input) ? edit(ctx, NOTES, labelOf => text => addFact(text, input, labelOf)) : invalid('Invalid input'),
   )
   handle(CHANNELS.factsEdit, (ctx, index, line, input) =>
     isIndex(index) && isText(line) && isText(input)
-      ? edit(ctx, NOTES, q => text => editFact(text, index, line, input, q))
+      ? edit(ctx, NOTES, labelOf => text => editFact(text, index, line, input, labelOf))
       : invalid('Invalid input'),
   )
   handle(CHANNELS.factsDelete, (ctx, index, line) =>
@@ -164,20 +166,38 @@ export function registerIpc() {
     if (!ctx.analysis || typeof path !== 'string' || path.length > 4096) return { ok: false, message: 'Invalid path' }
     return openFile(ctx.analysis.path, path)
   })
-  handle(CHANNELS.runRead, (ctx, number) => {
-    if (!ctx.analysis || typeof number !== 'number' || !Number.isInteger(number) || number < 0) return undefined
-    return readRun(ctx.analysis.path, number)
+  handle(CHANNELS.runRead, (ctx, number, options) => {
+    if (!ctx.analysis || !isIndex(number)) return undefined
+    const table = typeof options === 'object' && options !== null ? Reflect.get(options, 'table') : undefined
+    return readRun(ctx.analysis.path, number, isIndex(table) ? { table } : {})
+  })
+  handle(CHANNELS.plotRead, (ctx, number, k): Promise<PlotResult> | PlotResult => {
+    if (!ctx.analysis || !isIndex(number) || !isIndex(k)) return { ok: false, message: 'Invalid plot' }
+    return readPlot(ctx.analysis.path, number, k)
   })
   handle(CHANNELS.runRequest, (ctx, request): Promise<RequestResult> | RequestResult => {
     const refused = (message: string): RequestResult => ({ ok: false, message })
     if (!ctx.analysis || typeof request !== 'object' || request === null) return refused('Invalid request')
-    const { sql, engine, from, slug } = request as Record<string, unknown>
+    const { kind, sql, code, engine, from, slug, runs } = request as Record<string, unknown>
+    const folder = ctx.analysis.path
+    if (kind === 'interrupt' || kind === 'restart') return writeRequest(folder, { kind })
+    if (kind === 'replay') {
+      if (!Array.isArray(runs) || runs.length === 0 || runs.length > 500 || !runs.every(isIndex)) return refused('Invalid runs')
+      return writeRequest(folder, { kind, runs: runs as number[] })
+    }
+    if (from !== undefined && !isIndex(from)) return refused('Invalid origin')
+    if (slug !== undefined && (typeof slug !== 'string' || slug.length > 200)) return refused('Invalid slug')
+    const origin = { ...(from !== undefined && { from }), ...(slug !== undefined && { slug }) }
+    if (kind === 'python') {
+      if (typeof code !== 'string' || code.length > MAX_WRITE) return refused('Invalid code')
+      if (code.trim() === '') return refused('The code is empty')
+      return writeRequest(folder, { kind, code, ...origin })
+    }
+    if (kind !== 'sql') return refused('Invalid request')
     if (typeof sql !== 'string' || sql.length > MAX_WRITE) return refused('Invalid SQL')
     if (sql.trim() === '') return refused('The SQL is empty')
     if (engine !== 'databricks' && engine !== 'postgres') return refused('Invalid engine')
-    if (from !== undefined && !isIndex(from)) return refused('Invalid origin')
-    if (slug !== undefined && (typeof slug !== 'string' || slug.length > 200)) return refused('Invalid slug')
-    return writeRequest(ctx.analysis.path, { sql, engine, ...(from !== undefined && { from }), ...(slug !== undefined && { slug }) })
+    return writeRequest(folder, { kind, sql, engine, ...origin })
   })
   handle(CHANNELS.noteFileRead, (ctx, path): Promise<NoteFileResult> | NoteFileResult => {
     if (!ctx.analysis || typeof path !== 'string') return { ok: false, message: 'Invalid path' }

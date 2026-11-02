@@ -2,7 +2,9 @@
 import { StaleEdit } from './errors.ts'
 import { oneLine } from './text.ts'
 
-export type Label = 'trusted' | 'queried' | 'unverified'
+export type Label = 'trusted' | 'queried' | 'computed' | 'unverified'
+/** What a note citing run `n` gets: derived from the runs (see `citedLabel` in runs.ts). */
+export type LabelOf = (n: number) => 'queried' | 'computed' | 'unverified'
 export type Note = { text: string; label?: Label; query?: number }
 export type Fact = {
   /** Position among the non-blank lines of notes.md. */
@@ -16,7 +18,7 @@ export type Fact = {
   file?: { title: string; path: string }
 }
 
-const NOTE_TAG = /^(.*?)\s*\[(?:(trusted|queried|unverified)(?: q (\d+))?|q (\d+))\]$/
+const NOTE_TAG = /^(.*?)\s*\[(?:(trusted|queried|computed|unverified)(?: q (\d+))?|q (\d+))\]$/
 const FILE_NOTE = /^\[(.*)\]\(<(.+)>\)$/
 
 export function parseNote(line: string): Note {
@@ -52,17 +54,10 @@ export function listFacts(text: string): Fact[] {
 
 const queryLabel = (n: number) => String(n).padStart(3, '0')
 
-function hasCsv(queries: readonly string[], query: number) {
-  return queries.some(name => {
-    const match = /^(\d{3,})_.+\.csv$/.exec(name)
-    return match !== null && Number(match[1]) === query
-  })
-}
-
 /** Builds a line. `trusted` only comes from a caller that already holds it, never from the user's tag. */
-function build(text: string, query: number | undefined, queries: readonly string[], keepTrusted: boolean) {
-  const cited = query !== undefined && hasCsv(queries, query)
-  const label: Label = cited ? (keepTrusted ? 'trusted' : 'queried') : 'unverified'
+function build(text: string, query: number | undefined, labelOf: LabelOf, keepTrusted: boolean) {
+  const derived = query === undefined ? 'unverified' : labelOf(query)
+  const label: Label = derived === 'queried' && keepTrusted ? 'trusted' : derived
   return `${text} [${query === undefined ? label : `${label} q ${queryLabel(query)}`}]`
 }
 
@@ -73,9 +68,9 @@ function readInput(input: string) {
   return { text, query, hasTag: label !== undefined || query !== undefined }
 }
 
-export function addFact(text: string, input: string, queries: readonly string[]): string {
+export function addFact(text: string, input: string, labelOf: LabelOf): string {
   const fact = readInput(input)
-  return notesText([...notesFrom(text), build(fact.text, fact.query, queries, false)])
+  return notesText([...notesFrom(text), build(fact.text, fact.query, labelOf, false)])
 }
 
 function lineAt(text: string, index: number, expected: string) {
@@ -84,7 +79,7 @@ function lineAt(text: string, index: number, expected: string) {
   return lines
 }
 
-export function editFact(text: string, index: number, expectedLine: string, input: string, queries: readonly string[]): string {
+export function editFact(text: string, index: number, expectedLine: string, input: string, labelOf: LabelOf): string {
   const lines = lineAt(text, index, expectedLine)
   if (parseFileNote(expectedLine)) throw new Error('A file note cannot be edited as a fact')
   const fact = readInput(input)
@@ -93,7 +88,7 @@ export function editFact(text: string, index: number, expectedLine: string, inpu
   // Like the mod: an edit that changes neither text nor citation writes nothing, so it cannot downgrade a label.
   if (fact.text === old.text && query === old.query) return text
   const keepTrusted = old.label === 'trusted' && query !== undefined && query === old.query
-  const line = build(fact.text, query, queries, keepTrusted)
+  const line = build(fact.text, query, labelOf, keepTrusted)
   return notesText(lines.map((each, i) => (i === index ? line : each)))
 }
 

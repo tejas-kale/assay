@@ -10,11 +10,11 @@ import type { CommandId } from '../core/keymap.ts'
 import type { Fact } from '../core/facts.ts'
 import type { FileEntry } from '../core/files.ts'
 import type { CloseState } from '../core/session.ts'
-import type { Reply, SqlRequest } from '../core/requests.ts'
-import type { Engine, Run, RunStatus, Table } from '../core/runs.ts'
+import type { Reply, RunRequest } from '../core/requests.ts'
+import type { Engine, KernelState, Run, RunResult, RunStatus, Table } from '../core/runs.ts'
 import type { ClosedThread, Threads } from '../core/threads.ts'
 
-export type { Analysis, ClosedThread, CloseState, CommandId, Engine, Fact, FileEntry, Reply, Run, RunStatus, Table, Threads }
+export type { Analysis, ClosedThread, CloseState, CommandId, Engine, Fact, FileEntry, KernelState, Reply, Run, RunRequest, RunResult, RunStatus, Table, Threads }
 
 /** Call to stop listening. */
 export type Unsubscribe = () => void
@@ -37,11 +37,15 @@ export type AnalysisState = {
   runStatus: RunStatus
 }
 
-/** One run's code and saved result, for the Code and Data tabs. */
-export type RunView = { run: Run; code?: string; table?: Table; error?: string }
+/**
+ * One run's code and saved result, for the Code and Data tabs. A Python run also carries its parsed `.json`
+ * (`result`) and one table: `table` is table `tableIndex` (1-based) of `run.tables`.
+ */
+export type RunView = { run: Run; code?: string; table?: Table; tableIndex?: number; result?: RunResult; error?: string }
 
-/** A SQL run the user asks Claude's session to make (see docs/slice-2b.md). `from` and `slug` name the run it came from. */
-export type RunRequest = Omit<SqlRequest, 'id'>
+
+/** A plot image as a data URL, or why it could not be read. */
+export type PlotResult = { ok: true; dataUrl: string } | { ok: false; message: string }
 
 /** `ok`: the request file is written and `id` will come back in a reply. */
 export type RequestResult = { ok: true; id: string } | { ok: false; message: string }
@@ -124,8 +128,10 @@ export type AppApi = {
     open(path: string): Promise<OpenFileResult>
   }
 
-  /** One run's code and result by number; undefined when the run is gone. */
-  readRun(number: number): Promise<RunView | undefined>
+  /** One run's code and result by number; undefined when the run is gone. `table` picks table K (1-based) of a Python run. */
+  readRun(number: number, options?: { table?: number }): Promise<RunView | undefined>
+  /** Plot K (1-based) of a Python run, as a data URL. */
+  readPlot(number: number, k: number): Promise<PlotResult>
 
   runs: {
     /** Writes `.assay/requests/<id>.json` for the mod to run. */
@@ -188,6 +194,7 @@ export const CHANNELS = {
   threadsMoveOpen: 'threads:moveOpen',
   noteFileRead: 'noteFile:read',
   runRead: 'run:read',
+  plotRead: 'plot:read',
   runRequest: 'run:request',
   filesList: 'files:list',
   filesOpen: 'files:open',

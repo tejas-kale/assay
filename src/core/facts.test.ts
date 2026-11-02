@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { StaleEdit } from './errors.ts'
+import { citedLabel, parseRuns } from './runs.ts'
 import {
   addFact,
   deleteFact,
@@ -14,7 +15,9 @@ import {
   parseNote,
 } from './facts.ts'
 
-const QUERIES = ['001_first.sql', '001_first.csv', '002_second.sql', '012_third.sql', '012_third.csv']
+const labels = (names: string[], status: Record<number, 'ok' | 'error'> = {}) =>
+  citedLabel(parseRuns(names).map(r => (status[r.number] ? { ...r, status: status[r.number] } : r)))
+const QUERIES = labels(['001_first.sql', '001_first.csv', '002_second.sql', '012_third.sql', '012_third.csv'])
 
 // Ported from the mod's tests/model.test.ts.
 test('a note splits off its label and query; an old line has a query or nothing', () => {
@@ -88,15 +91,15 @@ test('editFact keeps trusted only for the same query whose .csv still exists', (
   assert.equal(editFact(text, 0, old, 'b2 [q 12]', QUERIES), 'b2 [trusted q 012]\n')
   assert.equal(editFact(text, 0, old, 'b2 [trusted q 12]', QUERIES), 'b2 [trusted q 012]\n')
   assert.equal(editFact(text, 0, old, 'b2 [q 1]', QUERIES), 'b2 [queried q 001]\n')
-  assert.equal(editFact(text, 0, old, 'b2', ['012_third.sql']), 'b2 [unverified q 012]\n')
+  assert.equal(editFact(text, 0, old, 'b2', labels(['012_third.sql'])), 'b2 [unverified q 012]\n')
 })
 
 test('editFact returns the text unchanged when text and citation are unchanged', () => {
   const trusted = '\nb [trusted q 012]\n\n'
-  assert.equal(editFact(trusted, 0, 'b [trusted q 012]', 'b', ['012_x.sql']), trusted)
-  assert.equal(editFact(trusted, 0, 'b [trusted q 012]', 'b [q 12]', ['012_x.sql']), trusted)
+  assert.equal(editFact(trusted, 0, 'b [trusted q 012]', 'b', labels(['012_x.sql'])), trusted)
+  assert.equal(editFact(trusted, 0, 'b [trusted q 012]', 'b [q 12]', labels(['012_x.sql'])), trusted)
   const plain = 'a [queried q 001]\n'
-  assert.equal(editFact(plain, 0, 'a [queried q 001]', 'a', ['001_x.sql']), plain)
+  assert.equal(editFact(plain, 0, 'a [queried q 001]', 'a', labels(['001_x.sql'])), plain)
   const untagged = 'plain note\n'
   assert.equal(editFact(untagged, 0, 'plain note', 'plain note', QUERIES), untagged)
 })
@@ -116,4 +119,14 @@ test('deleteFact removes only that line, also for a file note', () => {
   assert.equal(deleteFact(text, 0, 'a [unverified]'), `${link}\nb [unverified]\n`)
   assert.throws(() => deleteFact(text, 0, 'zzz'), StaleEdit)
   assert.throws(() => deleteFact(text, 7, 'zzz'), StaleEdit)
+})
+
+test('a note citing a Python run is computed when the run is ok, unverified otherwise', () => {
+  const py = labels(['003_a.py', '003_a.json', '004_b.py', '005_c.py'], { 3: 'ok', 4: 'error' })
+  assert.equal(addFact('', 'mean is 4 [q 3]', py), 'mean is 4 [computed q 003]\n')
+  assert.equal(addFact('', 'mean is 4 [q 4]', py), 'mean is 4 [unverified q 004]\n')
+  assert.equal(addFact('', 'mean is 4 [q 5]', py), 'mean is 4 [unverified q 005]\n')
+  assert.deepEqual(listFacts('x [computed q 003]\n'), [{ index: 0, line: 'x [computed q 003]', text: 'x', label: 'computed', query: 3 }])
+  assert.equal(editFact('x [computed q 003]\n', 0, 'x [computed q 003]', 'y', py), 'y [computed q 003]\n')
+  assert.equal(editFact('x [computed q 003]\n', 0, 'x [computed q 003]', 'y', labels(['003_a.py'])), 'y [unverified q 003]\n')
 })

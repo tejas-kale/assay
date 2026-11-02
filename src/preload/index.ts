@@ -48,7 +48,8 @@ const api: AppApi = {
     moveOpen: (index, expected, delta) => invoke(CHANNELS.threadsMoveOpen, index, expected, delta),
   },
   readNoteFile: path => invoke(CHANNELS.noteFileRead, path),
-  readRun: number => invoke(CHANNELS.runRead, number),
+  readRun: (number, options) => invoke(CHANNELS.runRead, number, options),
+  readPlot: (number, k) => invoke(CHANNELS.plotRead, number, k),
   runs: {
     request: request => invoke(CHANNELS.runRequest, request),
     onReply: cb => subscribe(CHANNELS.runReply, cb),

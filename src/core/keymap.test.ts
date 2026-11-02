@@ -65,7 +65,7 @@ test('COMMANDS lists every action once, with titles', () => {
   for (const id of [
     'focus.terminal', 'focus.notes', 'focus.data', 'palette.open', 'code.run', 'code.edit', 'window.new',
     'tab.data', 'tab.plots', 'tab.code', 'tab.history', 'tab.notes', 'tab.threads', 'tab.files',
-    'window.close', 'settings.open', 'pin.toggle', 'kernel.restart', 'replay.open', 'shortcuts.show',
+    'window.close', 'settings.open', 'pin.toggle', 'kernel.restart', 'replay.open', 'run.interrupt', 'shortcuts.show',
   ]) assert.ok(ids.includes(id as never), id)
   for (const c of COMMANDS) assert.ok(c.title.length > 0)
 })
@@ -75,11 +75,28 @@ test('no two commands share an accelerator', () => {
   assert.equal(new Set(keys).size, keys.length)
 })
 
-test('restart and replay are palette-only and say which slice brings them; pin works now', () => {
-  const later = COMMANDS.filter(c => c.unavailable !== undefined)
-  assert.deepEqual(later.map(c => c.id), ['kernel.restart', 'replay.open'])
-  for (const c of later) assert.match(c.unavailable ?? '', /not available until slice \d/)
-  assert.equal(later.every(c => c.accelerator === undefined), true)
+test('restart kernel and replay are palette-only commands', () => {
+  for (const id of ['kernel.restart', 'replay.open']) {
+    const command = COMMANDS.find(c => c.id === id)
+    assert.ok(command, id)
+    assert.equal(command.accelerator, undefined)
+    assert.equal('unavailable' in command, false)
+  }
+})
+
+test('Cmd+. interrupts the run', () => {
+  assert.equal(commandForInput(input({ code: 'Period', meta: true })), 'run.interrupt')
+  assert.equal(COMMANDS.find(c => c.id === 'run.interrupt')?.title, 'Interrupt run')
+  assert.equal(shortcutLabel('run.interrupt'), '⌘.')
+  assert.equal(commandForInput(input({ code: 'Period', meta: true, shift: true })), undefined)
+})
+
+test('the shortcuts overlay lists the Python keys: tables and stdout in Data, plots, and replay', () => {
+  const keys = (pane: string) => PANE_KEYS.find(p => p.pane === pane)?.keys.map(([key]) => key) ?? []
+  assert.ok(keys('Data').includes('[ / ]'))
+  assert.ok(keys('Data').includes('s'))
+  assert.ok(keys('Plots').includes('j / k'))
+  for (const key of ['space', 'a', 'Enter']) assert.ok(keys('Replay').includes(key), key)
 })
 
 test('shortcut labels use the Mac symbols', () => {
