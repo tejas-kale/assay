@@ -1,16 +1,17 @@
 // All file access for main. Paths here always come from main's own state (the window's analysis
 // folder), never from the renderer; the one renderer-supplied path is a note file's, which goes
 // through `readNoteFile`.
-import { mkdir, readFile, readdir, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, readdir, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 
 import type { FsPort } from '../core/analyses.ts'
 import { StaleEdit } from '../core/errors.ts'
 import { listFacts } from '../core/facts.ts'
 import { resolveInside } from '../core/safePath.ts'
+import { parseCsv, parseRunStatus, parseRuns } from '../core/runs.ts'
 import { parseThreads } from '../core/threads.ts'
 import type { WatchPort } from '../core/watch.ts'
-import type { AnalysisState, EditResult, NoteFileResult } from '../shared/ipc.ts'
+import type { AnalysisState, EditResult, NoteFileResult, RunView } from '../shared/ipc.ts'
 
 export const NOTES = 'notes.md'
 export const THREADS = 'threads.md'
@@ -81,17 +82,65 @@ async function writeAtomic(path: string, text: string): Promise<void> {
 }
 
 export async function loadState(analysis: { name: string; path: string }): Promise<AnalysisState> {
-  const [notes, threads] = await Promise.all([
+  const [notes, threads, queries, status] = await Promise.all([
     readText(join(analysis.path, NOTES)),
     readText(join(analysis.path, THREADS)),
+    readQueryNames(analysis.path),
+    readText(join(analysis.path, RUN_STATUS)).catch(() => ''),
   ])
-  return { analysis, facts: listFacts(notes), threads: parseThreads(threads) }
+  return {
+    analysis,
+    facts: listFacts(notes),
+    threads: parseThreads(threads),
+    runs: parseRuns(queries),
+    runStatus: parseRunStatus(status),
+  }
+}
+
+export const QUERIES = 'queries'
+/** Written by the mod when the app started it. */
+export const RUN_STATUS = '.assay/runs.json'
+const MAX_DATA_ROWS = 1000
+const MAX_DATA_BYTES = 4 * 1024 * 1024
+const MAX_CODE_BYTES = 512 * 1024
+
+/** The first `max` bytes of a file as text. */
+async function readHead(path: string, max: number): Promise<{ text: string; cut: boolean }> {
+  const file = await open(path, 'r')
+  try {
+    const size = (await file.stat()).size
+    const buffer = Buffer.alloc(Math.min(size, max))
+    await file.read(buffer, 0, buffer.length, 0)
+    return { text: buffer.toString('utf8'), cut: size > max }
+  } finally {
+    await file.close()
+  }
+}
+
+/** One run's code and saved result. The number is looked up in the folder listing, so no renderer path is used. */
+export async function readRun(folder: string, number: number): Promise<RunView | undefined> {
+  const run = parseRuns(await readQueryNames(folder)).find(r => r.number === number)
+  if (!run) return undefined
+  const dir = join(folder, QUERIES)
+  const view: RunView = { run }
+  try {
+    if (run.code) view.code = (await readHead(join(dir, run.code), MAX_CODE_BYTES)).text
+    if (run.data) {
+      const { text, cut } = await readHead(join(dir, run.data), MAX_DATA_BYTES)
+      // A cut file may end mid-row: drop the partial last line.
+      const table = parseCsv(cut ? text.slice(0, text.lastIndexOf('\n') + 1) : text, MAX_DATA_ROWS)
+      view.table = { ...table, truncated: table.truncated || cut }
+    }
+  } catch (err) {
+    view.error = `Could not read: ${messageOf(err)}`
+  }
+  return view
 }
 
 /** File names in `queries/`, which fact labels are derived from. */
 export async function readQueryNames(folder: string): Promise<string[]> {
   try {
-    return await readdir(join(folder, 'queries'))
+    return await readdir(join(folder, QUERIES))
   } catch {
     return []
   }

@@ -10,8 +10,8 @@ export function Settings({ root, onClose }: { root: string | undefined; onClose:
     inputRef.current?.focus()
   }, [])
 
-  function save() {
-    window.app.settings.setRoot(input).then(
+  function save(path = input) {
+    window.app.settings.setRoot(path).then(
       result => {
         if (!result.ok) setMessage(result.message)
         else onClose?.()
@@ -24,6 +24,7 @@ export function Settings({ root, onClose }: { root: string | undefined; onClose:
       if (path) {
         setInput(path)
         setMessage(undefined)
+        save(path)
       }
       inputRef.current?.focus()
     })
@@ -58,7 +59,7 @@ export function Settings({ root, onClose }: { root: string | undefined; onClose:
           />
           <button type="button" onClick={choose}>Choose</button>
         </div>
-        <div className="hint">Analyses live in its analyses/ subfolder. Enter saves{onClose ? ', Escape cancels' : ''}.</div>
+        <div className="hint">Analyses live in its analyses/ subfolder; picking one analysis works too. Enter saves{onClose ? ', Escape cancels' : ''}.</div>
         {message && <div className="status warn">{message}</div>}
       </div>
     </div>

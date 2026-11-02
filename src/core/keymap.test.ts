@@ -27,6 +27,9 @@ test('every handoff shortcut maps to its command, by code', () => {
     [{ code: 'KeyP', meta: true, shift: true }, 'tab.plots'],
     [{ code: 'KeyC', meta: true, shift: true }, 'tab.code'],
     [{ code: 'KeyH', meta: true, shift: true }, 'tab.history'],
+    [{ code: 'KeyT', meta: true, shift: true }, 'tab.threads'],
+    [{ code: 'KeyN', meta: true, shift: true }, 'tab.notes'],
+    [{ code: 'KeyF', meta: true, shift: true }, 'tab.files'],
   ]
   for (const [over, id] of table) assert.equal(commandForInput(input(over)), id, id)
 })
@@ -47,11 +50,11 @@ test('copy, paste, select-all, quit and every non-Cmd key are not claimed', () =
   }
 })
 
-test('extra modifiers do not match: Cmd+Shift+1, Cmd+Alt+P, Cmd+Ctrl+N, Cmd+Shift+N', () => {
+test('extra modifiers do not match: Cmd+Shift+1, Cmd+Alt+P, Cmd+Ctrl+N, Cmd+Shift+W', () => {
   assert.equal(commandForInput(input({ code: 'Digit1', meta: true, shift: true })), undefined)
   assert.equal(commandForInput(input({ code: 'KeyP', meta: true, alt: true })), undefined)
   assert.equal(commandForInput(input({ code: 'KeyN', meta: true, ctrl: true })), undefined)
-  assert.equal(commandForInput(input({ code: 'KeyN', meta: true, shift: true })), undefined)
+  assert.equal(commandForInput(input({ code: 'KeyW', meta: true, shift: true })), undefined)
   assert.equal(commandForInput(input({ code: 'KeyD', meta: true })), undefined)
 })
 
@@ -60,8 +63,8 @@ test('COMMANDS lists every action once, with titles', () => {
   assert.equal(new Set(ids).size, ids.length)
   for (const id of [
     'focus.terminal', 'focus.notes', 'focus.data', 'palette.open', 'code.run', 'window.new',
-    'tab.data', 'tab.plots', 'tab.code', 'tab.history', 'tab.notes', 'tab.threads',
-    'window.close', 'settings.open', 'pin.toggle', 'kernel.restart', 'replay.open',
+    'tab.data', 'tab.plots', 'tab.code', 'tab.history', 'tab.notes', 'tab.threads', 'tab.files',
+    'window.close', 'settings.open', 'pin.toggle', 'kernel.restart', 'replay.open', 'shortcuts.show',
   ]) assert.ok(ids.includes(id as never), id)
   for (const c of COMMANDS) assert.ok(c.title.length > 0)
 })
@@ -84,5 +87,7 @@ test('shortcut labels use the Mac symbols', () => {
   assert.equal(shortcutLabel('tab.plots'), '⇧⌘P')
   assert.equal(shortcutLabel('code.run'), '⌘↩')
   assert.equal(shortcutLabel('settings.open'), '⌘,')
-  assert.equal(shortcutLabel('tab.notes'), '')
+  assert.equal(shortcutLabel('tab.threads'), '⇧⌘T')
+  assert.equal(shortcutLabel('tab.notes'), '⇧⌘N')
+  assert.equal(shortcutLabel('shortcuts.show'), '')
 })

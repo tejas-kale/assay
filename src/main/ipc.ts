@@ -10,7 +10,8 @@ import type { ClosedThread } from '../core/threads.ts'
 import { CHANNELS } from '../shared/ipc.ts'
 import type { EditResult, NoteFileResult, OpenResult, SetRootResult, SettingsView } from '../shared/ipc.ts'
 import { analysisRoot, chooseRootPath, saveRoot } from './settings.ts'
-import { NOTES, THREADS, editFile, fsPort, loadState, readNoteFile, readQueryNames } from './files.ts'
+import { listFiles, openFile } from './browse.ts'
+import { NOTES, THREADS, editFile, fsPort, loadState, readNoteFile, readQueryNames, readRun } from './files.ts'
 import { attachAnalysis, broadcast, contextFor, createWindow, pushState, requestClose, startPty } from './windows.ts'
 import type { WindowCtx } from './windows.ts'
 
@@ -158,6 +159,15 @@ export function registerIpc() {
       : invalid('Invalid input'),
   )
 
+  handle(CHANNELS.filesList, ctx => (ctx.analysis ? listFiles(ctx.analysis.path) : []))
+  handle(CHANNELS.filesOpen, (ctx, path) => {
+    if (!ctx.analysis || typeof path !== 'string' || path.length > 4096) return { ok: false, message: 'Invalid path' }
+    return openFile(ctx.analysis.path, path)
+  })
+  handle(CHANNELS.runRead, (ctx, number) => {
+    if (!ctx.analysis || typeof number !== 'number' || !Number.isInteger(number) || number < 0) return undefined
+    return readRun(ctx.analysis.path, number)
+  })
   handle(CHANNELS.noteFileRead, (ctx, path): Promise<NoteFileResult> | NoteFileResult => {
     if (!ctx.analysis || typeof path !== 'string') return { ok: false, message: 'Invalid path' }
     return readNoteFile(ctx.analysis.path, path)

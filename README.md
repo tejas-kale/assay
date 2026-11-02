@@ -5,13 +5,18 @@ Slice 1 of `HANDOFF.md`; the spec is `docs/slice-1.md`.
 
 ## Install, run, test (on the Mac)
 
-- `npm install` (postinstall rebuilds node-pty for Electron and fixes `spawn-helper`)
+- `npm install` (postinstall repairs Electron's unpack on Node 26, rebuilds node-pty for Electron and fixes `spawn-helper`)
 - `npm run dev`
 - `npm test` (logic only, no install needed), `npm run typecheck` (never run yet; expect to fix some types)
 
+## Install as an app (Spotlight, Dock, Launchpad)
+
+- `npm run install-app` builds `Assay.app`, ad-hoc signed, and copies it to `/Applications`. Run it again after pulling changes.
+- `npm run package` only builds it, into `dist/mac-arm64/`.
+
 ## Environment
 
-- The analysis folder, which holds `analyses/`, is set in Settings (Cmd+,). There is no default: the app asks on first run.
+- The analysis folder, which holds `analyses/`, is set in Settings (Cmd+,). There is no default: the app asks on first run. Picking `analyses/` or one analysis inside it sets the folder above.
 - `ASSAY_CLAUDE_BIN`: the wrapper to run (default `claude`, found through your login shell)
 
 ## Appearance

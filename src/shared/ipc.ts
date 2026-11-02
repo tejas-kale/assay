@@ -8,10 +8,12 @@
 import type { Analysis } from '../core/analyses.ts'
 import type { CommandId } from '../core/keymap.ts'
 import type { Fact } from '../core/facts.ts'
+import type { FileEntry } from '../core/files.ts'
 import type { CloseState } from '../core/session.ts'
+import type { Run, RunStatus, Table } from '../core/runs.ts'
 import type { ClosedThread, Threads } from '../core/threads.ts'
 
-export type { Analysis, ClosedThread, CloseState, CommandId, Fact, Threads }
+export type { Analysis, ClosedThread, CloseState, CommandId, Fact, FileEntry, Run, RunStatus, Table, Threads }
 
 /** Call to stop listening. */
 export type Unsubscribe = () => void
@@ -28,13 +30,26 @@ export type AnalysisState = {
   analysis: { name: string; path: string }
   facts: Fact[]
   threads: Threads
+  /** The runs in `queries/`, oldest first. */
+  runs: Run[]
+  /** Which run is running and which failed, from the mod. */
+  runStatus: RunStatus
 }
+
+/** One run's code and saved result, for the Code and Data tabs. */
+export type RunView = { run: Run; code?: string; table?: Table; error?: string }
 
 export type OpenResult =
   /** This window is now the workspace for `path`. */
   | { ok: true; outcome: 'opened'; path: string }
   /** The analysis is open in another window, which main focused; this window stays on the picker. */
   | { ok: true; outcome: 'focused-other-window'; path: string }
+  | { ok: false; message: string }
+
+/** How a file opened: in Neovim in a new Ghostty window, as an image to preview, or in its default app. */
+export type OpenFileResult =
+  | { ok: true; how: 'nvim' | 'default' }
+  | { ok: true; how: 'image'; dataUrl: string }
   | { ok: false; message: string }
 
 export type NoteFileResult = { ok: true; text: string } | { ok: false; message: string }
@@ -95,6 +110,16 @@ export type AppApi = {
     moveOpen(index: number, expected: string, delta: 1 | -1): Promise<EditResult>
   }
 
+  files: {
+    /** Every file in the analysis, newest first; tooling folders (.git, .venv, ...) left out. */
+    list(): Promise<FileEntry[]>
+    /** Opens `FileEntry.path`: text in Neovim, images as a preview, the rest in their default app. */
+    open(path: string): Promise<OpenFileResult>
+  }
+
+  /** One run's code and result by number; undefined when the run is gone. */
+  readRun(number: number): Promise<RunView | undefined>
+
   /** Reads a linked note file, on request. `path` is `Fact.file.path`; main resolves it against the analysis folder. */
   readNoteFile(path: string): Promise<NoteFileResult>
 
@@ -148,6 +173,9 @@ export const CHANNELS = {
   threadsDeleteClosed: 'threads:deleteClosed',
   threadsMoveOpen: 'threads:moveOpen',
   noteFileRead: 'noteFile:read',
+  runRead: 'run:read',
+  filesList: 'files:list',
+  filesOpen: 'files:open',
   windowNew: 'window:new',
   windowClose: 'window:close',
   settingsGet: 'settings:get',

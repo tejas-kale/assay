@@ -111,7 +111,6 @@ export function NotesTab({ facts }: { facts: Fact[] }) {
             <div className="status warn">Delete "{mode.fact.text}"? y to confirm, any other key cancels</div>
           )}
           {message && <div className="status warn">{message}</div>}
-          <div className="hint">j/k move  / search  Enter open file note  a add  e edit  d delete</div>
         </>
       )}
     </div>

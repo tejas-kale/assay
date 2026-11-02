@@ -48,6 +48,11 @@ const api: AppApi = {
     moveOpen: (index, expected, delta) => invoke(CHANNELS.threadsMoveOpen, index, expected, delta),
   },
   readNoteFile: path => invoke(CHANNELS.noteFileRead, path),
+  readRun: number => invoke(CHANNELS.runRead, number),
+  files: {
+    list: () => invoke(CHANNELS.filesList),
+    open: path => invoke(CHANNELS.filesOpen, path),
+  },
   onCommand: cb => subscribe(CHANNELS.command, cb),
   newWindow: () => invoke(CHANNELS.windowNew),
   closeWindow: () => invoke(CHANNELS.windowClose),

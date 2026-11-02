@@ -31,7 +31,12 @@ export type TerminalColors = {
 
 export type Theme = {
   /** Each key becomes the CSS variable `--<key>`. */
-  ui: Record<'bg' | 'panel' | 'line' | 'text' | 'dim' | 'accent' | 'info' | 'sel' | 'good' | 'warn' | 'bad' | 'closing' | 'ended', string>
+  ui: Record<
+    | 'bg' | 'panel' | 'line' | 'text' | 'dim' | 'accent' | 'info' | 'sel' | 'good' | 'warn' | 'bad' | 'closing' | 'ended'
+    // Ayu's syntax colours, for the Code tab.
+    | 'syn-keyword' | 'syn-string' | 'syn-number' | 'syn-comment' | 'syn-function' | 'syn-operator',
+    string
+  >
   terminal: TerminalColors
 }
 
@@ -51,6 +56,12 @@ export const THEMES: Record<ThemeMode, Theme> = {
       bad: '#e65050',
       closing: '#ffe294',
       ended: '#ebeef0',
+      'syn-keyword': '#e8790b',
+      'syn-string': '#6c8f00',
+      'syn-number': '#9461c7',
+      'syn-comment': '#8a8f96',
+      'syn-function': '#d18d0f',
+      'syn-operator': '#d9733f',
     },
     terminal: {
       foreground: '#5c6166',
@@ -92,6 +103,12 @@ export const THEMES: Record<ThemeMode, Theme> = {
       bad: '#d95757',
       closing: '#4c4126',
       ended: '#1b1f29',
+      'syn-keyword': '#ff8f40',
+      'syn-string': '#aad94c',
+      'syn-number': '#d2a6ff',
+      'syn-comment': '#7d8590',
+      'syn-function': '#ffb454',
+      'syn-operator': '#f29668',
     },
     terminal: {
       foreground: '#bfbdb6',

@@ -1,4 +1,4 @@
-import { isAbsolute, join, normalize } from 'node:path'
+import { basename, dirname, isAbsolute, join, normalize } from 'node:path'
 
 /** The app's settings. There is no default root: until one is set, the app asks for it. */
 export type Settings = { root?: string }
@@ -24,5 +24,17 @@ export function normalizeRoot(input: string, home: string): RootResult {
   const expanded = text === '~' || text.startsWith('~/') ? join(home, text.slice(1)) : text
   if (!isAbsolute(expanded)) return { ok: false, message: 'Use a full path, starting with / or ~/.' }
   const path = normalize(expanded)
-  return { ok: true, path: path.length > 1 ? path.replace(/\/+$/, '') : path }
+  return { ok: true, path: rootFor(path.length > 1 ? path.replace(/\/+$/, '') : path) }
+}
+
+const PARENTS = ['analyses', 'investigations', 'explorations']
+
+/**
+ * The folder holding `analyses/`, given a path the user picked. Picking `analyses/` itself or one
+ * analysis inside it (or a migrated `investigations/` or `explorations/` one) means its root.
+ */
+export function rootFor(path: string): string {
+  if (PARENTS.includes(basename(path))) return dirname(path)
+  if (PARENTS.includes(basename(dirname(path)))) return dirname(dirname(path))
+  return path
 }

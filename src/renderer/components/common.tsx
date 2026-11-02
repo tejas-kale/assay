@@ -6,7 +6,7 @@ import type { ListNavEffect, ListNavState } from '../../core/listNav.ts'
 import type { EditResult } from '../../shared/ipc.ts'
 
 export type PaneName = 'terminal' | 'notes' | 'data'
-export type NotesTabName = 'notes' | 'threads'
+export type NotesTabName = 'threads' | 'notes' | 'files'
 export type DataTabName = 'data' | 'plots' | 'code' | 'history'
 
 /** True for inputs, textareas, selects, editable elements and anything inside a dialog: pane keys must not run there. */

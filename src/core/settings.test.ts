@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { normalizeRoot, parseSettings, serializeSettings } from './settings.ts'
+import { normalizeRoot, parseSettings, rootFor, serializeSettings } from './settings.ts'
 
 test('no file, bad JSON or a wrong type means no root, never a default folder', () => {
   for (const text of [undefined, '', 'not json', '[]', 'null', '{}', '{"root":5}', '{"root":""}']) {
@@ -23,4 +23,13 @@ test('normalizeRoot refuses empty and relative paths, and ~user', () => {
   for (const input of ['', '   ', 'a/b', './a', '~other/x']) {
     assert.equal(normalizeRoot(input, '/home/me').ok, false, input)
   }
+})
+
+test('picking analyses/ or one analysis inside it means the folder above', () => {
+  assert.equal(rootFor('/n/analyses'), '/n')
+  assert.equal(rootFor('/n/analyses/feedback-x'), '/n')
+  assert.equal(rootFor('/n/investigations/old'), '/n')
+  assert.equal(rootFor('/n/explorations'), '/n')
+  assert.equal(rootFor('/n'), '/n')
+  assert.deepEqual(normalizeRoot('~/notes-src/analyses/x/', '/home/me'), { ok: true, path: '/home/me/notes-src' })
 })

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { COMMANDS } from '../core/keymap.ts'
 import type { CommandId } from '../core/keymap.ts'
 import type { AnalysisState, SettingsView } from '../shared/ipc.ts'
-import { GlobalHints } from './components/KeyHints.tsx'
+import { GlobalHints, ShortcutsOverlay } from './components/KeyHints.tsx'
 import { Palette } from './components/Palette.tsx'
 import { Picker } from './components/Picker.tsx'
 import { Settings } from './components/Settings.tsx'
@@ -18,13 +18,14 @@ const paneOfActive = (): PaneName | undefined =>
 
 export function App() {
   const [view, setView] = useState<View>({ type: 'loading' })
-  const [notesTab, setNotesTab] = useState<NotesTabName>('notes')
+  const [notesTab, setNotesTab] = useState<NotesTabName>('threads')
   const [dataTab, setDataTab] = useState<DataTabName>('data')
   const [focusRequest, setFocusRequest] = useState<FocusRequest>()
   const [palette, setPalette] = useState<{ returnTo: PaneName | undefined }>()
   const [settingsOpen, setSettingsOpen] = useState<{ returnTo: PaneName | undefined }>()
   const [settings, setSettings] = useState<SettingsView>()
   const [hints, setHints] = useState(false)
+  const [shortcuts, setShortcuts] = useState(0)
   const [pickerFocus, setPickerFocus] = useState(0)
   const [toast, setToast] = useState<string>()
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -75,14 +76,20 @@ export function App() {
           focusPane('terminal')
           return true
         case 'focus.notes':
+          // Pressed again inside the pane, it switches between Threads and Notes.
+          if (paneOfActive() === 'notes') setNotesTab(tab => (tab === 'threads' ? 'notes' : tab === 'notes' ? 'files' : 'threads'))
           focusPane('notes')
           return true
+        case 'shortcuts.show':
+          setShortcuts(n => n + 1)
+          return false
         case 'focus.data':
           focusPane('data')
           return true
         case 'tab.notes':
         case 'tab.threads':
-          setNotesTab(id === 'tab.notes' ? 'notes' : 'threads')
+        case 'tab.files':
+          setNotesTab(id.slice(4) as NotesTabName)
           focusPane('notes')
           return true
         case 'tab.data':
@@ -186,6 +193,7 @@ export function App() {
       {settingsOpen && settings && <Settings root={settings.root} onClose={closeSettings} />}
       {!settingsOpen && settings && !settings.root && view.type === 'picker' && <Settings root={undefined} onClose={undefined} />}
       {hints && <GlobalHints />}
+      {shortcuts > 0 && <ShortcutsOverlay key={shortcuts} onDone={() => setShortcuts(0)} />}
       {view.type === 'picker' && toast && <div className="toast floating">{toast}</div>}
     </>
   )

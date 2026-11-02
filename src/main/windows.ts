@@ -13,7 +13,7 @@ import { THEMES } from '../core/theme.ts'
 import { pollFiles } from '../core/watch.ts'
 import { CHANNELS } from '../shared/ipc.ts'
 import type { OpenResult, PtyExit } from '../shared/ipc.ts'
-import { NOTES, THREADS, loadState, watchPort } from './files.ts'
+import { NOTES, QUERIES, RUN_STATUS, THREADS, loadState, watchPort } from './files.ts'
 import { startSession } from './session.ts'
 import type { PtySession } from './session.ts'
 
@@ -231,7 +231,8 @@ export function attachAnalysis(ctx: WindowCtx, analysis: { name: string; path: s
   ctx.analysis = analysis
   ctx.stopPoll = pollFiles(
     watchPort,
-    [join(analysis.path, NOTES), join(analysis.path, THREADS)],
+    // The queries folder's mtime changes when a run's file is added or renamed into place.
+    [NOTES, THREADS, QUERIES, RUN_STATUS].map(name => join(analysis.path, name)),
     () => void pushState(ctx),
   )
   return { ok: true, outcome: 'opened', path: analysis.path }

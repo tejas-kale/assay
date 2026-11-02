@@ -109,8 +109,11 @@ export function ThreadsTab({ threads }: { threads: Threads }) {
     }
     rows.push(
       <li key={key} role="option" aria-selected={i === selectedIndex} className={i === selectedIndex ? 'row sel' : 'row'}>
-        <span className="grow">{item.kind === 'open' ? item.text : item.closed.thread}</span>
-        {item.kind === 'closed' && item.closed.outcome && <span className="dim">{item.closed.outcome}</span>}
+        {/* The outcome goes under the thread: side by side, a long outcome squeezed the thread to one letter per line. */}
+        <span className="grow">
+          {item.kind === 'open' ? item.text : item.closed.thread}
+          {item.kind === 'closed' && item.closed.outcome && <span className="dim outcome">→ {item.closed.outcome}</span>}
+        </span>
       </li>,
     )
   })
@@ -141,7 +144,6 @@ export function ThreadsTab({ threads }: { threads: Threads }) {
         <div className="status warn">Delete "{mode.item.text}"? y to confirm, any other key cancels</div>
       )}
       {message && <div className="status warn">{message}</div>}
-      <div className="hint">j/k move  / search  a add  e edit  c close  d delete  J/K reorder</div>
     </div>
   )
 }

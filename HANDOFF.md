@@ -271,7 +271,8 @@ Decide these while building, and record each here:
 
 ## Not in v1
 
-- Packaging, signing or auto-update; platforms other than the Mac.
+- Signing with a real identity, notarising, auto-update; platforms other than the Mac. (A local ad-hoc-signed
+  `Assay.app` exists: `npm run install-app`.)
 - Interactive plots.
 - Several analyses as tabs in one window.
 - A kernel that survives the session.
@@ -281,7 +282,50 @@ Decide these while building, and record each here:
 
 ## Status
 
-Slice 1 is written (spec and decisions: `docs/slice-1.md`). Its logic tests pass, but the Electron, preload and renderer code
-has never been compiled or run. Next: on the Mac, `npm install`, `npm run typecheck`, then `npm run dev` and the checklist in
-`README.md` (Verify first items 1 to 5). The pane-hiding change for the config repo is briefed in `docs/config-repo-slice-1.md`
-and not done.
+As of 2026-11-02. Nothing below is committed unless `git log` says so.
+
+### Done and run on the Mac
+
+- **Slice 1**, run and fixed: picker, Settings (the analysis folder; picking an analysis or `analyses/` resolves to the
+  folder above), terminal, Threads and Notes, Cmd shortcuts, Show Shortcuts (palette), left-Cmd hints. Threads is the
+  first tab. Cmd+2 pressed again cycles Threads → Notes → Files.
+- **Pane hidden** (config repo): with `ASSAY_APP=1` the mod never opens its pane and `/an` points to the app.
+  `claude/bin/claude` passes `-e ASSAY_APP`. `/an trust` still opens the pane: its review view is slice 4.
+- **Run status** (config repo, beyond the brief): with `ASSAY_APP=1` the mod writes `.assay/runs.json`
+  (`{ running: { number, startedAt } | null, failed: { "<n>": message } }`) before each `.sql` and after each result,
+  and `.assay/.gitignore` (`*`). The app shows "running" and failures from it.
+- **Slice 2, part:** Data, Code and History tabs over `queries/` (`src/core/runs.ts`, `src/renderer/components/DataPane.tsx`).
+  Current run follows Claude's latest; choosing in History holds a run until "follow latest". Data has a cell cursor
+  (h/j/k/l, Enter shows the row, y copies, the full cell under the table). Code is read-only CodeMirror 6 with SQL
+  highlighting and `sql-formatter` for display (`o` shows the exact file text) (`CodeView.tsx`). Links: `c` Data → Code,
+  `d` Code → Data.
+- **Files tab** (not in the original plan): every file in the analysis, newest first; Enter opens text in Neovim in a new
+  Ghostty window, previews images, and opens the rest in the default app (`src/core/files.ts`, `src/main/browse.ts`).
+- **Install:** `scripts/postinstall.mjs` repairs Electron's unpack on Node 26; `npm run install-app` builds `Assay.app`
+  (electron-builder, ad-hoc signed) into `/Applications`.
+
+### Left
+
+- **Slice 2:** trust labels on runs, a key that pins the current run, a marker on tabs with new content, editing in
+  CodeMirror with Vim mode (`i` or Cmd+E), Cmd+Enter runs it as a new run, and SQL re-run/edit through a request file
+  the mod polls. Wire the palette's Pin and Run current code (now placeholders).
+- **Slice 3** and **slice 4** as written under Build slices.
+- **Open for the build** above is still open.
+- Untested by Claude: a live Claude session in the app (the user has used it), physical Cmd keys, Cmd+W/Cmd+Q closing.
+
+### How this app was tested on the Mac without a person
+
+- Run `npx electron-vite dev -- --inspect=9230 --remote-debugging-port=9222` with `ASSAY_CLAUDE_BIN` set to a stub script,
+  so no real Claude starts. Drive the renderer over CDP (port 9222) with `Runtime.evaluate`, `Input.dispatchKeyEvent` and
+  `Page.captureScreenshot`, then read the screenshots.
+- CDP key events never reach main's `before-input-event`, so Cmd shortcuts are sent through the main inspector (port 9230,
+  `includeCommandLineAPI: true` gives `require`):
+  `webContents.getAllWebContents()[0].emit('before-input-event', { preventDefault() {} }, { type: 'keyDown', code: 'KeyP', meta: true, shift: false, control: false, alt: false, isAutoRepeat: false })`.
+- **Never test against the user's analyses.** Settings live in the user data folder that the installed app shares. In the
+  main inspector, call `app.setPath('userData', '<scratch>/ud')` with a `settings.json` whose root is a scratch copy, then
+  reload the page. Check that the picker lists the scratch analysis before pressing anything.
+- A change to main-process code needs the dev app restarted; the renderer hot-reloads.
+- The config repo is at `~/Code/config`; this session could edit it directly. Its tests:
+  `cd ~/Code/config/claude/analysis && /opt/homebrew/bin/claude plugin test .` (plain `claude` is the Podman wrapper).
+  `~/.local/bin/claude` links to `claude/bin/claude`, and the mod is mounted from `claude/analysis`, so changes apply on the
+  next session.

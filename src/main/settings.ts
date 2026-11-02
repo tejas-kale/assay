@@ -7,7 +7,7 @@ import { readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-import { normalizeRoot, parseSettings, serializeSettings } from '../core/settings.ts'
+import { normalizeRoot, parseSettings, rootFor, serializeSettings } from '../core/settings.ts'
 import type { SetRootResult } from '../shared/ipc.ts'
 
 const settingsPath = () => join(app.getPath('userData'), 'settings.json')
@@ -15,7 +15,9 @@ const settingsPath = () => join(app.getPath('userData'), 'settings.json')
 /** The folder holding `analyses/`, or undefined until the user sets it. */
 export async function analysisRoot(): Promise<string | undefined> {
   const text = await readFile(settingsPath(), 'utf8').catch(() => undefined)
-  return parseSettings(text).root
+  const { root } = parseSettings(text)
+  // A root saved before rootFor existed may be an analysis folder itself.
+  return root && rootFor(root)
 }
 
 export async function saveRoot(input: string): Promise<SetRootResult> {

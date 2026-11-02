@@ -6,6 +6,7 @@ import { shortcutLabel } from '../../core/keymap.ts'
 import { Banners } from './Banners.tsx'
 import { PaneHint } from './KeyHints.tsx'
 import { DATA_TABS, DataPane } from './DataPane.tsx'
+import { FilesTab } from './FilesTab.tsx'
 import { NotesTab } from './NotesTab.tsx'
 import { TerminalPane } from './TerminalPane.tsx'
 import { ThreadsTab } from './ThreadsTab.tsx'
@@ -59,16 +60,26 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
 
       <section className="pane" data-pane="notes" ref={notesRef} tabIndex={-1} aria-label="Notes and threads">
         <div className="tabs" role="tablist">
-          {(['notes', 'threads'] as const).map(id => (
+          {(['threads', 'notes', 'files'] as const).map(id => (
             <button key={id} role="tab" tabIndex={-1} aria-selected={notesTab === id} onClick={() => onNotesTab(id)}>
-              {id === 'notes' ? 'Notes' : 'Threads'}
+              {id === 'notes' ? 'Notes' : id === 'threads' ? 'Threads' : 'Files'}
             </button>
           ))}
           <span className="grow" />
           <span className="dim title">{state.analysis.name}</span>
         </div>
-        {hints && <PaneHint>{shortcutLabel('focus.notes')}</PaneHint>}
-        {notesTab === 'notes' ? <NotesTab key="notes" facts={state.facts} /> : <ThreadsTab key="threads" threads={state.threads} />}
+        {hints && (
+          <PaneHint>
+            {`${shortcutLabel('focus.notes')}  ·  Threads ${shortcutLabel('tab.threads')}  ·  Notes ${shortcutLabel('tab.notes')}  ·  Files ${shortcutLabel('tab.files')}`}
+          </PaneHint>
+        )}
+        {notesTab === 'notes' ? (
+          <NotesTab key="notes" facts={state.facts} />
+        ) : notesTab === 'threads' ? (
+          <ThreadsTab key="threads" threads={state.threads} />
+        ) : (
+          <FilesTab key="files" refreshKey={state} />
+        )}
       </section>
 
       <section className="pane" data-pane="data" ref={dataRef} tabIndex={-1} aria-label="Data pane">
@@ -79,7 +90,7 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
             </button>
           ))}
         </div>
-        <DataPane tab={dataTab} />
+        <DataPane tab={dataTab} runs={state.runs} status={state.runStatus} onTab={onDataTab} />
         {hints && (
           <PaneHint>
             {[shortcutLabel('focus.data'), ...DATA_TABS.map(t => `${t.title} ${shortcutLabel(`tab.${t.id}`)}`)].join('  ·  ')}

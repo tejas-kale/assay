@@ -11,11 +11,13 @@ export type CommandId =
   | 'tab.history'
   | 'tab.notes'
   | 'tab.threads'
+  | 'tab.files'
   | 'window.close'
   | 'settings.open'
   | 'pin.toggle'
   | 'kernel.restart'
   | 'replay.open'
+  | 'shortcuts.show'
 
 /** A Cmd shortcut, by physical key `code` (for example `Digit1`) so layouts do not matter. Cmd is always implied. */
 export type KeySpec = { code: string; shift?: true }
@@ -41,8 +43,10 @@ export const COMMANDS: readonly Command[] = [
   { id: 'tab.plots', title: 'Show Plots tab', accelerator: { code: 'KeyP', shift: true } },
   { id: 'tab.code', title: 'Show Code tab', accelerator: { code: 'KeyC', shift: true } },
   { id: 'tab.history', title: 'Show History tab', accelerator: { code: 'KeyH', shift: true } },
-  { id: 'tab.notes', title: 'Show Notes tab' },
-  { id: 'tab.threads', title: 'Show Threads tab' },
+  { id: 'tab.threads', title: 'Show Threads tab', accelerator: { code: 'KeyT', shift: true } },
+  { id: 'tab.notes', title: 'Show Notes tab', accelerator: { code: 'KeyN', shift: true } },
+  { id: 'tab.files', title: 'Show Files tab', accelerator: { code: 'KeyF', shift: true } },
+  { id: 'shortcuts.show', title: 'Show Shortcuts' },
   { id: 'pin.toggle', title: 'Pin current run', unavailable: 'Pin is not available until slice 2' },
   { id: 'kernel.restart', title: 'Restart kernel', unavailable: 'Restart kernel is not available until slice 3' },
   { id: 'replay.open', title: 'Replay', unavailable: 'Replay is not available until slice 3' },
@@ -68,3 +72,26 @@ export function shortcutLabel(id: CommandId): string {
   const key = a.code.replace(/^Key|^Digit/, '')
   return `${a.shift ? '⇧' : ''}⌘${KEY_SYMBOLS[key] ?? key}`
 }
+
+/** Single keys inside a pane, for the Show Shortcuts overlay. The panes no longer print them. */
+export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
+  {
+    pane: 'Threads',
+    keys: [['⌘2 again', 'switch to Notes'], ['j / k', 'move'], ['/', 'search'], ['a', 'add'], ['e', 'edit'], ['c', 'close'], ['d', 'delete'], ['J / K', 'reorder']],
+  },
+  {
+    pane: 'Notes',
+    keys: [['⌘2 again', 'switch to Files'], ['j / k', 'move'], ['/', 'search'], ['Enter', 'open file note'], ['a', 'add'], ['e', 'edit'], ['d', 'delete']],
+  },
+  {
+    pane: 'Data',
+    keys: [['h j k l', 'move cell'], ['J / K', 'page'], ['g / G  0 / $', 'first / last'], ['Enter', 'whole row'], ['y', 'copy cell'], ['c', 'its Code']],
+  },
+  { pane: 'Code', keys: [['h j k l  w b', 'move'], ['g / G', 'top / bottom'], ['o', 'original / formatted'], ['d', 'its Data']] },
+  { pane: 'History', keys: [['j / k', 'move'], ['Enter', 'show that run'], ['newest run', 'follow Claude again']] },
+  {
+    pane: 'Files',
+    keys: [['j / k', 'move'], ['/', 'search'], ['Enter', 'open: text in Neovim, image preview'], ['r', 'refresh'], ['⌘2 again', 'switch to Threads']],
+  },
+  { pane: 'Picker', keys: [['↑ / ↓ or Ctrl-N / Ctrl-P', 'move'], ['Enter', 'open or create']] },
+]
