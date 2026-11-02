@@ -6,6 +6,7 @@ import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron'
 import { createAnalysis, listAnalyses } from '../core/analyses.ts'
 import { addFact, deleteFact, editFact } from '../core/facts.ts'
 import type { LabelOf } from '../core/facts.ts'
+import { isIndex, parseRunRequest } from '../core/requests.ts'
 import { citedLabel } from '../core/runs.ts'
 import { addThread, closeOpen, deleteClosed, deleteOpen, editOpen, moveOpen } from '../core/threads.ts'
 import type { ClosedThread } from '../core/threads.ts'
@@ -21,7 +22,6 @@ const MAX_WRITE = 1 << 20
 const MAX_TEXT = 100_000
 
 const isText = (v: unknown): v is string => typeof v === 'string' && v.length <= MAX_TEXT
-const isIndex = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1_000_000
 const isSize = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 1000
 const invalid = (message: string): EditResult => ({ ok: false, reason: 'invalid', message })
 
@@ -176,28 +176,9 @@ export function registerIpc() {
     return readPlot(ctx.analysis.path, number, k)
   })
   handle(CHANNELS.runRequest, (ctx, request): Promise<RequestResult> | RequestResult => {
-    const refused = (message: string): RequestResult => ({ ok: false, message })
-    if (!ctx.analysis || typeof request !== 'object' || request === null) return refused('Invalid request')
-    const { kind, sql, code, engine, from, slug, runs } = request as Record<string, unknown>
-    const folder = ctx.analysis.path
-    if (kind === 'interrupt' || kind === 'restart') return writeRequest(folder, { kind })
-    if (kind === 'replay') {
-      if (!Array.isArray(runs) || runs.length === 0 || runs.length > 500 || !runs.every(isIndex)) return refused('Invalid runs')
-      return writeRequest(folder, { kind, runs: runs as number[] })
-    }
-    if (from !== undefined && !isIndex(from)) return refused('Invalid origin')
-    if (slug !== undefined && (typeof slug !== 'string' || slug.length > 200)) return refused('Invalid slug')
-    const origin = { ...(from !== undefined && { from }), ...(slug !== undefined && { slug }) }
-    if (kind === 'python') {
-      if (typeof code !== 'string' || code.length > MAX_WRITE) return refused('Invalid code')
-      if (code.trim() === '') return refused('The code is empty')
-      return writeRequest(folder, { kind, code, ...origin })
-    }
-    if (kind !== 'sql') return refused('Invalid request')
-    if (typeof sql !== 'string' || sql.length > MAX_WRITE) return refused('Invalid SQL')
-    if (sql.trim() === '') return refused('The SQL is empty')
-    if (engine !== 'databricks' && engine !== 'postgres') return refused('Invalid engine')
-    return writeRequest(folder, { kind, sql, engine, ...origin })
+    if (!ctx.analysis) return { ok: false, message: 'Invalid request' }
+    const parsed = parseRunRequest(request)
+    return 'error' in parsed ? { ok: false, message: parsed.error } : writeRequest(ctx.analysis.path, parsed)
   })
   handle(CHANNELS.noteFileRead, (ctx, path): Promise<NoteFileResult> | NoteFileResult => {
     if (!ctx.analysis || typeof path !== 'string') return { ok: false, message: 'Invalid path' }

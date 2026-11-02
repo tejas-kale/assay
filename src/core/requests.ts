@@ -86,3 +86,34 @@ export function canRerun(run: Run, header: RunHeader, body?: string): string | u
   if (run.language !== 'python' && header.trusted && body !== undefined && /^-- python:/m.test(body)) return TRUSTED_PYTHON
   return undefined
 }
+
+/** The most text a request may carry (1 MiB). */
+export const MAX_REQUEST_TEXT = 1 << 20
+const MAX_REPLAY_RUNS = 500
+
+/** A run or table number: a non-negative integer below a million. */
+export const isIndex = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1_000_000
+
+/** Checks what the renderer sent, per kind, and returns the request or the reason it is refused. */
+export function parseRunRequest(input: unknown): RunRequest | { error: string } {
+  if (typeof input !== 'object' || input === null) return { error: 'Invalid request' }
+  const { kind, sql, code, engine, from, slug, runs } = input as Record<string, unknown>
+  if (kind === 'interrupt' || kind === 'restart') return { kind }
+  if (kind === 'replay') {
+    if (!Array.isArray(runs) || runs.length === 0 || runs.length > MAX_REPLAY_RUNS || !runs.every(isIndex)) return { error: 'Invalid runs' }
+    return { kind, runs: runs as number[] }
+  }
+  if (kind !== 'python' && kind !== 'sql') return { error: 'Invalid request' }
+  if (from !== undefined && !isIndex(from)) return { error: 'Invalid origin' }
+  if (slug !== undefined && (typeof slug !== 'string' || slug.length > 200)) return { error: 'Invalid slug' }
+  const origin = { ...(from !== undefined && { from }), ...(slug !== undefined && { slug }) }
+  if (kind === 'python') {
+    if (typeof code !== 'string' || code.length > MAX_REQUEST_TEXT) return { error: 'Invalid code' }
+    if (code.trim() === '') return { error: 'The code is empty' }
+    return { kind, code, ...origin }
+  }
+  if (typeof sql !== 'string' || sql.length > MAX_REQUEST_TEXT) return { error: 'Invalid SQL' }
+  if (sql.trim() === '') return { error: 'The SQL is empty' }
+  if (engine !== 'databricks' && engine !== 'postgres') return { error: 'Invalid engine' }
+  return { kind, sql, engine, ...origin }
+}

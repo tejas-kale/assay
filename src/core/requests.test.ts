@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { canRerun, interruptRequest, newRequestId, parseReply, pythonRequest, replayRequest, requestText, restartRequest, sqlRequest } from './requests.ts'
+import { canRerun, interruptRequest, newRequestId, parseReply, parseRunRequest, pythonRequest, replayRequest, requestText, restartRequest, sqlRequest } from './requests.ts'
 
 test('newRequestId is 13 digits of time, a dash and 6 random [a-z0-9], so names sort by time', () => {
   const id = newRequestId(1_700_000_000_123, () => 0)
@@ -71,4 +71,28 @@ test('canRerun allows SQL and Python runs, and refuses a trusted Python calculat
     "Run a trusted calculation with Claude's trusted tool",
   )
   assert.equal(canRerun(sql, { ...header, trusted: 'w' }, 'select 1'), undefined)
+})
+
+test('parseRunRequest accepts each kind and keeps only the known fields', () => {
+  assert.deepEqual(parseRunRequest({ kind: 'interrupt', junk: 1 }), { kind: 'interrupt' })
+  assert.deepEqual(parseRunRequest({ kind: 'restart' }), { kind: 'restart' })
+  assert.deepEqual(parseRunRequest({ kind: 'replay', runs: [1, 2] }), { kind: 'replay', runs: [1, 2] })
+  assert.deepEqual(parseRunRequest({ kind: 'python', code: 'x=1', from: 3, slug: 's', sql: 'no' }), { kind: 'python', code: 'x=1', from: 3, slug: 's' })
+  assert.deepEqual(parseRunRequest({ kind: 'sql', sql: 'select 1', engine: 'postgres' }), { kind: 'sql', sql: 'select 1', engine: 'postgres' })
+})
+
+test('parseRunRequest refuses bad input with a reason', () => {
+  const err = (input: unknown) => (parseRunRequest(input) as { error: string }).error
+  assert.equal(err(null), 'Invalid request')
+  assert.equal(err({ kind: 'nope' }), 'Invalid request')
+  assert.equal(err({ kind: 'replay', runs: [] }), 'Invalid runs')
+  assert.equal(err({ kind: 'replay', runs: [-1] }), 'Invalid runs')
+  assert.equal(err({ kind: 'replay', runs: Array.from({ length: 501 }, (_, i) => i) }), 'Invalid runs')
+  assert.equal(err({ kind: 'python', code: 1 }), 'Invalid code')
+  assert.equal(err({ kind: 'python', code: ' \n' }), 'The code is empty')
+  assert.equal(err({ kind: 'python', code: 'x', from: 1.5 }), 'Invalid origin')
+  assert.equal(err({ kind: 'python', code: 'x', slug: 'a'.repeat(201) }), 'Invalid slug')
+  assert.equal(err({ kind: 'sql', sql: '', engine: 'postgres' }), 'The SQL is empty')
+  assert.equal(err({ kind: 'sql', sql: 'x'.repeat((1 << 20) + 1), engine: 'postgres' }), 'Invalid SQL')
+  assert.equal(err({ kind: 'sql', sql: 'select 1', engine: 'mysql' }), 'Invalid engine')
 })
