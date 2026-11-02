@@ -2,7 +2,7 @@
 
 ``sql("select ...")`` returns a pandas DataFrame; a ```` ```sql ```` cell in notebook.md runs through it,
 in Claude's ``python -m analysis_notebook run`` and in the user's Molten kernel alike. ``engine()`` is the
-SQLAlchemy engine under it. The profile and warehouse come from the nearest ``.analysis`` file, with the
+SQLAlchemy engine under it. The profile and warehouse come from the nearest ``analysis.yaml`` file, with the
 analysis defaults. There is no token to paste: the Databricks SDK asks the CLI
 (``databricks auth token``) for the profile's OAuth token and refreshes it before it expires.
 
@@ -18,11 +18,11 @@ from urllib.parse import urlencode
 
 DEFAULT_PROFILE = "Cint mkt"
 DEFAULT_WAREHOUSE = "455a178462311474"
-MARKER = ".analysis"
+MARKER = "analysis.yaml"
 
 
 def find_marker(start: Path) -> Path | None:
-    """The ``.analysis`` file in ``start`` or the nearest folder above it, if any."""
+    """The ``analysis.yaml`` file in ``start`` or the nearest folder above it, if any."""
     for folder in [start, *start.parents]:
         marker = folder / MARKER
         if marker.is_file():
@@ -31,14 +31,20 @@ def find_marker(start: Path) -> Path | None:
 
 
 def read_target(text: str) -> dict[str, str]:
-    """``profile`` and ``warehouse`` from a ``.analysis`` file's ``key: value`` lines, defaults filled in.
+    """``profile`` and ``warehouse`` from a ``analysis.yaml`` file's ``key: value`` lines, defaults filled in.
 
-    Read as the server reads them (``readTarget`` in ``src/core/target.ts``): the first line naming each key, any case.
+    Read as the server reads them (``readTarget`` in ``src/core/engines.ts``): the first top-level line naming each key, any case, quotes and a trailing ``# comment`` dropped.
     """
 
     def value(key: str) -> str | None:
-        found = re.search(rf"^\s*{key}\s*:\s*(.+?)\s*$", text, re.IGNORECASE | re.MULTILINE)
-        return found.group(1) if found else None
+        found = re.search(rf"^{key}[ \t]*:[ \t]+(.+?)[ \t]*$", text, re.IGNORECASE | re.MULTILINE)
+        if not found:
+            return None
+        raw = found.group(1)
+        quoted = re.match(r'"([^"]*)"|\'([^\']*)\'', raw)
+        if quoted:
+            return quoted.group(1) if quoted.group(1) is not None else quoted.group(2)
+        return re.sub(r"(^|\s)#.*$", "", raw).strip() or None
 
     return {
         "profile": value("profile") or DEFAULT_PROFILE,
@@ -58,9 +64,9 @@ def engine_url(host: str, warehouse: str, catalog: str | None = None, schema: st
 
 
 def engine(start: str | Path | None = None, *, catalog: str | None = None, schema: str | None = None) -> Any:
-    """A SQLAlchemy engine on the warehouse the nearest ``.analysis`` names.
+    """A SQLAlchemy engine on the warehouse the nearest ``analysis.yaml`` names.
 
-    ``start`` is where to look for ``.analysis`` from: the working directory by default. ``catalog`` and
+    ``start`` is where to look for ``analysis.yaml`` from: the working directory by default. ``catalog`` and
     ``schema`` set the defaults unqualified table names resolve against.
 
     The engine logs in through the CLI's OAuth for the profile (``auth_type="databricks-cli"``, so the SDK
@@ -92,7 +98,7 @@ def sql(query: str, start: str | Path | None = None, *, catalog: str | None = No
     """Runs one statement on the analysis's warehouse; its rows as a pandas DataFrame (None without rows).
 
     The statement goes to the connector as written, so ``:`` and ``%`` need no escaping. The engine is
-    kept per ``.analysis`` file, catalog and schema.
+    kept per ``analysis.yaml`` file, catalog and schema.
     """
     import pandas as pd
 

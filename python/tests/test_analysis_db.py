@@ -53,17 +53,22 @@ def test_read_target_defaults_and_keys() -> None:
     assert analysis_db.read_target(text) == {"profile": "DEFAULT", "warehouse": "abc123"}
 
 
+def test_read_target_from_analysis_yaml_drops_quotes_and_comments() -> None:
+    text = 'title: Churn in Q3\nprofile: Cint mkt   # optional\nwarehouse: "w9"\n'
+    assert analysis_db.read_target(text) == {"profile": "Cint mkt", "warehouse": "w9"}
+
+
 def test_find_marker_is_the_nearest(tmp_path: Path) -> None:
-    (tmp_path / ".analysis").write_text("profile: outer\n")
+    (tmp_path / "analysis.yaml").write_text("profile: outer\n")
     inner = tmp_path / "a" / "b"
     inner.mkdir(parents=True)
-    assert analysis_db.find_marker(inner) == tmp_path / ".analysis"
-    (tmp_path / "a" / ".analysis").write_text("profile: inner\n")
-    assert analysis_db.find_marker(inner) == tmp_path / "a" / ".analysis"
+    assert analysis_db.find_marker(inner) == tmp_path / "analysis.yaml"
+    (tmp_path / "a" / "analysis.yaml").write_text("profile: inner\n")
+    assert analysis_db.find_marker(inner) == tmp_path / "a" / "analysis.yaml"
 
 
 def test_find_marker_skips_a_folder_named_like_it(tmp_path: Path) -> None:
-    (tmp_path / ".analysis").mkdir()
+    (tmp_path / "analysis.yaml").mkdir()
     assert analysis_db.find_marker(tmp_path) is None
 
 
@@ -76,7 +81,7 @@ def test_engine_url_has_the_warehouse_path_and_no_credentials() -> None:
 
 
 def test_engine_uses_the_marker_and_the_cli_login(tmp_path: Path, connects: list[dict]) -> None:
-    (tmp_path / ".analysis").write_text("profile: Other\nwarehouse: w42\n")
+    (tmp_path / "analysis.yaml").write_text("profile: Other\nwarehouse: w42\n")
     engine = analysis_db.engine(tmp_path, catalog="main", schema="sales")
 
     assert FakeConfig.made == [{"profile": "Other", "auth_type": "databricks-cli"}]
@@ -90,7 +95,7 @@ def test_engine_uses_the_marker_and_the_cli_login(tmp_path: Path, connects: list
 
 
 def test_a_connection_gets_the_credentials_provider_and_no_cloud_fetch_or_telemetry(tmp_path: Path, connects: list[dict]) -> None:
-    (tmp_path / ".analysis").write_text("")
+    (tmp_path / "analysis.yaml").write_text("")
     engine = analysis_db.engine(tmp_path)
     with pytest.raises(Exception, match="no network in tests"):
         engine.connect()
@@ -116,7 +121,7 @@ def test_without_a_marker_the_defaults_apply(tmp_path: Path, connects: list[dict
 
 
 def test_with_no_start_it_looks_from_the_working_directory(tmp_path: Path, connects: list[dict], monkeypatch: pytest.MonkeyPatch) -> None:
-    (tmp_path / ".analysis").write_text("warehouse: here\n")
+    (tmp_path / "analysis.yaml").write_text("warehouse: here\n")
     nested = tmp_path / "lib"
     nested.mkdir()
     monkeypatch.chdir(nested)
@@ -165,7 +170,7 @@ def test_sql_returns_a_frame_and_keeps_one_engine_per_marker(tmp_path: Path, mon
 
     monkeypatch.setattr(analysis_db, "engine", fake_engine)
     monkeypatch.setattr(analysis_db, "_engines", {})
-    (tmp_path / ".analysis").write_text("")
+    (tmp_path / "analysis.yaml").write_text("")
     (tmp_path / "lib").mkdir()
 
     frame = analysis_db.sql("select country, count(*) n from t where x::int > 0 and y like '%a'", start=tmp_path)
