@@ -9,6 +9,7 @@ test('kindByName knows images, text and binary data by extension, and leaves the
   assert.equal(kindByName('queries/001_x.sql'), 'text')
   assert.equal(kindByName('data/x.csv'), 'text')
   assert.equal(kindByName('.analysis'), 'text')
+  assert.equal(kindByName('notes/flow.mmd'), 'text')
   assert.equal(kindByName('data/emb.npy'), 'other')
   assert.equal(kindByName('Makefile'), undefined)
   assert.equal(kindByName('x.weird'), undefined)

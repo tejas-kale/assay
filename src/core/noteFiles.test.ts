@@ -81,7 +81,7 @@ test('noteBlocks gives headings, paragraphs and code; fenced text stays plain', 
   assert.deepEqual(blocks, [
     { type: 'heading', level: 2, segments: [{ type: 'text', text: 'Why' }] },
     { type: 'paragraph', segments: [{ type: 'text', text: 'First ' }, { type: 'link', target: 'a' }, { type: 'text', text: '\nsecond line' }] },
-    { type: 'code', text: 'x = [[1]]  # [q 5]' },
+    { type: 'code', text: 'x = [[1]]  # [q 5]', lang: 'py' },
     { type: 'paragraph', segments: [{ type: 'text', text: 'End' }] },
   ])
 })
@@ -125,4 +125,11 @@ test('targetIndices numbers the segments as noteTargets lists them', () => {
   const segments = blocks.flatMap(b => (b.type === 'code' ? [] : b.segments)).filter(s => s.type !== 'text')
   assert.deepEqual(segments.map(s => indices.get(s)), [0, 1, 2])
   assert.equal(indices.size, 3)
+})
+
+test('noteBlocks keeps a fence\'s language, lower-cased, and none for a bare fence', () => {
+  assert.deepEqual(noteBlocks('```Mermaid title\ngraph TD\n  A --> B\n```\n\n~~~\nplain\n~~~'), [
+    { type: 'code', text: 'graph TD\n  A --> B', lang: 'mermaid' },
+    { type: 'code', text: 'plain' },
+  ])
 })

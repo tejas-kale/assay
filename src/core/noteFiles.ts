@@ -18,7 +18,8 @@ export type Segment = { type: 'text'; text: string } | { type: 'link'; target: s
 export type Block =
   | { type: 'heading'; level: number; segments: Segment[] }
   | { type: 'paragraph'; segments: Segment[] }
-  | { type: 'code'; text: string }
+  /** `lang` is the fence's info word, lower-cased (`mermaid`, `py`), when it has one. */
+  | { type: 'code'; text: string; lang?: string }
 
 const FILE_NAME = /^(\d{3,})-([a-z0-9][a-z0-9-]*)\.md$/
 const INLINE = /\[\[([^\]\n]+)\]\]|\[q (\d+)\]/g
@@ -112,9 +113,10 @@ export function noteBlocks(body: string): Block[] {
     if (FENCE.test(line)) {
       flush()
       const fence = FENCE.exec(line)?.[1] ?? '```'
+      const lang = line.trimStart().slice(fence.length).trim().split(/\s+/)[0]?.toLowerCase()
       const code: string[] = []
       for (i++; i < lines.length && !(lines[i] ?? '').trimStart().startsWith(fence); i++) code.push(lines[i] ?? '')
-      blocks.push({ type: 'code', text: code.join('\n') })
+      blocks.push({ type: 'code', text: code.join('\n'), ...(lang ? { lang } : {}) })
       continue
     }
     const heading = /^(#{1,6}) +(.*)$/.exec(line)

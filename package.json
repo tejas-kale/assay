@@ -23,6 +23,7 @@
     "@lezer/highlight": "^1.2.5",
     "@replit/codemirror-vim": "^6.4.0",
     "ghostty-web": "^0.4.0",
+    "mermaid": "^12.2.0",
     "node-pty": "^1.0.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

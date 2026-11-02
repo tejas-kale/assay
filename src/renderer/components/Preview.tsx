@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import type { PreviewSource } from '../../core/search.ts'
 import type { PreviewResult } from '../../shared/ipc.ts'
 import { CodeView, languageOfPath } from './CodeView.tsx'
+import { MermaidDiagram } from './Mermaid.tsx'
 
 const size = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : bytes < 1024 ** 2 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`
@@ -53,6 +54,10 @@ export function Preview(props: {
           <img src={shown.dataUrl} alt={path} />
         ) : shown.kind === 'binary' ? (
           <div className="empty">Binary file, {size(shown.size)}. Enter in the Files tab opens it in its app.</div>
+        ) : path !== undefined && /\.(mmd|mermaid)$/i.test(path) ? (
+          <div className="mermaid-file">
+            <MermaidDiagram text={shown.text} />
+          </div>
         ) : (
           <>
             <CodeView

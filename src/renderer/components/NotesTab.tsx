@@ -9,6 +9,7 @@ import type { PreviewSource } from '../../core/search.ts'
 import type { EditResult, Fact, NoteFile, Run, RunStatus } from '../../shared/ipc.ts'
 import { CodeEditor } from './CodeView.tsx'
 import type { EditorHandle } from './CodeView.tsx'
+import { MermaidDiagram } from './Mermaid.tsx'
 import { InlineInput, SearchLine, isPaneKey, useListPane, useReveal } from './common.tsx'
 import type { Reveal } from './common.tsx'
 import { PreviewPopup } from './Preview.tsx'
@@ -403,7 +404,9 @@ function NoteReader(props: {
       {error && <div className="status warn">{error}</div>}
       <div className="note-body">
         {blocks.map((block, i) =>
-          block.type === 'code' ? (
+          block.type === 'code' && block.lang === 'mermaid' ? (
+            <MermaidDiagram key={i} text={block.text} />
+          ) : block.type === 'code' ? (
             <pre key={i} className="filetext note-code">
               {block.text}
             </pre>

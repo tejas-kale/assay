@@ -17,7 +17,7 @@ export const MAX_FILES = 5000
 const IMAGE = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif'])
 const TEXT = new Set([
   'md', 'txt', 'sql', 'py', 'csv', 'tsv', 'json', 'jsonl', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'sh', 'zsh', 'bash',
-  'ts', 'tsx', 'js', 'mjs', 'cjs', 'html', 'css', 'xml', 'r', 'ipynb', 'log', 'env', 'lock', 'gitignore', 'analysis',
+  'ts', 'tsx', 'js', 'mjs', 'cjs', 'html', 'css', 'xml', 'r', 'ipynb', 'log', 'env', 'lock', 'gitignore', 'analysis', 'mmd', 'mermaid',
 ])
 const BINARY = new Set(['npy', 'npz', 'parquet', 'pkl', 'pickle', 'feather', 'arrow', 'zip', 'gz', 'tar', 'pdf', 'xlsx', 'xls', 'docx', 'pptx', 'db', 'sqlite', 'duckdb', 'h5', 'mp4', 'mov'])
 
