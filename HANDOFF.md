@@ -348,15 +348,21 @@ As of 2026-11-02 (after slice 3).
   longer knows the Molten notebook. Smoke-tested with a stub Claude and real runner output (a real kernel in a scratch
   venv), with replies simulated by hand; the runner's `serve` was checked with a closed stdin and a dying parent.
 
+- **Slice 3b (venv-assay):** config `b60ab00`..`56d5c8f`. One Linux venv in the Podman volume `venv-assay`, built by
+  `claude-pkg venv-assay` from the mod's `notes-src/pyproject.toml`, mounted read-only at `/opt/venv-assay`. The
+  mod's tools always use it; the kernel uses a project `.venv` only when it imports ipykernel. The runner runs from
+  the mod's mount. `notes_src.egg-info` is untracked. Mod 194 tests pass.
+
 ### Left
 
 - **Slice 2b, untested live:** a real Claude session picking up a request (mod poller), the request-to-run latency
   (Verify first item 8), and Postgres re-runs.
 - **Slice 3, untested live:** the mod's kernel in a real container session (spawn, ready, runs, interrupt, restart,
   replay, the 120 s ready limit), the Bash guard and the run notice on real prompts.
-- **Slice 3, the user's setup:** copy `claude/analysis/notes-src/analysis_kernel.py` into `~/Code/notes-src`, add
-  `ipykernel` to its `pyproject.toml` (and drop `marimo` and `[tool.marimo.runtime]`), then `claude-pkg uv sync` in the
-  sandbox. Until then the kernel shows `missing`.
+- **Slice 3b, untested live:** `/an trust` and the kernel from venv-assay in a real session. Checked in a container
+  with the session's mounts: trust, helper imports from `/opt/analysis`, a kernel run, read-only venv.
+- **Setup, once:** `claude-pkg venv-assay` (done on this Mac 2026-11-02; rerun after changing the mod's
+  `notes-src/pyproject.toml`). `~/Code/notes-src` needs no changes.
 - **Slice 4** as written under Build slices.
 - **Open for the build:** the note-file items remain (slice 4).
 - Untested by Claude: a live Claude session in the app (the user has used it), physical Cmd keys, Cmd+W/Cmd+Q closing.
