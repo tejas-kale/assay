@@ -75,6 +75,7 @@ export function createWindow(): WindowCtx {
     width: 1500,
     height: 900,
     show: false,
+    title: 'Assay',
     backgroundColor: windowBackground(),
     webPreferences: {
       preload: join(here, '../preload/index.cjs'),
@@ -97,6 +98,8 @@ export function createWindow(): WindowCtx {
   contexts.set(ctx.id, ctx)
   const wc = win.webContents
 
+  // Main owns the title (see attachAnalysis); the page's <title> must not reset it on load or reload.
+  win.on('page-title-updated', event => event.preventDefault())
   wc.setWindowOpenHandler(() => ({ action: 'deny' }))
   // Only a reload of the page itself may navigate.
   const guard = (event: { preventDefault(): void }, url: string) => {
@@ -229,6 +232,7 @@ export function attachAnalysis(ctx: WindowCtx, analysis: { name: string; path: s
     return { ok: false, message: 'This window already holds an analysis. Use Cmd+N for another.' }
   }
   ctx.analysis = analysis
+  ctx.win.setTitle(`${analysis.name} — Assay`)
   ctx.stopPoll = pollFiles(
     watchPort,
     // The queries folder's mtime changes when a run's file is added or renamed into place.
