@@ -41,9 +41,12 @@ def read_target(text: str) -> dict[str, str]:
         if not found:
             return None
         raw = found.group(1)
-        quoted = re.match(r'"([^"]*)"|\'([^\']*)\'', raw)
-        if quoted:
-            return quoted.group(1) if quoted.group(1) is not None else quoted.group(2)
+        double = re.match(r'"((?:[^"\\]|\\.)*)"', raw)
+        if double:
+            return re.sub(r"\\(.)", r"\1", double.group(1))
+        single = re.match(r"'((?:[^']|'')*)'", raw)
+        if single:
+            return single.group(1).replace("''", "'")
         return re.sub(r"(^|\s)#.*$", "", raw).strip() or None
 
     return {

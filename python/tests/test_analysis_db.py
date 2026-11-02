@@ -58,6 +58,11 @@ def test_read_target_from_analysis_yaml_drops_quotes_and_comments() -> None:
     assert analysis_db.read_target(text) == {"profile": "Cint mkt", "warehouse": "w9"}
 
 
+def test_read_target_unescapes_quotes_like_the_server() -> None:
+    text = "profile: 'It''s mine'\nwarehouse: \"say \\\"hi\\\"\"\n"
+    assert analysis_db.read_target(text) == {"profile": "It's mine", "warehouse": 'say "hi"'}
+
+
 def test_find_marker_is_the_nearest(tmp_path: Path) -> None:
     (tmp_path / "analysis.yaml").write_text("profile: outer\n")
     inner = tmp_path / "a" / "b"
