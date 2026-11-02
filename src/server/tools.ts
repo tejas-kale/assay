@@ -19,7 +19,7 @@ export const TOOLS = [
   {
     name: 'sql',
     description:
-      'Run one SQL statement on the Databricks SQL warehouse, or on the Postgres database with engine "postgres". Saves queries/NNN_<slug>.sql and .csv, shows the full result in the app, and returns the query number, row count, columns and at most 50 rows. Use it for every query.',
+      'Run one SQL statement on the Databricks SQL warehouse, or on the Postgres database with engine "postgres". Saves analyses/<slug>/queries/NNN_<slug>.sql and .csv (the folder of the open analysis, named in the rules), shows the full result in the app, and returns the query number, row count, columns and at most 50 rows. Use it for every query.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -38,7 +38,7 @@ export const TOOLS = [
   {
     name: 'python',
     description:
-      "Run Python in the analysis's kernel: one per session, shared with the user, which keeps its variables between runs. Saves queries/NNN_<slug>.py and the run's result beside the SQL runs, shows it in the app, and returns the run number, stdout, any error's traceback, each table's columns and at most 50 rows, and each plot's file (Read it to check the chart). q(N) loads run N's saved result as a pandas DataFrame without querying again. Use it for all Python.",
+      "Run Python in the analysis's kernel: one per session, shared with the user, which keeps its variables between runs. Saves analyses/<slug>/queries/NNN_<slug>.py and the run's result beside the SQL runs, shows it in the app, and returns the run number, stdout, any error's traceback, each table's columns and at most 50 rows, and each plot's file (Read it to check the chart). q(N) loads run N's saved result as a pandas DataFrame without querying again. Use it for all Python.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -245,7 +245,7 @@ export async function callTool(assay: Assay, name: string, args: Args): Promise<
       const ref = oneLine(field(args, 'note'))
       const query = integer(args, 'query')
       const isDelete = args.delete === true
-      if (!ref) return 'Give the note: its line number in notes.md, or its text.'
+      if (!ref) return `Give the note: its line number in ${assay.shown(NOTES)}, or its text.`
       if (!isDelete && query === undefined) return 'Give the query that verifies it, or delete: true.'
       const facts = query === undefined ? undefined : await assay.queryFacts(query)
       return assay.serially(async () => {
@@ -288,9 +288,15 @@ export async function callTool(assay: Assay, name: string, args: Args): Promise<
     case 'link_note': {
       const given = field(args, 'path').trim()
       if (!given || given.startsWith('~')) return 'Give the note file as an absolute path.'
-      // A linked note's path is absolute, or relative to the root (where Claude works) or else to the analysis folder.
-      const underRoot = join(assay.config.root, given)
-      const path = isAbsolute(given) ? given : (await assay.exists(underRoot)) ? underRoot : join(assay.config.analysis, given)
+      // A linked note's path is absolute, or relative to the root (where Claude works) or to the analysis folder; both is ambiguous.
+      let path = given
+      if (!isAbsolute(given)) {
+        const underRoot = join(assay.config.root, given)
+        const inAnalysis = join(assay.config.analysis, given)
+        const [isInRoot, isInAnalysis] = await Promise.all([assay.exists(underRoot), assay.exists(inAnalysis)])
+        if (isInRoot && isInAnalysis && underRoot !== inAnalysis) return `${given} exists under the root (${underRoot}) and in the analysis (${inAnalysis}). Give an absolute path.`
+        path = isInRoot ? underRoot : inAnalysis
+      }
       const text = await readFile(path, 'utf8').catch(() => undefined)
       if (text === undefined) return `Cannot read ${path}. Write the note there first.`
       const title = titleOf(text) ?? baseName(path)
@@ -300,7 +306,7 @@ export async function callTool(assay: Assay, name: string, args: Args): Promise<
         await assay.write(NOTES, notesText([...lines, fileNoteLine(title, path)]))
         return true
       })
-      return isNew ? `Listed "${title}" in notes.md; the app's Notes tab shows it.` : `"${title}" is already listed; the app shows its file as it is now.`
+      return isNew ? `Listed "${title}" in ${assay.shown(NOTES)}; the app's Notes tab shows it.` : `"${title}" is already listed; the app shows its file as it is now.`
     }
     default:
       return `Unknown tool: ${name}.`

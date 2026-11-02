@@ -268,12 +268,20 @@ test('revise_note cites a new query, or deletes, by line number or text', async 
 test('link_note lists the file Claude wrote, by the title at its top, once', async () => {
   const ws = await fake({ 'analysis.yaml': 'title: Feature\n', 'notes.md': 'beta is per panel [unverified q 001]\n', '/repos/llm-wiki/panels/alpha.md': '# Alpha is 0 for test panels\n\nBody.\n' })
   const path = `${ws.dir}/repos/llm-wiki/panels/alpha.md`
-  expect(await ws.call('link_note', { path })).toBe(`Listed "Alpha is 0 for test panels" in notes.md; the app's Notes tab shows it.`)
+  expect(await ws.call('link_note', { path })).toBe(`Listed "Alpha is 0 for test panels" in analyses/feature/notes.md; the app's Notes tab shows it.`)
   expect(await ws.file('notes.md')).toBe(`beta is per panel [unverified q 001]\n[Alpha is 0 for test panels](<${path}>)\n`)
   expect(await ws.call('link_note', { path })).toMatch(/already listed/)
   expect(await ws.call('link_note', { path: `${ws.dir}/repos/llm-wiki/missing.md` })).toBe(`Cannot read ${ws.dir}/repos/llm-wiki/missing.md. Write the note there first.`)
   expect(await ws.call('link_note', { path: '~/wiki/a.md' })).toBe('Give the note file as an absolute path.')
   expect(await ws.file('/repos/llm-wiki/panels/alpha.md')).toBe('# Alpha is 0 for test panels\n\nBody.\n')
+  await ws.done()
+})
+
+test('link_note takes a relative path from the root or the analysis, and refuses one that exists in both', async () => {
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', 'both.md': '# In analysis\n', 'mine.md': '# Mine\n', '/work/both.md': '# In root\n', '/work/shared.md': '# Shared\n' })
+  expect(await ws.call('link_note', { path: 'both.md' })).toBe(`both.md exists under the root (${ws.root}/both.md) and in the analysis (${ws.analysis}/both.md). Give an absolute path.`)
+  expect(await ws.call('link_note', { path: 'mine.md' })).toMatch(/^Listed "Mine"/)
+  expect(await ws.call('link_note', { path: 'shared.md' })).toMatch(/^Listed "Shared"/)
   await ws.done()
 })
 

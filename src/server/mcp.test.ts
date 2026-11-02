@@ -92,7 +92,7 @@ test('the bundled server lists its tools and answers each once', { timeout: 120_
   expect(await s.call('revise_note', { note: '1', query: 1 })).toBe('Note 1 is now queried q 001.')
   expect(await s.call('new_note', { title: 'One', slug: 'one', text: 'It is 1 [q 1].' })).toBe('Wrote analyses/panel/notes/001-one.md. Link it from other notes with [[one]].')
   await writeFile(join(s.dir, 'wiki.md'), '# Wiki page\n')
-  expect(await s.call('link_note', { path: join(s.dir, 'wiki.md') })).toBe(`Listed "Wiki page" in notes.md; the app's Notes tab shows it.`)
+  expect(await s.call('link_note', { path: join(s.dir, 'wiki.md') })).toBe(`Listed "Wiki page" in analyses/panel/notes.md; the app's Notes tab shows it.`)
   await s.close()
 })
 
