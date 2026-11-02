@@ -83,8 +83,13 @@ export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
   },
   {
     pane: 'Notes',
-    keys: [['⌘2 again', 'switch to Files'], ['j / k', 'move'], ['/', 'search'], ['Enter', 'open file note'], ['a', 'add'], ['e', 'edit'], ['d', 'delete']],
+    keys: [['⌘2 again', 'switch to Files'], ['j / k', 'move'], ['/', 'search'], ['Enter', 'open file note or read note'], ['a', 'add fact'], ['n', 'new note'], ['e', 'edit'], ['d', 'delete']],
   },
+  {
+    pane: 'Note reader',
+    keys: [['Tab / ⇧Tab', 'next / previous link or citation'], ['Enter', 'follow: note, or run in the data pane'], ['Backspace', 'previous note'], ['j / k', 'scroll'], ['e', 'edit'], ['Esc', 'back to the list']],
+  },
+  { pane: 'Note editor', keys: [['⌘S', 'save'], ['Esc', 'leave (in Vim normal mode)']] },
   {
     pane: 'Data',
     keys: [['h j k l', 'move cell'], ['J / K', 'page'], ['g / G  0 / $', 'first / last'], ['Enter', 'whole row'], ['y', 'copy cell'], ['c', 'its Code'], ['p', 'pin / follow latest'], ['[ / ]', 'previous / next table'], ['s', 'stdout and error']],

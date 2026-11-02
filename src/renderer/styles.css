@@ -156,3 +156,16 @@ table.grid th.cur-col { color: var(--accent); }
 .chip-text, .chip-image, .chip-other { font-size: 10px; }
 .image-preview { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .image-preview img { flex: 1; min-height: 0; object-fit: contain; padding: 8px; background: var(--bg); }
+
+.subhead.group { padding: 4px 12px; color: var(--dim); font-size: 11px; border-bottom: none; }
+.note-reader { outline: none; overflow: auto; height: 100%; }
+.note-body { padding: 4px 12px; line-height: 1.5; }
+.note-par { margin: 0 0 10px; white-space: pre-wrap; }
+.note-heading { font-weight: bold; margin: 10px 0 4px; }
+.note-code { padding: 6px 8px; margin: 0 0 10px; background: var(--sel); border-radius: 4px; }
+.note-reader .target.sel { background: var(--sel); outline: 1px solid var(--accent); border-radius: 3px; }
+.note-reader .wikilink { color: var(--info); }
+.note-reader .chip { margin-left: 4px; }
+.note-backlinks { padding-bottom: 8px; }
+.note-editor { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.note-editor .code-view { flex: 1; min-height: 0; }

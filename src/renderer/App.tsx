@@ -199,6 +199,7 @@ export function App() {
           onToast={showToast}
           toast={toast}
           hints={hints}
+          onShowRun={number => setDataCommand({ id: 'run.show', number, n: ++counter.current })}
         />
       )}
       {palette && (

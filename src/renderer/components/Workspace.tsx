@@ -29,9 +29,11 @@ type Props = {
   toast: string | undefined
   /** Left Cmd is long-pressed: show each pane's shortcuts. */
   hints: boolean
+  /** A note's citation was followed: hold that run in the data pane. */
+  onShowRun: (number: number) => void
 }
 
-export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, focusRequest, dataCommand, onToast, toast, hints }: Props) {
+export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, focusRequest, dataCommand, onToast, toast, hints, onShowRun }: Props) {
   const terminalRef = useRef<TerminalHandle | undefined>(undefined)
   const notesRef = useRef<HTMLElement>(null)
   const dataRef = useRef<HTMLElement>(null)
@@ -78,7 +80,7 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
           </PaneHint>
         )}
         {notesTab === 'notes' ? (
-          <NotesTab key="notes" facts={state.facts} />
+          <NotesTab key="notes" facts={state.facts} noteFiles={state.noteFiles} runs={state.runs} status={state.runStatus} onShowRun={onShowRun} />
         ) : notesTab === 'threads' ? (
           <ThreadsTab key="threads" threads={state.threads} />
         ) : (

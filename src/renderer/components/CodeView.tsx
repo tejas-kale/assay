@@ -1,6 +1,7 @@
 // Code with highlighting, in CodeMirror 6: read-only for reading, with Vim mode for edits.
 // SQL is shown formatted; the file on disk keeps Claude's exact text, and `o` shows that instead.
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { markdown } from '@codemirror/lang-markdown'
 import { python } from '@codemirror/lang-python'
 import { sql, StandardSQL } from '@codemirror/lang-sql'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
@@ -34,6 +35,9 @@ const highlight = HighlightStyle.define([
   { tag: [tags.lineComment, tags.blockComment, tags.comment], color: 'var(--syn-comment)', fontStyle: 'italic' },
   { tag: [tags.function(tags.variableName), tags.typeName, tags.standard(tags.name)], color: 'var(--syn-function)' },
   { tag: [tags.operator, tags.punctuation], color: 'var(--syn-operator)' },
+  { tag: [tags.heading, tags.strong], color: 'var(--syn-function)', fontWeight: 'bold' },
+  { tag: [tags.emphasis], fontStyle: 'italic' },
+  { tag: [tags.link, tags.url, tags.monospace], color: 'var(--syn-string)' },
 ])
 
 const theme = EditorView.theme({
@@ -136,7 +140,7 @@ export type EditorHandle = {
 /** The editable Code view: Vim mode, starting in normal mode. Rebuilt only when `initial` or the run changes. */
 export function CodeEditor(props: {
   initial: string
-  language: 'sql' | 'python'
+  language: 'sql' | 'python' | 'markdown'
   onChange: (text: string) => void
   handleRef: Ref<EditorHandle>
 }) {
@@ -166,7 +170,7 @@ export function CodeEditor(props: {
           vim(),
           history(),
           keymap.of([...defaultKeymap, ...historyKeymap]),
-          props.language === 'python' ? python() : sql({ dialect: StandardSQL, upperCaseKeywords: true }),
+          props.language === 'python' ? python() : props.language === 'markdown' ? markdown() : sql({ dialect: StandardSQL, upperCaseKeywords: true }),
           syntaxHighlighting(highlight),
           EditorView.lineWrapping,
           EditorView.updateListener.of(update => {

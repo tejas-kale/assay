@@ -24,10 +24,11 @@ export const DATA_TABS: { id: DataTabName; title: string }[] = [
 ]
 
 /** A command the app sends to the pane: `n` makes a repeat of the same command a new request. */
-export type DataCommand = {
-  id: Extract<CommandId, 'pin.toggle' | 'code.edit' | 'code.run' | 'run.interrupt' | 'kernel.restart' | 'replay.open'>
-  n: number
-}
+export type DataCommand = { n: number } & (
+  | { id: Extract<CommandId, 'pin.toggle' | 'code.edit' | 'code.run' | 'run.interrupt' | 'kernel.restart' | 'replay.open'> }
+  /** Hold run `number`, as choosing it in History does (a followed citation in a note). */
+  | { id: 'run.show'; number: number }
+)
 
 type Props = {
   tab: DataTabName
@@ -243,8 +244,13 @@ export function DataPane({ tab, runs, status, onTab, command, onToast }: Props) 
   }
 
   // The app's commands reach the pane through one request at a time; the latest handlers run them.
-  const handlers = useRef({ togglePin, startEdit, runIt, openReplay })
-  handlers.current = { togglePin, startEdit, runIt, openReplay }
+  const showRun = (number: number) => {
+    const run = runs.find(r => r.number === number)
+    if (run) choose(run)
+    else onToast(`No run ${String(number).padStart(3, '0')}`)
+  }
+  const handlers = useRef({ togglePin, startEdit, runIt, openReplay, showRun })
+  handlers.current = { togglePin, startEdit, runIt, openReplay, showRun }
   // A command sent before this pane existed (from the picker) is not for it.
   const firstCommand = useRef(command?.n)
   useEffect(() => {
@@ -254,6 +260,7 @@ export function DataPane({ tab, runs, status, onTab, command, onToast }: Props) 
     else if (command.id === 'code.run') handlers.current.runIt()
     else if (command.id === 'run.interrupt') sendRequest({ kind: 'interrupt' })
     else if (command.id === 'kernel.restart') setConfirmRestart(true)
+    else if (command.id === 'run.show') handlers.current.showRun(command.number)
     else handlers.current.openReplay()
     // Only a new request runs a command.
   }, [command?.n])
