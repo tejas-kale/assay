@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { createAnalysis, listAnalyses, openAnalysis, parseAnalysisFile, renameAnalysis, setTitle, slugFor } from './analyses.ts'
+import { analysisSlug, cleanTitle, createAnalysis, isoDay, listAnalyses, openAnalysis, parseAnalysisFile, renameAnalysis, setTitle, slugFor } from './analyses.ts'
 import type { FsPort } from './analyses.ts'
 
 /** An in-memory port: `dirs` maps a folder to its mtime; `files` maps a file path to its text. */
@@ -55,6 +55,22 @@ test('a title edit rewrites the title line only: other keys, unknown keys and co
 test('a title edit keeps CRLF line endings and never adds a second title line', () => {
   assert.equal(setTitle('title: Old\r\ncreated: 2026-11-02\r\n', 'New'), 'title: New\r\ncreated: 2026-11-02\r\n')
   assert.equal(setTitle('created: 2026-11-02\r\n', 'New'), 'title: New\r\ncreated: 2026-11-02\r\n')
+})
+
+test('cleanTitle trims, collapses spaces, and refuses a title with no letter or digit', () => {
+  assert.deepEqual(cleanTitle('  Churn   in\tQ3 '), { ok: true, title: 'Churn in Q3' })
+  for (const bad of ['', '   ', '!!!', '--']) assert.deepEqual(cleanTitle(bad), { ok: false, message: 'Type a title with letters or digits.' })
+})
+
+test('isoDay is the local calendar day, zero padded', () => {
+  assert.equal(isoDay(new Date(2026, 0, 5, 23, 59)), '2026-01-05')
+  assert.equal(isoDay(new Date(2026, 10, 2, 0, 0)), '2026-11-02')
+})
+
+test('analysisSlug: the slug of exactly <root>/analyses/<slug>, else undefined', () => {
+  assert.equal(analysisSlug('/r/analyses/churn', '/r'), 'churn')
+  assert.equal(analysisSlug('/r/analyses/churn', '/r/'), 'churn')
+  for (const bad of ['/r/analyses/', '/r/analyses', '/r/analyses/a/b', '/r/analyses/.git', '/r/other/a', '/x/analyses/a', '/r/analyses/../a']) assert.equal(analysisSlug(bad, '/r'), undefined, bad)
 })
 
 test('slugFor: the note slug rule, numbered from -2 on a clash', () => {

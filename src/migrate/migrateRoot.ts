@@ -5,7 +5,7 @@ import { readdir, readFile, rename, rm, stat, utimes, writeFile } from 'node:fs/
 import { join } from 'node:path'
 
 import { slugify } from '../core/noteFiles.ts'
-import { ANALYSIS_FILE, parseAnalysisFile, slugFor, yamlScalar } from '../core/analyses.ts'
+import { ANALYSIS_FILE, isoDay, parseAnalysisFile, slugFor, yamlScalar } from '../core/analyses.ts'
 
 const OLD_MARKER = '.analysis'
 const OLD_MARKER_TEXT = '# Marks this folder for the analysis mod.'
@@ -26,7 +26,7 @@ export const titleFromFolder = (name: string) => {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
 
-const day = (ms: number) => new Date(ms).toLocaleDateString('sv')
+const day = (ms: number) => isoDay(new Date(ms))
 
 /** The day of the oldest run file in `queries/`, else of the folder's own change time. */
 async function createdOn(folder: string, folderMs: number): Promise<string> {

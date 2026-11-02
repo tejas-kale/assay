@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 import { cmdHold } from '../core/cmdHold.ts'
 import { commandForInput } from '../core/keymap.ts'
+import type { AnalysisRef } from '../core/analyses.ts'
 import { spawnSpec } from '../core/session.ts'
 import { THEMES } from '../core/theme.ts'
 import { pollFiles, pollSignature } from '../core/watch.ts'
@@ -22,7 +23,7 @@ export type WindowCtx = {
   win: BrowserWindow
   /** webContents id, kept because `win.webContents` throws once destroyed. */
   id: number
-  analysis: { name: string; title: string; path: string } | undefined
+  analysis: AnalysisRef | undefined
   session: PtySession | undefined
   stopPoll: (() => void) | undefined
   /** The user (or Cmd+Q) asked to close while the session ran: close the window when it exits. */
@@ -223,7 +224,7 @@ export async function pushState(ctx: WindowCtx) {
 }
 
 /** Makes this window the workspace for `analysis`, or focuses the window that already holds it. */
-export function attachAnalysis(ctx: WindowCtx, analysis: { name: string; title: string; path: string }): OpenResult {
+export function attachAnalysis(ctx: WindowCtx, analysis: AnalysisRef): OpenResult {
   const other = allContexts().find(c => c !== ctx && c.analysis?.path === analysis.path)
   if (other) {
     if (other.win.isMinimized()) other.win.restore()

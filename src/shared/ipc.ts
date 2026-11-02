@@ -5,7 +5,7 @@
 // (`invoke` for requests, `on` for events). Main owns all files: the renderer never
 // reads or writes a path itself.
 
-import type { Analysis } from '../core/analyses.ts'
+import type { Analysis, AnalysisRef } from '../core/analyses.ts'
 import type { CommandId } from '../core/keymap.ts'
 import type { Fact } from '../core/facts.ts'
 import type { FileEntry } from '../core/files.ts'
@@ -17,7 +17,7 @@ import type { SearchContents } from '../core/search.ts'
 import type { ClosedThread, Threads } from '../core/threads.ts'
 import type { TrustReview } from '../core/trust.ts'
 
-export type { Analysis, ClosedThread, CloseState, CommandId, Engine, Fact, FileEntry, KernelState, NoteFile, Reply, Run, RunRequest, RunResult, RunStatus, SearchContents, Table, Threads, TrustReview }
+export type { Analysis, AnalysisRef, ClosedThread, CloseState, CommandId, Engine, Fact, FileEntry, KernelState, NoteFile, Reply, Run, RunRequest, RunResult, RunStatus, SearchContents, Table, Threads, TrustReview }
 
 /** Call to stop listening. */
 export type Unsubscribe = () => void
@@ -31,7 +31,7 @@ export type EditResult =
 /** What the Notes and Threads tabs show. Re-derived by main from the files after each poll hit or edit. */
 export type AnalysisState = {
   /** The analysis this window holds. */
-  analysis: { name: string; title: string; path: string }
+  analysis: AnalysisRef
   facts: Fact[]
   threads: Threads
   /** The runs in `queries/`, oldest first. */

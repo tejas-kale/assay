@@ -15,13 +15,10 @@ export type FsPort = {
   writeFile(path: string, text: string): Promise<void>
 }
 
-export type Analysis = {
-  /** The folder name under `analyses/`: the slug, which citations name. */
-  name: string
-  title: string
-  path: string
-  modifiedMs: number
-}
+/** An analysis as the app and server name it: the folder name (the slug, which citations name), the title, the folder. */
+export type AnalysisRef = { name: string; title: string; path: string }
+
+export type Analysis = AnalysisRef & { modifiedMs: number }
 
 export const ANALYSIS_FILE = 'analysis.yaml'
 const ANALYSES = 'analyses'
@@ -98,8 +95,6 @@ export function slugFor(title: string, taken: Iterable<string>): string {
   for (let n = 2; ; n++) if (!used.has(`${slug}-${n}`)) return `${slug}-${n}`
 }
 
-const hasWords = (title: string) => /[A-Za-z0-9]/.test(title)
-
 /** Every analysis under `root`, most recently changed first. Only folders holding analysis.yaml count. */
 export async function listAnalyses(port: FsPort, root: string): Promise<Analysis[]> {
   const found: Analysis[] = []
@@ -116,12 +111,31 @@ export async function listAnalyses(port: FsPort, root: string): Promise<Analysis
   return found.sort((a, b) => b.modifiedMs - a.modifiedMs || a.path.localeCompare(b.path))
 }
 
-type Opened = Pick<Analysis, 'name' | 'title' | 'path'>
+/** A typed title as stored: trimmed, spaces collapsed; refused when it has no letter or digit to slug. */
+export function cleanTitle(raw: string): { ok: true; title: string } | { ok: false; message: string } {
+  const title = raw.trim().replace(/\s+/g, ' ')
+  return /[A-Za-z0-9]/.test(title) ? { ok: true, title } : { ok: false, message: 'Type a title with letters or digits.' }
+}
+
+const titled = (raw: string) => {
+  const cleaned = cleanTitle(raw)
+  if (!cleaned.ok) throw new Error(cleaned.message)
+  return cleaned.title
+}
+
+/** A local calendar day as `YYYY-MM-DD`. */
+export const isoDay = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+
+/** The slug when `path` is exactly `<root>/analyses/<slug>`; undefined for anything else. */
+export function analysisSlug(path: string, root: string): string | undefined {
+  const prefix = `${root.replace(/\/+$/, '')}/${ANALYSES}/`
+  const slug = path.startsWith(prefix) ? path.slice(prefix.length) : ''
+  return slug === '' || slug.includes('/') || slug.startsWith('.') ? undefined : slug
+}
 
 /** Makes `analyses/<slug>/analysis.yaml` from a typed title and returns the analysis. `today` is `YYYY-MM-DD`. */
-export async function createAnalysis(port: FsPort, root: string, title: string, today: string): Promise<Opened> {
-  const typed = title.trim().replace(/\s+/g, ' ')
-  if (!hasWords(typed)) throw new Error('Type a title with letters or digits.')
+export async function createAnalysis(port: FsPort, root: string, title: string, today: string): Promise<AnalysisRef> {
+  const typed = titled(title)
   // Every folder counts as taken, marked or not, so nothing is written into another's folder.
   const taken = await port.readdir(join(root, ANALYSES)).catch(() => [] as string[])
   const name = slugFor(typed, taken)
@@ -133,20 +147,22 @@ export async function createAnalysis(port: FsPort, root: string, title: string, 
 
 const lastPart = (path: string) => path.replace(/\/+$/, '').split('/').at(-1) ?? path
 
-/** The analysis in `path`; a folder without analysis.yaml is refused, pointing at the migration. */
-export async function openAnalysis(port: FsPort, path: string): Promise<Opened> {
+/** The analysis in `path` and its analysis.yaml text; a folder without the file is refused, pointing at the migration. */
+async function read(port: Pick<FsPort, 'readFile'>, path: string): Promise<{ ref: AnalysisRef; text: string }> {
   const text = await port.readFile(join(path, ANALYSIS_FILE)).catch(() => undefined)
   if (text === undefined) throw new Error(`${path} has no ${ANALYSIS_FILE}. Run "npm run migrate:root" in the Assay repo to convert the old layout.`)
   const name = lastPart(path)
-  return { name, title: parseAnalysisFile(text).title ?? name, path }
+  return { ref: { name, title: parseAnalysisFile(text).title ?? name, path }, text }
+}
+
+export async function openAnalysis(port: Pick<FsPort, 'readFile'>, path: string): Promise<AnalysisRef> {
+  return (await read(port, path)).ref
 }
 
 /** Changes `title:` in the analysis's analysis.yaml. The folder, and so the slug, stay. */
-export async function renameAnalysis(port: FsPort, path: string, title: string): Promise<Opened> {
-  const typed = title.trim().replace(/\s+/g, ' ')
-  if (!hasWords(typed)) throw new Error('Type a title with letters or digits.')
-  const found = await openAnalysis(port, path)
-  const file = join(path, ANALYSIS_FILE)
-  await port.writeFile(file, setTitle(await port.readFile(file), typed))
-  return { ...found, title: typed }
+export async function renameAnalysis(port: Pick<FsPort, 'readFile' | 'writeFile'>, path: string, title: string): Promise<AnalysisRef> {
+  const typed = titled(title)
+  const { ref, text } = await read(port, path)
+  await port.writeFile(join(path, ANALYSIS_FILE), setTitle(text, typed))
+  return { ...ref, title: typed }
 }

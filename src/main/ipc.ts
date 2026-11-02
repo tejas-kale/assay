@@ -3,7 +3,7 @@
 import { ipcMain } from 'electron'
 import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron'
 
-import { createAnalysis, listAnalyses, openAnalysis, renameAnalysis } from '../core/analyses.ts'
+import { analysisSlug, createAnalysis, isoDay, listAnalyses, openAnalysis, renameAnalysis } from '../core/analyses.ts'
 import { addFact, deleteFact, editFact } from '../core/facts.ts'
 import type { LabelOf } from '../core/facts.ts'
 import { isIndex, parseRunRequest } from '../core/requests.ts'
@@ -90,8 +90,7 @@ export function registerIpc() {
     const root = await analysisRoot()
     if (!root) return { ok: false, message: NO_ROOT }
     try {
-      const today = new Date().toLocaleDateString('sv')
-      return attachAnalysis(ctx, await createAnalysis(fsPort, root, title, today))
+      return attachAnalysis(ctx, await createAnalysis(fsPort, root, title, isoDay(new Date())))
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err) }
     }
@@ -102,9 +101,7 @@ export function registerIpc() {
     if (typeof path !== 'string') return { ok: false, message: 'Invalid path' }
     const root = await analysisRoot()
     if (!root) return { ok: false, message: NO_ROOT }
-    const prefix = `${root.replace(/\/+$/, '')}/analyses/`
-    const slug = path.slice(prefix.length)
-    if (!path.startsWith(prefix) || slug === '' || slug.includes('/') || slug.startsWith('.')) return { ok: false, message: 'Not an analysis under the root folder' }
+    if (!analysisSlug(path, root)) return { ok: false, message: 'Not an analysis under the root folder' }
     try {
       return attachAnalysis(ctx, await openAnalysis(fsPort, path))
     } catch (err) {
@@ -115,7 +112,7 @@ export function registerIpc() {
   handle(CHANNELS.analysesRename, async (ctx, title) => {
     if (!ctx.analysis || typeof title !== 'string' || title.length > 200) return { ok: false, message: 'Invalid title' }
     try {
-      ctx.analysis = { ...(await renameAnalysis(fsPort, ctx.analysis.path, title)) }
+      ctx.analysis = await renameAnalysis(fsPort, ctx.analysis.path, title)
       ctx.win.setTitle(`${ctx.analysis.title} — Assay`)
       void pushState(ctx)
       return { ok: true }

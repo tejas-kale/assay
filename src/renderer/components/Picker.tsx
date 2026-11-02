@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { cleanTitle } from '../../core/analyses.ts'
 import { formatAge } from '../../core/age.ts'
 import { fuzzyRank } from '../../core/fuzzy.ts'
 import type { Analysis, OpenResult } from '../../shared/ipc.ts'
@@ -24,7 +25,8 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
 
   const ranked = fuzzyRank(analyses ?? [], query, a => `${a.title} ${a.name}`)
   const name = query.trim()
-  const isTitle = /[A-Za-z0-9]/.test(name)
+  const cleaned = cleanTitle(name)
+  const isTitle = cleaned.ok
   const canCreate = analyses !== undefined && ranked.length === 0 && isTitle
   // Shift+Enter creates the typed title even when fuzzy matches exist, unless an analysis already has it.
   const canForceCreate = analyses !== undefined && isTitle && !analyses.some(a => a.title === name)
@@ -57,7 +59,7 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
     } else if (canCreate) {
       create()
     } else if (name !== '') {
-      setMessage('No match. A new title needs a letter or a digit.')
+      setMessage(`No match. ${cleaned.ok ? '' : cleaned.message}`.trim())
     }
   }
 

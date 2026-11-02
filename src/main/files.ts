@@ -4,7 +4,7 @@
 import { mkdir, open, readFile, readdir, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 
-import type { FsPort } from '../core/analyses.ts'
+import type { AnalysisRef, FsPort } from '../core/analyses.ts'
 import { StaleEdit } from '../core/errors.ts'
 import { listFacts } from '../core/facts.ts'
 import { resolveInside } from '../core/safePath.ts'
@@ -91,7 +91,7 @@ async function writeAtomic(path: string, text: string): Promise<void> {
   }
 }
 
-export async function loadState(analysis: { name: string; title: string; path: string }): Promise<AnalysisState> {
+export async function loadState(analysis: AnalysisRef): Promise<AnalysisState> {
   const [notes, threads, queries, status, noteFiles, trust] = await Promise.all([
     readText(join(analysis.path, NOTES)),
     readText(join(analysis.path, THREADS)),
