@@ -114,8 +114,17 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
     if (edit || !current) return
     const next = runs[runs.findIndex(r => r.number === current.number) + delta]
     if (!next) return onToast(delta < 0 ? 'This is the first run.' : 'This is the latest run.')
+    stepped.current = true
     setHeld(next.number === latest?.number ? undefined : next.number)
   }
+  // While the next run loads, the Code tab shows nothing and its focused editor goes, dropping focus to
+  // the page: once the run is shown, the keys come back to the pane, unless the user moved them elsewhere.
+  const stepped = useRef(false)
+  useEffect(() => {
+    if (!view || !stepped.current) return
+    stepped.current = false
+    if (document.activeElement === document.body || document.activeElement === null) focusDataPane()
+  }, [view])
   // Vim owns the keys while editing, and a pin would change what the edit is about.
   const togglePin = () => {
     if (!edit) setHeld(following ? current?.number : undefined)
