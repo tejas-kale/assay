@@ -1,12 +1,13 @@
 // The hooks' decisions as plain functions of their input and environment, so tests can call them directly.
 import { access, readFile, rename, rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 
 import { bashRunsPython, BASH_PYTHON_DENY } from '../core/bashGuard.ts'
-import { isGuarded, TRUST_TAB } from '../core/calculations.ts'
+import { parseAnalysisFile } from '../core/analyses.ts'
+import { isGuarded, otherAnalysis, TRUST_TAB } from '../core/calculations.ts'
 import type { CalculationList } from '../core/calculations.ts'
 import { promptContext, runNotice, VENV_ASSAY } from '../core/rules.ts'
-import type { UserRun } from '../core/rules.ts'
+import type { OpenAnalysis, UserRun } from '../core/rules.ts'
 import { deny, addContext, field, toolInput } from './io.ts'
 import type { Proc } from '../server/proc.ts'
 
@@ -18,14 +19,27 @@ export function bashDecision(input: Record<string, unknown>, env: Env) {
   return bashRunsPython(field(toolInput(input), 'command')) ? deny(BASH_PYTHON_DENY) : undefined
 }
 
-/** PreToolUse on Write, Edit and NotebookEdit: never into the shared dictionaries/ or trusted/. */
-export function writeDecision(input: Record<string, unknown>, env: Env) {
+/** The open analysis: its title (the folder's name when analysis.yaml has none) and its folder from the root. */
+async function openAnalysis(analysis: string, home: string): Promise<OpenAnalysis> {
+  const text = await readFile(join(analysis, 'analysis.yaml'), 'utf8').catch(() => '')
+  return { title: parseAnalysisFile(text).title ?? (analysis.split('/').at(-1) || analysis), folder: relative(home, analysis) }
+}
+
+/** PreToolUse on Write, Edit and NotebookEdit: never into the shared dictionaries/ or trusted/, nor into another analysis. */
+export async function writeDecision(input: Record<string, unknown>, env: Env) {
   const home = env.ASSAY_ROOT
   if (!home || !env.ASSAY_ANALYSIS) return undefined
   const tool = toolInput(input)
   const path = field(tool, 'file_path') || field(tool, 'notebook_path')
   const base = field(input, 'cwd') || env.ASSAY_ANALYSIS
-  if (!path || !isGuarded(path, home.replace(/\/+$/, ''), base)) return undefined
+  if (!path) return undefined
+  const root = home.replace(/\/+$/, '')
+  const other = otherAnalysis(path, root, env.ASSAY_ANALYSIS.replace(/\/+$/, ''), base)
+  if (other) {
+    const open = await openAnalysis(env.ASSAY_ANALYSIS, root)
+    return deny(`${other} is not the open analysis. The open analysis is "${open.title}" (${open.folder}/): write only there.`)
+  }
+  if (!isGuarded(path, root, base)) return undefined
   return deny(
     `${path} is in the data dictionary or the trusted calculations, which change only through the user's approval. Draft it under lib/dictionaries/ or lib/trusted/ in the analysis, and ask the user to check it in ${TRUST_TAB}.`,
   )
@@ -81,9 +95,10 @@ export async function promptDecision(env: Env, proc: Proc) {
   const home = env.ASSAY_ROOT
   if (!analysis || !home) return undefined
   const [runs, python, list] = await Promise.all([takeUserRuns(analysis), kernelPython(analysis), calculations(proc, env, analysis, home)])
-  const notice = runNotice(runs)
+  const open = await openAnalysis(analysis, home)
+  const notice = runNotice(runs, open.folder)
   // The kernel's python, else venv-assay's when it is built (as the mod's rules named it).
   const venvPython = `${env.ASSAY_VENV || VENV_ASSAY}/bin/python`
   const named = python ?? (await access(venvPython).then(() => venvPython, () => undefined))
-  return addContext(promptContext({ python: named, ...(notice ? { notice } : {}), home, list }))
+  return addContext(promptContext({ python: named, ...(notice ? { notice } : {}), home, list, open }))
 }

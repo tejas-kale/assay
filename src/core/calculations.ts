@@ -79,6 +79,15 @@ export function isGuarded(path: string, home: string, base: string): boolean {
   return [DICTIONARIES, TRUSTED].some(folder => full === `${home}/${folder}` || full.startsWith(`${home}/${folder}/`))
 }
 
+/** The `analyses/<slug>` folder `path` is in when it is another analysis than the open one; undefined otherwise. */
+export function otherAnalysis(path: string, home: string, analysis: string, base: string): string | undefined {
+  const full = normalPath(path, base)
+  const prefix = `${home}/analyses/`
+  if (!full.startsWith(prefix)) return undefined
+  const folder = `${prefix}${full.slice(prefix.length).split('/')[0]}`
+  return folder === analysis ? undefined : folder.slice(home.length + 1)
+}
+
 // ---------------------------------------------------------------------------
 // Trusted calculations, as `analysis_trust list` answers.
 

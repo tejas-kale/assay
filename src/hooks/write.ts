@@ -2,4 +2,4 @@
 import { writeDecision } from './decide.ts'
 import { answer, readInput } from './io.ts'
 
-answer(writeDecision(await readInput(), process.env))
+answer(await writeDecision(await readInput(), process.env))

@@ -15,6 +15,7 @@ async function scratch() {
   const root = join(dir, 'notes-src')
   const analysis = join(root, 'analyses/panel')
   await mkdir(join(analysis, '.assay'), { recursive: true })
+  await writeFile(join(analysis, 'analysis.yaml'), 'title: Panel sites\ncreated: 2026-11-02\n')
   return { dir, root, analysis, env: { PATH: process.env.PATH, ASSAY_ANALYSIS: analysis, ASSAY_ROOT: root, ASSAY_VENV: join(dir, 'venv') } }
 }
 
@@ -63,7 +64,7 @@ test("each prompt carries the rules, the trust rules and the kernel's python", a
   const said = await hook('prompt', { hook_event_name: 'UserPromptSubmit', prompt: 'why? and how?' }, env)
   expect(said?.hookEventName).toBe('UserPromptSubmit')
   const rules = said?.additionalContext ?? ''
-  for (const part of ['one concept per reply', 'mcp__plugin_assay_assay__focus', 'mcp__plugin_assay_assay__order', 'mcp__plugin_assay_assay__python', 'q(N)', 'matplotlib', '.head()', 'lib/<name>.py', '/w/.venv/bin/python -m pytest tests', 'claude-pkg venv-assay'])
+  for (const part of ['one concept per reply', 'mcp__plugin_assay_assay__focus', 'mcp__plugin_assay_assay__order', 'mcp__plugin_assay_assay__python', 'q(N)', 'matplotlib', '.head()', 'lib/<name>.py', 'cd analyses/panel && /w/.venv/bin/python -m pytest tests', 'claude-pkg venv-assay'])
     expect(rules).toContain(part)
   expect(rules).toContain(`${root}/dictionaries`)
   expect(rules).toContain('lib/dictionaries/<catalog.schema.table>.yaml')
@@ -72,12 +73,26 @@ test("each prompt carries the rules, the trust rules and the kernel's python", a
   expect(rules).not.toContain('Since your last turn')
 })
 
+test('each prompt names the open analysis: its title, its folder from the root, and what lives there', async () => {
+  const { env } = await scratch()
+  const rules = (await hook('prompt', { prompt: 'x' }, env))?.additionalContext ?? ''
+  expect(rules).toContain('Open analysis: "Panel sites", in analyses/panel/.')
+  expect(rules).toContain('analyses/panel/lib/, analyses/panel/tests/, analyses/panel/lib/trusted/ and analyses/panel/lib/dictionaries/')
+  expect(rules).toContain('You work from the root: give paths from it.')
+})
+
+test('an analysis without a title in analysis.yaml is named by its folder', async () => {
+  const { analysis, env } = await scratch()
+  await writeFile(join(analysis, 'analysis.yaml'), 'created: 2026-11-02\n')
+  expect((await hook('prompt', { prompt: 'x' }, env))?.additionalContext).toContain('Open analysis: "panel", in analyses/panel/.')
+})
+
 test("without a kernel the rules name venv-assay's python when it is built, else plain python", async () => {
   const { dir, env } = await scratch()
-  expect((await hook('prompt', { prompt: 'x' }, env))?.additionalContext).toContain('\nRun the tests from the analysis folder, with the kernel\'s python: python -m pytest tests')
+  expect((await hook('prompt', { prompt: 'x' }, env))?.additionalContext).toContain('\nRun the tests from the analysis folder: cd analyses/panel && python -m pytest tests')
   await mkdir(join(dir, 'venv/bin'), { recursive: true })
   await writeFile(join(dir, 'venv/bin/python'), '')
-  expect((await hook('prompt', { prompt: 'x' }, env))?.additionalContext).toContain(`${dir}/venv/bin/python -m pytest tests`)
+  expect((await hook('prompt', { prompt: 'x' }, env))?.additionalContext).toContain(`cd analyses/panel && ${dir}/venv/bin/python -m pytest tests`)
 })
 
 test('the rules list the usable trusted calculations the helper lists', async () => {
@@ -97,12 +112,34 @@ test("the run notice lists the user's runs the server recorded since the last pr
   const runs = [{ number: 3, language: 'python', from: 1 }, { number: 5, language: 'sql' }, { number: 6, language: 'python', replay: 3 }]
   await writeFile(join(analysis, '.assay/user-runs.json'), JSON.stringify(runs))
   expect((await hook('prompt', { prompt: 'go' }, env))?.additionalContext).toContain(
-    'Since your last turn the user ran: 003 python (from 001), 005 sql, 006 python (replay of 003). Their Python ran in your kernel, so its variables may have changed; read queries/<file> when it matters.',
+    'Since your last turn the user ran: 003 python (from 001), 005 sql, 006 python (replay of 003). Their Python ran in your kernel, so its variables may have changed; read analyses/panel/queries/<file> when it matters.',
   )
   expect(await readFile(join(analysis, '.assay/user-runs.json'), 'utf8').catch(() => undefined)).toBeUndefined()
   expect((await hook('prompt', { prompt: 'go' }, env))?.additionalContext).not.toContain('Since your last turn')
   await writeFile(join(analysis, '.assay/user-runs.json'), JSON.stringify([{ number: 7, language: 'sql' }]))
-  expect((await hook('prompt', { prompt: 'go' }, env))?.additionalContext).toContain('Since your last turn the user ran: 007 sql. Read queries/<file> when it matters.')
+  expect((await hook('prompt', { prompt: 'go' }, env))?.additionalContext).toContain('Since your last turn the user ran: 007 sql. Read analyses/panel/queries/<file> when it matters.')
+})
+
+test('a Write or Edit into another analysis is refused, naming the open one; the open one is allowed', async () => {
+  const { root, analysis, env } = await scratch()
+  const write = (tool: string, input: object) => hook('write', { hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, cwd: root }, env)
+  const reason = (other: string) => `${other} is not the open analysis. The open analysis is "Panel sites" (analyses/panel/): write only there.`
+  const cases: [string, string][] = [
+    [`${root}/analyses/other/lib/x.py`, 'analyses/other'],
+    ['analyses/other/notes.md', 'analyses/other'],
+    [`${analysis}/../other/x.py`, 'analyses/other'],
+    [`${root}/analyses/newone/analysis.yaml`, 'analyses/newone'],
+  ]
+  for (const [path, other] of cases) {
+    const said = await write('Write', { file_path: path, content: 'x' })
+    expect([path, said?.permissionDecision, said?.permissionDecisionReason]).toEqual([path, 'deny', reason(other)])
+  }
+  expect((await write('Edit', { file_path: `${root}/analyses/other/x.py`, old_string: 'a', new_string: 'b' }))?.permissionDecision).toBe('deny')
+  expect((await write('NotebookEdit', { notebook_path: `${root}/analyses/other/n.ipynb` }))?.permissionDecision).toBe('deny')
+  for (const path of [`${analysis}/lib/x.py`, 'analyses/panel/tests/test_x.py', `${root}/analyses/panel/notes/001-a.md`, `${root}/elsewhere/x.md`, `${root}/analyses-old/x`])
+    expect([path, await write('Write', { file_path: path, content: 'x' })]).toEqual([path, undefined])
+  // A session Assay did not start is not guarded.
+  expect(await hook('write', { tool_name: 'Write', tool_input: { file_path: `${root}/analyses/other/x` }, cwd: root }, { PATH: process.env.PATH })).toBeUndefined()
 })
 
 test('outside an Assay session a prompt carries no rule', async () => {
