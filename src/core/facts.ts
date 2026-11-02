@@ -132,11 +132,11 @@ export function deriveLabel(facts: QueryFacts | undefined, mayTrust = true): Lab
 }
 
 /** The index of the fact `ref` names: its line number, its exact text or a part no other fact shares; else why not. */
-export function findFact(lines: readonly string[], ref: string): number | string {
+export function findFact(lines: readonly string[], ref: string, file = 'notes.md'): number | string {
   const isFact = (line: string) => !parseFileNote(line)
   if (/^\d+$/.test(ref)) {
     const index = Number(ref) - 1
-    return lines[index] !== undefined && isFact(lines[index] ?? '') ? index : `No note ${ref} in notes.md.`
+    return lines[index] !== undefined && isFact(lines[index] ?? '') ? index : `No note ${ref} in ${file}.`
   }
   const wanted = ref.toLowerCase()
   const exact = lines.findIndex(line => isFact(line) && (line.toLowerCase() === wanted || parseNote(line).text.toLowerCase() === wanted))

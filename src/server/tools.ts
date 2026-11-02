@@ -116,7 +116,7 @@ export const TOOLS = [
   {
     name: 'note',
     description:
-      'Append one line to notes.md: a definition or a gotcha, no prose. Give the query number that verified it. The server labels the note from that query: trusted (a run of a trusted calculation, read directly), queried (any other query with a result) or unverified (no query, or no result). Do not write a label yourself.',
+      'Append one line to analyses/<slug>/notes.md: a definition or a gotcha, no prose. Give the query number that verified it. The server labels the note from that query: trusted (a run of a trusted calculation, read directly), queried (any other query with a result) or unverified (no query, or no result). Do not write a label yourself.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -129,11 +129,11 @@ export const TOOLS = [
   {
     name: 'revise_note',
     description:
-      'Change one note in notes.md: cite the query that now verifies it (the server labels it again), or delete it. Only when the user has said which, e.g. in assay:wrap-up.',
+      'Change one note in analyses/<slug>/notes.md: cite the query that now verifies it (the server labels it again), or delete it. Only when the user has said which, e.g. in assay:wrap-up.',
     inputSchema: {
       type: 'object',
       properties: {
-        note: { type: 'string', description: 'The note: its line number in notes.md, or its text.' },
+        note: { type: 'string', description: 'The note: its line number in analyses/<slug>/notes.md, or its text.' },
         query: { type: 'integer', description: 'The number of the query that verifies it.' },
         delete: { type: 'boolean', description: 'Delete the note instead.' },
       },
@@ -143,7 +143,7 @@ export const TOOLS = [
   {
     name: 'link_note',
     description:
-      "List a note file in notes.md, by the title at its top, so the app's Notes tab shows it and the user can open and edit it. When the user asks to save something as a note, write the file yourself first, choosing its folder and name (the user may name a repo, e.g. llm-wiki), with its title as the first line; then call this with its path. It needs no query.",
+      "List a note file in analyses/<slug>/notes.md, by the title at its top, so the app's Notes tab shows it and the user can open and edit it. When the user asks to save something as a note, write the file yourself first, choosing its folder and name (the user may name a repo, e.g. llm-wiki), with its title as the first line; then call this with its path. It needs no query.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -251,7 +251,7 @@ export async function callTool(assay: Assay, name: string, args: Args): Promise<
       const facts = query === undefined ? undefined : await assay.queryFacts(query)
       return assay.serially(async () => {
         const lines = notesFrom(await assay.readText(NOTES))
-        const index = findFact(lines, ref)
+        const index = findFact(lines, ref, assay.shown(NOTES))
         if (typeof index === 'string') return index
         const note = parseNote(lines[index] ?? '')
         if (isDelete) {

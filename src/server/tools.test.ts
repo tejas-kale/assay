@@ -257,7 +257,7 @@ test('revise_note cites a new query, or deletes, by line number or text', async 
   })
   const revise = (input: Record<string, unknown>) => ws.call('revise_note', input)
   expect(await revise({ note: '1', query: 3 })).toBe('Note 1 is now queried q 003.')
-  expect(await revise({ note: '2', query: 3 })).toBe('No note 2 in notes.md.')
+  expect(await revise({ note: '2', query: 3 })).toBe('No note 2 in analyses/feature/notes.md.')
   expect(await revise({ note: 'beta' })).toBe('Give the query that verifies it, or delete: true.')
   expect(await revise({ note: 'beta per panel', delete: true })).toBe('Deleted note 3: beta per panel')
   expect(await revise({ note: 'gamma', delete: true })).toBe('No note matches "gamma".')
