@@ -28,8 +28,13 @@ The code is the source of truth. `docs/slice-*.md` are the specs each slice was 
 
 ## Environment
 
-- The analysis folder, which holds `analyses/`, is set in Settings (Cmd+,). The app asks on first run. Picking
-  `analyses/` or one analysis inside it sets the folder above.
+- The root, which holds `analyses/`, `dictionaries/` and `trusted/`, is set in Settings (Cmd+,). The app asks on first
+  run. Picking `analyses/` or one analysis inside it sets the folder above. Every analysis is
+  `<root>/analyses/<slug>/` holding `analysis.yaml` (`title`, `created`, and optional `profile`, `warehouse`,
+  `pg_database`). The slug comes from the title once and never changes; editing the title (palette: Rename analysis)
+  leaves the folder alone. Claude starts in the root, and each prompt names the open analysis.
+- `npm run migrate:root [root] [--apply]` converts the old layout (`.analysis` markers, `investigations/`,
+  `explorations/`) once: a dry run by default, `--apply` to act. It never overwrites and does not touch git.
 - `ASSAY_CLAUDE_BIN`: the wrapper to run (default `claude`, the Podman wrapper from the config repo, found through your
   login shell), started with `--plugin-dir /opt/assay/plugin`. The app sets `ASSAY_APP=1` (the wrapper then mounts
   `$ASSAY_DIR`, default `~/Code/assay`, at `/opt/assay`), `ASSAY_ANALYSIS` (the open analysis) and `ASSAY_ROOT` (the
@@ -53,7 +58,7 @@ Every shortcut is in `src/core/keymap.ts`: `COMMANDS` (Cmd keys, caught in main 
   (`python/analysis_kernel.py serve`), started with the server and ended with it.
 - `src/hooks`: UserPromptSubmit (the rules on each typed prompt, the trusted calculations, the user's runs since the
   last prompt), PreToolUse on Bash (no Python through Bash) and on Write/Edit/NotebookEdit (nothing into
-  `$ASSAY_ROOT/trusted` or `dictionaries`). `plugin/skills`: `assay:resume`, `assay:wrap-up`.
+  `$ASSAY_ROOT/trusted` or `dictionaries`, nor into another analysis). `plugin/skills`: `assay:resume`, `assay:wrap-up`.
 - `python/`: `analysis_db`, `analysis_kernel`, `analysis_trust`, built into venv-assay by `claude-pkg venv-assay`.
 - The app talks to the server through files: it writes `.assay/requests/<id>.json` (`sql`, `python`, `interrupt`,
   `restart`, `replay`, `trust-list`, `trust-check`, `trust-answer`), the server answers in `.assay/replies/`, and

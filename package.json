@@ -11,7 +11,8 @@
     "postinstall": "node scripts/postinstall.mjs && node scripts/build-server.mjs",
     "package": "npm run build:server && electron-vite build && electron-builder --mac --dir",
     "install-app": "npm run package && rm -rf /Applications/Assay.app && ditto dist/mac-arm64/Assay.app /Applications/Assay.app",
-    "build:server": "node scripts/build-server.mjs"
+    "build:server": "node scripts/build-server.mjs",
+    "migrate:root": "node scripts/migrate-root.ts"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
