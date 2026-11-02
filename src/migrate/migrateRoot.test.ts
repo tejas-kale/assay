@@ -63,7 +63,7 @@ test('a dry run reports every folder and changes nothing', async () => {
   const out = await migrate(root)
   expect(await tree(root)).toEqual(before)
   expect(out).toContain('analyses/alpha: write analysis.yaml (title "Alpha", created 2026-03-05), remove .analysis\n')
-  expect(out).toContain('analyses/beta_two: move to analyses/beta-two (slug taken, numbered), write analysis.yaml (title "Beta two", created 2026-04-02), remove .analysis\n')
+  expect(out).toContain('analyses/beta_two: move to analyses/beta-two (slugified), write analysis.yaml (title "Beta two", created 2026-04-02), remove .analysis\n')
   expect(out).toContain('investigations/alpha: move to analyses/alpha-2 (slug taken, numbered), write analysis.yaml (title "Alpha", created 2026-02-03), remove .analysis\n')
   expect(out).toContain('investigations/gamma-run: move to analyses/gamma-run, write analysis.yaml (title "Gamma run", created 2026-01-10), remove .analysis\n')
   expect(out).toContain('explorations/delta: move to analyses/delta, write analysis.yaml (title "Delta", created 2026-05-06), remove .analysis\n')
@@ -141,6 +141,16 @@ test('a folder whose name is not a slug moves to its slug; a slug that exists, e
   expect(await readFile(join(root, 'analyses/old-thing'), 'utf8')).toBe('a file in the way\n')
   expect(await readFile(join(root, 'analyses/old-thing-2/analysis.yaml'), 'utf8')).toMatch(/^title: Old Thing\n/)
   expect((await stat(join(root, 'analyses/Old_Thing')).catch(() => undefined))).toBe(undefined)
+})
+
+test('a case-only clash counts as taken: an unmarked analyses/Foo and a marked investigations/foo', async () => {
+  const root = await scratchRoot()
+  await put(root, 'analyses/Foo/notes.md', 'mine\n')
+  await put(root, 'investigations/foo/.analysis', MARK)
+  const out = await migrate(root, '--apply')
+  expect(out).toContain('investigations/foo: move to analyses/foo-2 (slug taken, numbered)')
+  expect(await readFile(join(root, 'analyses/Foo/notes.md'), 'utf8')).toBe('mine\n')
+  expect(await readFile(join(root, 'analyses/foo-2/analysis.yaml'), 'utf8')).toMatch(/^title: Foo\n/)
 })
 
 test('a name that is already a slug stays; a target that exists as a file gets a numbered slug', async () => {

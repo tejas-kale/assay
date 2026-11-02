@@ -78,6 +78,8 @@ test('slugFor: the note slug rule, numbered from -2 on a clash', () => {
   assert.equal(slugFor('Churn in Q3', ['churn-in-q3']), 'churn-in-q3-2')
   assert.equal(slugFor('Churn in Q3', ['churn-in-q3', 'churn-in-q3-2']), 'churn-in-q3-3')
   assert.equal(slugFor('Churn in Q3', ['other']), 'churn-in-q3')
+  // Case-insensitive, as on macOS: Churn-In-Q3 is the folder churn-in-q3 would be.
+  assert.equal(slugFor('Churn in Q3', ['Churn-In-Q3']), 'churn-in-q3-2')
 })
 
 test('listAnalyses: analyses/ folders holding analysis.yaml, newest first, titled; others skipped', async () => {

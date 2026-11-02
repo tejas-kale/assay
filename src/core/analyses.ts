@@ -89,7 +89,8 @@ export function setTitle(text: string, title: string): string {
 
 /** The numbered slug: `slug`, else `slug-2`, `slug-3`, ... the first not in `taken`. */
 export function slugFor(title: string, taken: Iterable<string>): string {
-  const used = new Set(taken)
+  // Compared ignoring case: the folders of a macOS volume are.
+  const used = new Set([...taken].map(name => name.toLowerCase()))
   const slug = slugify(title)
   if (!used.has(slug)) return slug
   for (let n = 2; ; n++) if (!used.has(`${slug}-${n}`)) return `${slug}-${n}`

@@ -11,7 +11,7 @@ const OLD_MARKER = '.analysis'
 const OLD_MARKER_TEXT = '# Marks this folder for the analysis mod.'
 const MOVED_FROM = ['investigations', 'explorations'] as const
 
-export type Step = { from: string; to: string; title: string; created: string; isMove: boolean; isRenamed: boolean }
+export type Step = { from: string; to: string; title: string; created: string; isMove: boolean; /** Why the slug differs from the folder name: only the slug rule, or a clash. */ change: '' | 'slugified' | 'numbered' }
 export type Report = { steps: Step[]; leftAlone: string[] }
 
 const dirs = async (path: string): Promise<string[]> => {
@@ -69,7 +69,7 @@ export async function migrateRoot(root: string, apply: boolean): Promise<Report>
       const isMove = parent !== 'analyses' || slugify(name) !== name
       const slug = isMove ? slugFor(name, taken) : name
       const info = await stat(folder)
-      const step: Step = { from: label, to: `analyses/${slug}`, title: titleFromFolder(name), created: await createdOn(folder, info.mtimeMs), isMove, isRenamed: slug !== name }
+      const step: Step = { from: label, to: `analyses/${slug}`, title: titleFromFolder(name), created: await createdOn(folder, info.mtimeMs), isMove, change: slug === name ? '' : slug === slugify(name) ? 'slugified' : 'numbered' }
       steps.push(step)
       if (isMove) taken.add(slug)
       if (!apply) continue
@@ -91,7 +91,7 @@ export async function migrateRoot(root: string, apply: boolean): Promise<Report>
 export function printReport(report: Report, apply: boolean): string {
   const lines = report.steps.map(step => {
     const parts = [
-      ...(step.isMove ? [`move to ${step.to}${step.isRenamed ? ' (slug taken, numbered)' : ''}`] : []),
+      ...(step.isMove ? [`move to ${step.to}${step.change === 'numbered' ? ' (slug taken, numbered)' : step.change === 'slugified' ? ' (slugified)' : ''}`] : []),
       `write ${ANALYSIS_FILE} (title "${step.title}", created ${step.created})`,
       `remove ${OLD_MARKER}`,
     ]
