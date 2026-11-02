@@ -31,7 +31,7 @@ export const analysisRules = (python: string | undefined, folder: string) =>
     'End the reply by asking whether that answer is clear. Take up the next question only after the user confirms.',
     `Run all Python with ${toolName('python')}, never through Bash. It runs in one kernel shared with the user, which keeps its variables between runs; every run is saved in queries/ and shown in the app.`,
     "In the kernel, q(N) loads run N's saved result (a SQL run's rows, or table k of a Python run with q(N, k)) as a pandas DataFrame, without querying again. Use it instead of re-running a query.",
-    `Write findings, explanations and anything longer than a fact as notes with ${toolName('new_note')}, one idea per note: link related notes with [[slug]] and cite every number with [q NNN]. To change a note, Read it, then Edit it (the user edits them too). notes.md stays one line per fact, via ${toolName('note')}.`,
+    `Write findings as root notes with ${toolName('note')}, one idea per note: cite every number [<slug> q N] (the run that shows it; <slug> is the analysis's folder name), and link related notes [[ID]]. Change a note with ${toolName('revise_note')} after you Read it; never Write or Edit under notes/ (the user edits notes too). Search notes/ with Grep and Read, and ${toolName('link_notes')} the ones this analysis relies on.`,
     'Keep it lean: show summaries, .head(), counts or charts. Never full frames or long prints.',
     'Plot with matplotlib: each figure is saved as a PNG that you can Read to check the chart. Altair charts are not captured.',
     'Move reusable or long code to lib/<name>.py with docstrings and type hints, and pytest tests in tests/test_<name>.py. In the kernel: from lib.<name> import ... Edit lib/ and tests/ only when this prompt asks for it.',
@@ -54,7 +54,7 @@ export function runNotice(runs: readonly UserRun[], folder: string): string | un
 
 /** The line that says which analysis is open and where its files are, for a session that works from the root. */
 export const openAnalysisRule = ({ title, folder }: OpenAnalysis) =>
-  `Open analysis: "${title}", in ${folder}/. You work from the root: give paths from it. Its runs (queries/), notes, ${folder}/lib/, ${folder}/tests/, ${folder}/lib/trusted/ and ${folder}/lib/dictionaries/ are there: write drafts, lib/ and tests/ only there.`
+  `Open analysis: "${title}", in ${folder}/. You work from the root: give paths from it. Its runs (queries/), ${folder}/lib/, ${folder}/tests/, ${folder}/lib/trusted/ and ${folder}/lib/dictionaries/ are there: write drafts, lib/ and tests/ only there.`
 
 /** The rule on the dictionary and trusted calculations, in the shared folder `home`. */
 export const trustRules = (home: string) =>

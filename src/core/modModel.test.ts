@@ -419,10 +419,11 @@ test('a link resolves by slug or by the whole stem', () => {
   expect(resolvesToNote('003-first', names)).toBe(false)
 })
 
-test('the rules send prose to new_note, linked and cited, and edits to Edit', () => {
+test('the rules send findings to the note tools, cited and linked, and never to Write or Edit', () => {
   const rules = analysisRules(undefined, 'analyses/a')
-  for (const part of ['mcp__plugin_assay_assay__new_note', '[[slug]]', '[q NNN]', 'Edit it', 'notes.md stays one line per fact']) expect(rules).toContain(part)
-  expect(rules.length).toBeLessThan(2900)
+  for (const part of ['mcp__plugin_assay_assay__note', 'mcp__plugin_assay_assay__revise_note', 'mcp__plugin_assay_assay__link_notes', '[<slug> q N]', '[[ID]]', 'never Write or Edit under notes/']) expect(rules).toContain(part)
+  for (const gone of ['new_note', 'notes.md', '[[slug]]']) expect(rules).not.toContain(gone)
+  expect(rules.length).toBeLessThan(3200)
 })
 
 test('a table aligns columns and cuts wide cells', async () => {

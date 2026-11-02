@@ -10,8 +10,8 @@ every file below is in it.
 
 1. If `analysis.yaml` is missing in that folder, tell the user to open the analysis in
    Assay and stop.
-2. Read `notes.md` and `threads.md`. List `notes/` and read the first line (the title) of each
-   note file there; do not read their bodies. List `queries/` and read the `.sql` and `.py` files
+2. Read `analysis.yaml` and `threads.md`. For the IDs under `notes.written` and `notes.found`, read the
+   first line (the title) of each file in `notes/` at the root with that ID; do not read their bodies. List `queries/` and read the `.sql` and `.py` files
    of the five highest-numbered runs. Do not read the `.csv` or `.json` files.
 3. Reply in at most five lines:
    - what is established (from the notes, and how many note files there are, with the titles of

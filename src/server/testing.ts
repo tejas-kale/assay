@@ -113,6 +113,8 @@ export async function fake(files: Record<string, string> = { 'analysis.yaml': 't
     },
   }
   const assay = new Assay({ analysis, root, venv, runner: RUNNER, tmp: join(dir, 'tmp'), proc })
+  // The search line on a first run is tested on its own: set `assay.searchHinted = false` to get it.
+  assay.searchHinted = true
   const requests = new Requests(assay)
   const fakeState: Fake = {
     dir,

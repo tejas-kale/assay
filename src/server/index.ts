@@ -21,7 +21,6 @@ process.on('exit', () => session.close())
 // The files first, so the first tool call finds them; the kernel after, so a slow python check never delays the
 // handshake Claude Code waits for.
 await session.assay?.setUp().catch(() => undefined)
-await session.assay?.relabel().catch(() => undefined)
 await session.server.connect(new StdioServerTransport())
 await session.assay?.startKernel().catch(() => undefined)
 session.requests?.start()

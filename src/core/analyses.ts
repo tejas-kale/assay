@@ -1,6 +1,6 @@
 // The analyses under the root: `<root>/analyses/<slug>/analysis.yaml` marks one and holds its title and target, over
 // an injected port. The slug is the folder name, made from the title once at creation and never changed.
-import { slugify } from './noteFiles.ts'
+import { slugify } from './rootNotes.ts'
 
 export type FsStat = { isDirectory: boolean; mtimeMs: number }
 export type FsPort = {

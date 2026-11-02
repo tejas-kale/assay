@@ -6,30 +6,26 @@ import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/p
 import { dirname, join, relative } from 'node:path'
 
 import { ANALYSIS_FILE } from '../core/analyses.ts'
-import { dictionaryText, newSeen, parseTrustedHeader, TRUSTED } from '../core/calculations.ts'
+import { dictionaryText, newSeen, TRUSTED } from '../core/calculations.ts'
 import type { CalculationList, DictionaryAnswer, Seen } from '../core/calculations.ts'
 import { checkArgs, runHeader, signature } from '../core/calculations.ts'
 import { parseCliOutput, parsePsqlOutput, POSTGRES_MARK, readTarget } from '../core/engines.ts'
 import type { Table, Target } from '../core/engines.ts'
-import { deriveLabel, noteLine, notesFrom, notesText, parseFileNote, parseNote } from '../core/facts.ts'
-import type { Label, QueryFacts } from '../core/facts.ts'
 import { formatPythonRun, formatTable, parsePythonRun, queryLabel, runSlug, splitKernelEvents, toCsv, venvCandidates } from '../core/pythonRuns.ts'
 import type { KernelEvent, KernelState, PythonRun } from '../core/pythonRuns.ts'
 import { TRUST_TAB } from '../core/calculations.ts'
 import { VENV_ASSAY_HINT } from '../core/rules.ts'
 import type { UserRun } from '../core/rules.ts'
 import type { Engine } from '../core/runs.ts'
-import { nextRunNumber, parseRunResult, parseRuns } from '../core/runs.ts'
+import { nextRunNumber, parseRuns } from '../core/runs.ts'
 import { formatThreads, parseThreads } from '../core/threads.ts'
 import type { Threads } from '../core/threads.ts'
 import type { Child, Proc } from './proc.ts'
 
-export const NOTES = 'notes.md'
 export const THREADS = 'threads.md'
 export const QUERIES = 'queries'
 const LIB = 'lib'
 const TESTS = 'tests'
-export const NOTE_FILES = 'notes'
 const REPLY_ROWS = 50
 const REPLY_CELL = 80
 export const QUERY_TIMEOUT_MS = 600_000
@@ -107,9 +103,13 @@ export class Assay {
   /** Why the runs of this session failed, by number. */
   readonly failures = new Map<number, string>()
   kernel: Kernel | undefined
+  /** How many runs this session has claimed a number for. */
+  runsClaimed = 0
+  /** Whether this session has been told to search the root notes. */
+  searchHinted = false
   private kernelGenerations = 0
   private lastRunning: { number: number; startedAt: number } | null = null
-  /** Every write to notes.md, threads.md and a new run's number goes through here, one at a time. */
+  /** Every write to threads.md, analysis.yaml and a new run's number goes through here, one at a time. */
   readonly serially = queue()
   /** Python runs go one at a time, in arrival order. */
   readonly inKernel = queue()
@@ -170,25 +170,23 @@ export class Assay {
   // -------------------------------------------------------------------------
   // Activation: what the mod did when the session started in an analysis.
 
-  /** Creates whatever is missing (never overwriting): notes.md, threads.md, queries/, notes/, lib/__init__.py, tests/. */
+  /** Creates whatever is missing (never overwriting): threads.md, queries/, lib/__init__.py, tests/. */
   async setUp() {
     // A folder without analysis.yaml is not an analysis (the migration makes it one): nothing is created in it.
     if (!this.hasMarker()) return
-    for (const dir of [QUERIES, LIB, TESTS, NOTE_FILES]) await mkdir(this.at(dir), { recursive: true })
+    for (const dir of [QUERIES, LIB, TESTS]) await mkdir(this.at(dir), { recursive: true })
     const give = async (name: string, text: string) => {
       if (!(await this.exists(this.at(name)))) await this.write(name, text)
     }
-    await give(NOTES, '')
     await give(THREADS, formatThreads({ open: [], closed: [] }))
     await give(`${LIB}/__init__.py`, '')
     // .assay/ holds the app's session files; it ignores itself, so no repository needs a .gitignore change.
     await this.write('.assay/.gitignore', '*\n').catch(() => undefined)
   }
 
-  /** Starts the session: the files, old notes labelled, the kernel. (index.ts does the same around the handshake.) */
+  /** Starts the session: the files, the kernel. (index.ts does the same around the handshake.) */
   async start() {
     await this.setUp()
-    await this.relabel().catch(() => undefined)
     await this.startKernel().catch(() => undefined)
   }
 
@@ -209,56 +207,6 @@ export class Assay {
 
   static codeFile(query: Query) {
     return `${Assay.queryBase(query)}.${query.language === 'python' ? 'py' : 'sql'}`
-  }
-
-  /** What labelling a note needs to know of the run it cites; undefined when there is no such run. */
-  async queryFacts(number: number | undefined): Promise<QueryFacts | undefined> {
-    if (number === undefined) return undefined
-    const query = (await this.listQueries()).find(each => each.number === number)
-    if (!query) return undefined
-    if (query.language === 'python') {
-      const status = parseRunResult(await this.readText(`${Assay.queryBase(query)}.json`))?.status
-      return { hasCsv: false, isTrustedRun: false, language: 'python', ...(status ? { status } : {}) }
-    }
-    const header = parseTrustedHeader(await this.readText(Assay.codeFile(query)))
-    return { hasCsv: query.hasCsv, isTrustedRun: header !== undefined, language: 'sql' }
-  }
-
-  /** A note line for `text` citing `query`, labelled from what the run left. */
-  async labelled(text: string, query: number | undefined): Promise<{ line: string; label: Label; facts?: QueryFacts }> {
-    const facts = await this.queryFacts(query)
-    const label = deriveLabel(facts)
-    return { line: noteLine(text, label, query), label, ...(facts ? { facts } : {}) }
-  }
-
-  /** Labels the notes written before labels: queried or unverified, never trusted. Returns how many it labelled. */
-  async relabel(): Promise<number> {
-    const queries = await this.listQueries()
-    return this.serially(async () => {
-      const lines = notesFrom(await this.readText(NOTES))
-      let count = 0
-      const next: string[] = []
-      for (const line of lines) {
-        const note = parseNote(line)
-        if (note.label || parseFileNote(line)) {
-          next.push(line)
-          continue
-        }
-        count++
-        const facts = await this.queryFacts(queries.some(each => each.number === note.query) ? note.query : undefined)
-        next.push(noteLine(note.text, deriveLabel(facts && { ...facts, isTrustedRun: false }, false), note.query))
-      }
-      if (count > 0) await this.write(NOTES, notesText(next))
-      return count
-    })
-  }
-
-  editNotes(change: (lines: string[]) => string[]) {
-    return this.serially(async () => {
-      const lines = change(notesFrom(await this.readText(NOTES)))
-      await this.write(NOTES, notesText(lines))
-      return lines
-    })
   }
 
   editThreads<T>(change: (threads: Threads) => { threads: Threads; answer: T }) {
@@ -304,6 +252,7 @@ export class Assay {
     // Saving the file inside the queue claims its number before another call looks.
     const { base, number } = await this.serially(async () => {
       const claimed = { number: nextRunNumber(await this.names(QUERIES)), slug }
+      this.runsClaimed++
       // Before the file, so the app never sees the new run without knowing it runs.
       await this.writeAppStatus({ number: claimed.number, startedAt: Date.now() })
       runner.onClaim?.(claimed.number)

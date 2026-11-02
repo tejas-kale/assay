@@ -7,7 +7,8 @@ import { bashRunsPython, BASH_PYTHON_DENY } from '../core/bashGuard.ts'
 import { folderName, openAnalysis } from '../core/analyses.ts'
 import { isGuarded, normalPath, otherAnalysis, TRUST_TAB } from '../core/calculations.ts'
 import type { CalculationList } from '../core/calculations.ts'
-import { promptContext, runNotice, VENV_ASSAY } from '../core/rules.ts'
+import { inRootNotes } from '../core/rootNotes.ts'
+import { promptContext, runNotice, toolName, VENV_ASSAY } from '../core/rules.ts'
 import type { OpenAnalysis, UserRun } from '../core/rules.ts'
 import { deny, addContext, field, toolInput } from './io.ts'
 import type { Proc } from '../server/proc.ts'
@@ -43,7 +44,7 @@ async function openRef(analysis: string, home: string): Promise<OpenAnalysis> {
   return { title: found?.title ?? fallback, folder: relative(home, analysis) }
 }
 
-/** PreToolUse on Write, Edit and NotebookEdit: never into the shared dictionaries/ or trusted/, nor into another analysis. */
+/** PreToolUse on Write, Edit and NotebookEdit: never into the shared dictionaries/, trusted/ or notes/, nor into another analysis. */
 export async function writeDecision(input: Record<string, unknown>, env: Env) {
   const home = env.ASSAY_ROOT
   if (!home || !env.ASSAY_ANALYSIS) return undefined
@@ -58,6 +59,9 @@ export async function writeDecision(input: Record<string, unknown>, env: Env) {
   if (other) {
     const open = await openRef(env.ASSAY_ANALYSIS, root)
     return deny(`${other} is not the open analysis. The open analysis is "${open.title}" (${open.folder}/): write only there.`)
+  }
+  if (inRootNotes(real, realRoot)) {
+    return deny(`Root notes change only through the note tools: ${toolName('note')} writes one, ${toolName('revise_note')} changes or deletes one, ${toolName('link_notes')} records the ones this analysis found. Read ${path} to see it; never Write or Edit under notes/.`)
   }
   if (!isGuarded(real, realRoot, '/')) return undefined
   return deny(

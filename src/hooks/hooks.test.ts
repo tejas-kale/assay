@@ -178,6 +178,34 @@ test('the dictionaries/trusted guard compares real paths, ignoring case', async 
   expect(await write(`${root}/trusted-old/x.sql`)).toBeUndefined()
 })
 
+test('a Write, Edit or NotebookEdit under <root>/notes is refused, pointing to the note tools; reads of it and other folders pass', async () => {
+  const { dir, root, analysis, env } = await scratch()
+  await mkdir(join(root, 'notes'), { recursive: true })
+  await symlink(root, join(dir, 'link'))
+  const write = (tool: string, input: object, over: Record<string, string> = {}) =>
+    hook('write', { hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, cwd: root }, { ...env, ...over })
+  const paths = [`${root}/notes/20261102T181500-a.md`, 'notes/new.md', `${analysis}/../../notes/x.md`, `${root}/Notes/x.md`, `${dir}/link/notes/x.md`, `${root}/notes`]
+  for (const path of paths) {
+    const said = await write('Write', { file_path: path, content: 'x' })
+    expect([path, said?.permissionDecision]).toEqual([path, 'deny'])
+    expect(said?.permissionDecisionReason).toContain('mcp__plugin_assay_assay__note')
+    expect(said?.permissionDecisionReason).toContain('mcp__plugin_assay_assay__revise_note')
+  }
+  expect((await write('Edit', { file_path: `${root}/notes/a.md`, old_string: 'a', new_string: 'b' }))?.permissionDecision).toBe('deny')
+  expect((await write('NotebookEdit', { notebook_path: `${root}/notes/a.ipynb` }))?.permissionDecision).toBe('deny')
+  expect((await write('Write', { file_path: `${root}/notes/x.md` }, { ASSAY_ROOT: `${dir}/link` }))?.permissionDecision).toBe('deny')
+  for (const path of [`${root}/notes-old/x.md`, `${root}/elsewhere/notes/x.md`, `${analysis}/notes/x.md`])
+    expect([path, await write('Write', { file_path: path, content: 'x' })]).toEqual([path, undefined])
+})
+
+test('the prompt rules send findings to the note tools and no longer name notes.md, new_note or [[slug]]', async () => {
+  const { env } = await scratch()
+  const rules = (await hook('prompt', { prompt: 'x' }, env))?.additionalContext ?? ''
+  for (const part of ['mcp__plugin_assay_assay__note', 'one idea per note', '[<slug> q N]', '[[ID]]', 'mcp__plugin_assay_assay__revise_note', 'never Write or Edit under notes/'])
+    expect(rules).toContain(part)
+  for (const gone of ['new_note', 'notes.md', '[[slug]]', '[q NNN]']) expect(rules).not.toContain(gone)
+})
+
 test('outside an Assay session a prompt carries no rule', async () => {
   expect(await hook('prompt', { prompt: 'hi' }, { PATH: process.env.PATH })).toBeUndefined()
 })

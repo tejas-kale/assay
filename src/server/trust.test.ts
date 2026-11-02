@@ -2,12 +2,18 @@
 // and dictionary.test.ts), ported. The review is started and answered by the app's requests now, never by a tool:
 // `/an trust` and its question dialog are gone, so "text under Other" and "a dismissed dialog" have no counterpart;
 // an answer outside `asking` is refused instead.
+import { readdir, readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 
 import { expect } from '../testing/expect.ts'
+import { citationLabel } from '../core/citationLabels.ts'
 import { VENV_ASSAY_HINT } from '../core/rules.ts'
 import { answering, fake, until } from './testing.ts'
 import type { Fake, Run, Serve } from './testing.ts'
+
+/** The label a citation of run `number` in the scratch analysis gets, from its files on disk. */
+const labelOf = (ws: Fake, number: number, currentCommit?: (name: string) => Promise<string | undefined>) =>
+  citationLabel({ fs: { readdir: path => readdir(path), readFile: path => readFile(path, 'utf8') }, root: ws.root, ...(currentCommit ? { currentCommit } : {}) }, { analysis: 'feature', number })
 
 const COMPLETES = {
   name: 'completes_by_site',
@@ -46,7 +52,7 @@ function scripted(ws: Fake, answers: Answers, git: (readonly string[])[] = [], i
 
 const files = (extra: Record<string, string> = {}) => ({ 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay/bin/python': '', ...extra })
 
-test('trusted runs a calculation by name: arguments checked, the run recorded with its commit, a note on it is trusted', async () => {
+test('trusted runs a calculation by name: arguments checked, the run recorded with its commit, a citation of it is trusted, stale once its calculation has a newer commit', async () => {
   const ws = await fake(files())
   ws.setRun(scripted(ws, { list: { calculations: [COMPLETES, TOP], problems: [] }, run: { columns: ['site_id', 'completes'], rows: [['10', '2']] } }))
   const ran = await ws.call('trusted', { name: 'completes_by_site', args: { start: '2026-01-01' } })
@@ -54,9 +60,10 @@ test('trusted runs a calculation by name: arguments checked, the run recorded wi
   expect(ws.runs.find(argv => argv[3] === 'run')).toEqual([python(ws), '-m', 'analysis_trust', 'run', ws.root, 'completes_by_site', '{"start":"2026-01-01"}', ws.analysis])
   expect(await ws.file('queries/001_completes-by-site.sql')).toBe(`-- trusted: completes_by_site\n-- args: {"start":"2026-01-01"}\n-- commit: abc123def456\n${COMPLETES.sql}\n`)
   expect(await ws.file('queries/001_completes-by-site.csv')).toBe('site_id,completes\n10,2\n')
-  expect(await ws.call('note', { text: 'site 10 had 2 completes', query: 1 })).toBe('Noted as trusted q 001.')
+  expect(await labelOf(ws, 1)).toBe('trusted')
+  expect(await labelOf(ws, 1, async () => 'ffffffffffff')).toBe('stale')
   await ws.call('sql', { sql: 'SELECT 1 AS n', slug: 'own' })
-  expect(await ws.call('note', { text: 'own query', query: 2 })).toBe('Noted as queried q 002.')
+  expect(await labelOf(ws, 2)).toBe('queried')
   expect(await ws.call('trusted', { name: 'top_sites' })).toMatch(/^Query 003 \(trusted top_sites\)/)
   expect(await ws.file('queries/003_top-sites.sql')).toBe('-- trusted: top_sites\n-- args: {}\n-- commit: 0123456789ab\n-- python: trusted/top_sites.py\n')
   await ws.done()
@@ -106,7 +113,7 @@ test('a dictionary definition runs as <table>:<name>: names checked by the helpe
   expect(await ws.call('trusted', { name: definition.name, args: { by: ['site_id'] } })).toMatch(/^Query 001 \(trusted main\.panel\.surveys:completes\): 1 row\./)
   expect(ws.runs.find(argv => argv[3] === 'render')).toEqual([python(ws), '-m', 'analysis_trust', 'render', ws.root, definition.name, '{"by":["site_id"]}'])
   expect(await ws.file('queries/001_main-panel-surveys-completes.sql')).toBe(`-- trusted: main.panel.surveys:completes\n-- args: {"by":["site_id"]}\n-- commit: fedcba987654\n${sql}\n`)
-  expect(await ws.call('note', { text: 'site 10: one complete', query: 1 })).toBe('Noted as trusted q 001.')
+  expect(await labelOf(ws, 1)).toBe('trusted')
   ws.setRun(scripted(ws, { list: { calculations: [{ ...definition, dirty: true }], problems: [] } }))
   expect(await ws.call('trusted', { name: definition.name })).toMatch(/^dictionaries\/main\.panel\.surveys\.yaml differs from its last commit/)
   await ws.done()

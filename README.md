@@ -54,7 +54,7 @@ Every shortcut is in `src/core/keymap.ts`: `COMMANDS` (Cmd keys, caught in main 
 - `src/renderer`: React UI. `terminal.ts` is the only file that imports `ghostty-web`.
 - `src/server`: the MCP server `assay`, one per Claude session (plugin `.mcp.json`). Claude's tools are
   `mcp__plugin_assay_assay__<tool>` (Claude Code's name for a plugin's MCP tools): `sql`, `python`, `trusted`, `park`,
-  `close`, `focus`, `order`, `note`, `revise_note`, `new_note`, `link_note`. It owns the kernel
+  `close`, `focus`, `order`, `note`, `revise_note`, `link_notes`. It owns the kernel
   (`python/analysis_kernel.py serve`), started with the server and ended with it.
 - `src/hooks`: UserPromptSubmit (the rules on each typed prompt, the trusted calculations, the user's runs since the
   last prompt), PreToolUse on Bash (no Python through Bash) and on Write/Edit/NotebookEdit (nothing into
@@ -80,7 +80,7 @@ Built and tested with a stub Claude, simulated replies and the MCP SDK's client 
 1. The plugin in the Podman container: the server, the hooks and the skills under the wrapper.
 2. The Trust tab's Check, Trust and Reject against a real proposal, the commit, and removing the `lib/` draft.
 3. A re-run or edited query from the app reaching the session, its latency, and Postgres re-runs.
-4. `new_note` from Claude, and Claude editing a note open in the reader.
+4. `note` from Claude, and Claude `revise_note` on a note open in the reader.
 5. Cmd+W and Cmd+Q closing a window while the wrapper finishes its git import.
 
 ## Driving the app without a person

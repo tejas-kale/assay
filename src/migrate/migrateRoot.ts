@@ -4,7 +4,7 @@
 import { readdir, readFile, rename, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { slugify } from '../core/noteFiles.ts'
+import { slugify } from '../core/rootNotes.ts'
 import { ANALYSIS_FILE, isoDay, parseAnalysisFile, slugFor, yamlScalar } from '../core/analyses.ts'
 
 const OLD_MARKER = '.analysis'

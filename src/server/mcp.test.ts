@@ -32,7 +32,6 @@ async function session() {
   await writeFile(join(dir, 'bin/databricks'), STUB)
   await chmod(join(dir, 'bin/databricks'), 0o755)
   await writeFile(join(analysis, 'analysis.yaml'), 'title: Panel\nprofile: P1\n')
-  await writeFile(join(analysis, 'notes.md'), 'old fact [q 001]\n')
   const out = await bundle()
   const transport = new StdioClientTransport({
     command: process.execPath,
@@ -64,12 +63,14 @@ async function session() {
 test('the bundled server lists its tools and answers each once', { timeout: 120_000 }, async () => {
   const s = await session()
   const { tools } = await s.client.listTools()
-  expect(tools.map(tool => tool.name)).toEqual(['sql', 'python', 'trusted', 'park', 'close', 'focus', 'order', 'note', 'revise_note', 'link_note', 'new_note'])
-  // On start: the files set up and the old fact labelled.
+  expect(tools.map(tool => tool.name)).toEqual(['sql', 'python', 'trusted', 'park', 'close', 'focus', 'order', 'note', 'revise_note', 'link_notes'])
+  // On start: the files set up, none for notes.
   expect(await s.file('threads.md')).toBe('## Open\n\n## Closed\n')
-  expect(await s.file('notes.md')).toBe('old fact [unverified q 001]\n')
+  expect(await s.file('notes.md')).toBeUndefined()
+  expect(await s.file('notes')).toBeUndefined()
 
-  expect(await s.call('sql', { sql: 'SELECT 1 AS n', slug: 'one' })).toBe('Query 001: 1 row. Columns: n\nn\n1')
+  // The first run of an analysis with no notes ends with the search line.
+  expect(await s.call('sql', { sql: 'SELECT 1 AS n', slug: 'one' })).toMatch(/^Query 001: 1 row\. Columns: n\nn\n1\nThis analysis has no notes yet\. Search notes\/ .*link_notes/)
   expect(await s.file('queries/001_one.csv')).toBe('n\n1\n')
   // The server started with the cwd at the root, wrote under the analysis, and took the target from analysis.yaml.
   expect(await readFile(join(s.dir, 'last-args'), 'utf8')).toMatch(/--profile P1 --warehouse 455a178462311474 /)
@@ -88,11 +89,14 @@ test('the bundled server lists its tools and answers each once', { timeout: 120_
   expect(await s.call('focus', { thread: '2' })).toBe('Focused: 1. Is it per site?')
   expect(await s.call('order', { threads: ['2'] })).toBe('Open threads now:\n1. Why is n 1?\n2. Is it per site?')
   expect(await s.call('close', { thread: '1', outcome: 'stub' })).toBe('Closed "Why is n 1?". Next open thread: 1. Is it per site?')
-  expect(await s.call('note', { text: 'n is 1', query: 1 })).toBe('Noted as queried q 001.')
-  expect(await s.call('revise_note', { note: '1', query: 1 })).toBe('Note 1 is now queried q 001.')
-  expect(await s.call('new_note', { title: 'One', slug: 'one', text: 'It is 1 [q 1].' })).toBe('Wrote analyses/panel/notes/001-one.md. Link it from other notes with [[one]].')
-  await writeFile(join(s.dir, 'wiki.md'), '# Wiki page\n')
-  expect(await s.call('link_note', { path: join(s.dir, 'wiki.md') })).toBe(`Listed "Wiki page" in analyses/panel/notes.md; the app's Notes tab shows it.`)
+  const wrote = await s.call('note', { title: 'One', text: 'It is 1 [q 1].' })
+  const [, file, id] = /^Wrote notes\/((\d{8}T\d{6})-one\.md)\. Link it with \[\[\d{8}T\d{6}\]\]\.$/.exec(wrote) ?? []
+  expect(file === undefined).toBe(false)
+  expect(await readFile(join(s.root, 'notes', file ?? ''), 'utf8')).toBe('# One\n\nIt is 1 [panel q 1].\n')
+  expect(await s.call('revise_note', { id, old: '1 [panel', new: '2 [panel' })).toBe(`Revised notes/${file}.`)
+  expect(await s.call('link_notes', { ids: [id] })).toMatch(/^Nothing new to link\./)
+  expect(await s.call('revise_note', { id, delete: true })).toBe(`Deleted notes/${file}.`)
+  expect(await s.file('analysis.yaml')).toBe('title: Panel\nprofile: P1\nnotes:\n  written: []\n  found: []\n')
   await s.close()
 })
 
