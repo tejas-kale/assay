@@ -135,6 +135,7 @@ async function withHeaders(folder: string, runs: Run[]): Promise<Run[]> {
 }
 
 // A Python run's status is final once its `.json` says so; a running one is read again on every push.
+// Keyed by the full file path, which includes the analysis folder, so analyses and windows never share entries.
 const finished = new Map<string, ResultStatus>()
 
 /** Fills each Python run's `status` from its result `.json` (rewritten every 0.5 s by rename while it runs). */
