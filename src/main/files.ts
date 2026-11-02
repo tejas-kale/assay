@@ -255,16 +255,17 @@ export async function writeRequest(folder: string, request: RunRequest): Promise
 
 const JUNK_REPLY_MS = 60_000
 
-/** Reads and deletes every reply file the mod has written. */
-export async function takeReplies(folder: string): Promise<Reply[]> {
+/** Reads and deletes every reply file the mod has written. `waiting`: one is still half written, so read again soon. */
+export async function takeReplies(folder: string): Promise<{ replies: Reply[]; waiting: boolean }> {
   const dir = join(folder, ASSAY, REPLIES)
   let names: string[]
   try {
     names = (await readdir(dir)).filter(n => n.endsWith('.json') && !n.startsWith('.')).sort()
   } catch {
-    return []
+    return { replies: [], waiting: false }
   }
   const replies: Reply[] = []
+  let waiting = false
   for (const name of names) {
     const path = join(dir, name)
     try {
@@ -275,10 +276,10 @@ export async function takeReplies(folder: string): Promise<Reply[]> {
       } else if (Date.now() - (await stat(path)).mtimeMs > JUNK_REPLY_MS) {
         // The mod writes replies in place, so an unreadable one may be half written: wait, then give up.
         await unlink(path)
-      }
+      } else waiting = true
     } catch {
       // Gone already, or half written: the next poll tries again.
     }
   }
-  return replies
+  return { replies, waiting }
 }
