@@ -1,7 +1,6 @@
 // Root notes for main: `<root>/notes/<ID>-<slug>.md` and the `notes:` lists of the open analysis's analysis.yaml.
 // The root is two folders above the analysis (`<root>/analyses/<slug>`). Names from the renderer are checked
 // against the note file pattern, so only a file directly in `notes/` can be read or written.
-import { execFile } from 'node:child_process'
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
@@ -12,43 +11,14 @@ import type { CitationLabel } from '../core/citationLabels.ts'
 import { StaleEdit } from '../core/errors.ts'
 import { noteCitations, parseNoteFileName, writeRootNote } from '../core/rootNotes.ts'
 import type { EditResult, NoteCreateResult, NoteReadResult, RunView } from '../shared/ipc.ts'
+import { currentCommit } from '../shared/trustedCommit.ts'
 import { editFile, notesDir, readRun } from './files.ts'
 
 const MAX_NOTE_BYTES = 2 * 1024 * 1024
 const ANALYSES = 'analyses'
-const TRUSTED = 'trusted'
-const COMMIT_KEPT_MS = 20_000
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const isCode = (err: unknown, code: string) => err instanceof Error && 'code' in err && err.code === code
-
-// The commit of a trusted calculation's file, kept briefly: git runs once per calculation, not once per citation.
-const commits = new Map<string, { at: number; commit: Promise<string | undefined> }>()
-
-const git = (folder: string, args: string[]) =>
-  new Promise<string | undefined>(resolve => {
-    execFile('git', ['-C', folder, ...args], { timeout: 20_000 }, (err, stdout) => resolve(err ? undefined : stdout.trim()))
-  })
-
-/**
- * The commit (12 hex digits, as a trusted run's header records it) that last changed trusted calculation `name`'s
- * file in `<root>/trusted`. Undefined when the file is not there, git fails or the name is a definition; the
- * citation is then not called stale.
- */
-export function currentCommit(root: string, name: string): Promise<string | undefined> {
-  const key = `${root}\0${name}`
-  const kept = commits.get(key)
-  if (kept && Date.now() - kept.at < COMMIT_KEPT_MS) return kept.commit
-  const commit = (async () => {
-    const folder = join(root, TRUSTED)
-    const file = (await readdir(folder).catch(() => [])).find(each => /\.(sql|py)$/.test(each) && each.replace(/\.(sql|py)$/, '') === name)
-    if (!file) return undefined
-    const sha = await git(folder, ['log', '-1', '--format=%H', '--', file])
-    return sha ? sha.slice(0, 12) : undefined
-  })()
-  commits.set(key, { at: Date.now(), commit })
-  return commit
-}
 
 const labelDeps = (root: string) => ({
   fs: { readdir: (path: string) => readdir(path), readFile: (path: string) => readFile(path, 'utf8') },

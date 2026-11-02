@@ -67,8 +67,6 @@ test("each prompt carries the rules, the trust rules and the kernel's python", a
   for (const part of ['one concept per reply', 'mcp__plugin_assay_assay__focus', 'mcp__plugin_assay_assay__order', 'mcp__plugin_assay_assay__python', 'q(N)', 'matplotlib', '.head()', 'lib/<name>.py', 'cd analyses/panel && /w/.venv/bin/python -m pytest tests', 'claude-pkg venv-assay'])
     expect(rules).toContain(part)
   expect(rules).toContain(`${root}/dictionaries`)
-  expect(rules).toContain('lib/dictionaries/<catalog.schema.table>.yaml')
-  expect(rules).toContain('Only the user promotes it, in the Trust tab in Assay.')
   expect(rules).not.toContain('/an')
   expect(rules).not.toContain('Since your last turn')
 })
@@ -105,6 +103,17 @@ test('the rules list the usable trusted calculations the helper lists', async ()
   expect(rules).toContain('run the one that fits with mcp__plugin_assay_assay__trusted. If you write your own SQL where one fits, say why in one line.')
   expect(rules).toContain('- completes_by_site(start: date): Completes per site.')
   expect(rules).not.toContain('top_sites')
+})
+
+test('the rules point once at the propose-trusted skill, and no longer carry the drafting rules', async () => {
+  const { env } = await scratch()
+  const rules = (await hook('prompt', { prompt: 'x' }, env))?.additionalContext ?? ''
+  const pointer = 'Propose a trusted calculation or a dictionary entry with the assay:propose-trusted skill; only the user promotes it, in the Trust tab in Assay.'
+  expect(rules.split(pointer).length).toBe(2)
+  expect(rules).not.toContain('Propose a new trusted calculation')
+  expect(rules).not.toContain('Draft dictionary entries')
+  expect(rules).not.toContain('lib/dictionaries/<catalog')
+  expect(rules).toContain('never write there')
 })
 
 test("the run notice lists the user's runs the server recorded since the last prompt, once", async () => {

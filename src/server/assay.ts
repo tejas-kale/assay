@@ -51,6 +51,8 @@ export type Config = {
   /** Where the kernel's connection file goes. */
   tmp: string
   proc: Proc
+  /** The commit that last changed trusted calculation `name` in the shared folder; without it stale cannot be checked. */
+  currentCommit?: (name: string) => Promise<string | undefined>
 }
 
 type Query = { number: number; slug: string; hasCsv: boolean; language: 'sql' | 'python' }

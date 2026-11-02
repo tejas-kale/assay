@@ -1,7 +1,7 @@
 // The rules on each of the user's prompts, ported from the analysis mod's hooks/model.ts (analysisRules,
 // runNotice) and hooks/trust.ts (trustRules, calculationRules). The UserPromptSubmit hook sends them.
 import type { CalculationList } from './calculations.ts'
-import { DICTIONARIES, DRAFT_DICTIONARIES, DRAFT_TRUSTED, TRUST_TAB, TRUSTED, signature } from './calculations.ts'
+import { DICTIONARIES, PROPOSE_SKILL, TRUST_TAB, TRUSTED, signature } from './calculations.ts'
 import { queryLabel } from './pythonRuns.ts'
 
 /**
@@ -58,10 +58,7 @@ export const openAnalysisRule = ({ title, folder }: OpenAnalysis) =>
 
 /** The rule on the dictionary and trusted calculations, in the shared folder `home`. */
 export const trustRules = (home: string) =>
-  [
-    `The data dictionary (${home}/${DICTIONARIES}) and trusted calculations (${home}/${TRUSTED}) change only through the user's approval: never write there.`,
-    `Draft dictionary entries in ${DRAFT_DICTIONARIES}/<catalog.schema.table>.yaml; the user checks and approves them in ${TRUST_TAB}.`,
-  ].join('\n')
+  `The data dictionary (${home}/${DICTIONARIES}) and trusted calculations (${home}/${TRUSTED}) change only through the user's approval: never write there.`
 
 /** The rule listing the trusted calculations, and how to propose one. */
 export function calculationRules(list: CalculationList | undefined): string {
@@ -72,9 +69,7 @@ export function calculationRules(list: CalculationList | undefined): string {
         ...usable.map(calc => `- ${signature(calc)}: ${calc.description}`),
       ]
     : []
-  lines.push(
-    `Propose a new trusted calculation in ${DRAFT_TRUSTED}/: <name>.sql (Databricks SQL, :param placeholders, a /*--- ---*/ front matter with description and parameters) or <name>.py (a function <name>(engine, ...) with a docstring and typed parameters, returning a data frame), with fixture cases in <name>.test.yaml or pytest in test_<name>.py. Only the user promotes it, in ${TRUST_TAB}.`,
-  )
+  lines.push(`Propose a trusted calculation or a dictionary entry with the ${PROPOSE_SKILL} skill; only the user promotes it, in ${TRUST_TAB}.`)
   return lines.join('\n')
 }
 

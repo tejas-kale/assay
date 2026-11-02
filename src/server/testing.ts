@@ -64,7 +64,7 @@ export type Fake = {
   done: () => Promise<void>
 }
 
-export async function fake(files: Record<string, string> = { 'analysis.yaml': 'title: Feature\n' }): Promise<Fake> {
+export async function fake(files: Record<string, string> = { 'analysis.yaml': 'title: Feature\n' }, options: { currentCommit?: (name: string) => Promise<string | undefined> } = {}): Promise<Fake> {
   const dir = await mkdtemp(join(tmpdir(), 'assay-test-'))
   const analysis = join(dir, 'work/analyses/feature')
   const root = join(dir, 'work')
@@ -112,7 +112,7 @@ export async function fake(files: Record<string, string> = { 'analysis.yaml': 't
       return { pid: 1000 + serves.length, onOutput: cb => void listeners.push(cb), exited, kill: () => serve.end(null) }
     },
   }
-  const assay = new Assay({ analysis, root, venv, runner: RUNNER, tmp: join(dir, 'tmp'), proc })
+  const assay = new Assay({ analysis, root, venv, runner: RUNNER, tmp: join(dir, 'tmp'), proc, ...options })
   // The search line on a first run is tested on its own: set `assay.searchHinted = false` to get it.
   assay.searchHinted = true
   const requests = new Requests(assay)

@@ -12,6 +12,8 @@ export const TRUSTED = 'trusted'
 /** In an analysis: drafts and proposals, for the user to approve in the Trust tab. */
 export const DRAFT_DICTIONARIES = 'lib/dictionaries'
 export const DRAFT_TRUSTED = 'lib/trusted'
+/** The skill that drafts a trusted calculation or a dictionary entry. */
+export const PROPOSE_SKILL = 'assay:propose-trusted'
 
 /** One table a statement touches, as `analysis_trust dictionary` answers. */
 export type DictionaryTable = { name: string; entry?: string; text?: string; terms?: string[] }
@@ -55,11 +57,7 @@ export function draftHint(name: string): string {
   if (name.split('.').length !== 3) {
     return `No data dictionary entry for ${name}. To draft one, find its catalog and schema: its entry is named catalog.schema.table.`
   }
-  return [
-    `No data dictionary entry for ${name}. Draft one in ${DRAFT_DICTIONARIES}/${name}.yaml from discover-schema and what queries show:`,
-    'description, columns (each with name, type and description), joins (on the table holding the foreign key).',
-    `It lands in the shared dictionaries/ only when the user approves it in ${TRUST_TAB}; tell the user it is there.`,
-  ].join(' ')
+  return `No data dictionary entry for ${name}. Draft it with the ${PROPOSE_SKILL} skill and the table's full name: ${name}.`
 }
 
 /** A path with `.` and `..` segments resolved, relative ones taken from `base`. */

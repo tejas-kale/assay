@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 
 import { loadState } from './files.ts'
-import { addRootNote, currentCommit, readCitedRun, readRootNote, saveRootNote } from './notes.ts'
+import { addRootNote, readCitedRun, readRootNote, saveRootNote } from './notes.ts'
 
 /** A root with analysis `a` (and `b` holding runs when asked). */
 async function scratch() {
@@ -59,8 +59,6 @@ test('read derives labels from the cited runs: missing, queried, trusted, stale'
   sh('add', '.')
   sh('commit', '-q', '-m', 'x')
   const commit = sh('rev-parse', 'HEAD').slice(0, 12)
-  assert.equal(await currentCommit(root, 'churn'), commit)
-  assert.equal(await currentCommit(root, 'nothing'), undefined)
 
   const queries = join(analysis.path, 'queries')
   await writeFile(join(queries, '001_plain.sql'), 'select 1\n')

@@ -63,7 +63,7 @@ async function session() {
 test('the bundled server lists its tools and answers each once', { timeout: 120_000 }, async () => {
   const s = await session()
   const { tools } = await s.client.listTools()
-  expect(tools.map(tool => tool.name)).toEqual(['sql', 'python', 'trusted', 'park', 'close', 'focus', 'order', 'note', 'revise_note', 'link_notes'])
+  expect(tools.map(tool => tool.name)).toEqual(['sql', 'python', 'trusted', 'park', 'close', 'focus', 'order', 'note', 'revise_note', 'link_notes', 'note_labels'])
   // On start: the files set up, none for notes.
   expect(await s.file('threads.md')).toBe('## Open\n\n## Closed\n')
   expect(await s.file('notes.md')).toBeUndefined()

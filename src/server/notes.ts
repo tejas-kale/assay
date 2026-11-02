@@ -4,7 +4,8 @@ import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { ANALYSIS_FILE, folderName } from '../core/analyses.ts'
-import { citationLabels } from '../core/citationLabels.ts'
+import { citationKey, citationLabels } from '../core/citationLabels.ts'
+import type { CitationLabel } from '../core/citationLabels.ts'
 import { queryLabel } from '../core/pythonRuns.ts'
 import {
   addFound,
@@ -132,4 +133,56 @@ export async function searchHint(assay: Assay): Promise<string | undefined> {
   assay.searchHinted = true
   const lists = parseNoteLists(await assay.readText(ANALYSIS_FILE))
   return lists.found.length === 0 && lists.written.length === 0 ? SEARCH_LINE : undefined
+}
+
+const WEAK = new Set<CitationLabel>(['unverified', 'stale', 'missing'])
+
+/**
+ * `note_labels { id?, weak? }`: the label of each citation in the notes this analysis wrote (or the one note `id`, any
+ * root note). Per note a line `<ID> <title>`, then `[<slug> q N] <label>` per distinct citation; weak labels
+ * (unverified, stale, missing) first, and notes with a weak citation first. `weak: true` leaves out the other notes.
+ */
+export async function noteLabels(assay: Assay, args: Args): Promise<string> {
+  const given = (text(args, 'id') ?? '').trim()
+  const files = await names(assay)
+  const ids = given ? [given] : parseNoteLists(await assay.readText(ANALYSIS_FILE)).written
+  if (ids.length === 0) return 'This analysis has written no notes.'
+  // A trusted run is stale only when the calculation's commit is known: note the names it could not be asked about.
+  const unchecked = new Set<string>()
+  const lookup = assay.config.currentCommit
+  const deps = {
+    fs: { readdir: (path: string) => readdir(path), readFile: (path: string) => readFile(path, 'utf8') },
+    root: assay.config.root,
+    currentCommit: async (name: string) => {
+      const commit = await lookup?.(name).catch(() => undefined)
+      // A definition (<table>:<name>) has no file in trusted/, so its commit is never looked up.
+      if (commit === undefined && !name.includes(':')) unchecked.add(name)
+      return commit
+    },
+  }
+  const notes = await Promise.all(
+    ids.map(async id => {
+      const file = fileOf(id, files)
+      if (!file) return { id, title: `no file in ${NOTES_DIR}/`, weak: true, lines: [] as { text: string; label: string }[] }
+      const body = await readFile(join(dir(assay), file), 'utf8').catch(() => '')
+      const cited = [...new Map(noteCitations(body).map(each => [citationKey(each), each])).values()]
+      const labels = await citationLabels(deps, cited)
+      const lines = cited.map(each => ({ text: `[${each.analysis} q ${each.number}]`, label: labels.get(citationKey(each)) ?? 'missing' }))
+      const weak = lines.filter(line => WEAK.has(line.label))
+      const rest = lines.filter(line => !WEAK.has(line.label))
+      return { id, title: noteTitle(body) ?? '', weak: weak.length > 0, lines: [...weak, ...rest] }
+    }),
+  )
+  if (given && !fileOf(given, files)) return `No note ${given} in ${NOTES_DIR}/.`
+  const found = notes
+  const shownNotes = args.weak === true ? found.filter(note => note.weak) : found
+  const blocks = [...shownNotes.filter(note => note.weak), ...shownNotes.filter(note => !note.weak)].map(note =>
+    [`${note.id} ${note.title}`.trim(), ...(note.lines.length > 0 ? note.lines.map(line => `${line.text} ${line.label}`) : fileOf(note.id, files) ? ['no citations'] : [])].join('\n'),
+  )
+  const only = found[0]
+  const empty = given && only ? `${`${only.id} ${only.title}`.trim()} has no weak citation.` : 'No weak citations in the notes this analysis wrote.'
+  return [
+    blocks.length > 0 ? blocks.join('\n\n') : empty,
+    ...(unchecked.size > 0 ? [`Stale was not checked: the current commit of ${[...unchecked].sort().join(', ')} could not be found.`] : []),
+  ].join('\n')
 }

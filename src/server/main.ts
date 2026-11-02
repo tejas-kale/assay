@@ -9,6 +9,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 
 import { NOT_ASSAY, VENV_ASSAY } from '../core/rules.ts'
 import { Assay } from './assay.ts'
+import { currentCommit } from '../shared/trustedCommit.ts'
 import type { Config } from './assay.ts'
 import { realProc } from './proc.ts'
 import type { Proc } from './proc.ts'
@@ -33,6 +34,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv, proc: Proc = realProc): Co
     runner: env.ASSAY_KERNEL_RUNNER || resolve(here, '../../python/analysis_kernel.py'),
     tmp: (env.TMPDIR || tmpdir()).replace(/\/+$/, '') || '/tmp',
     proc,
+    currentCommit: name => currentCommit(resolve(root), name),
   }
 }
 

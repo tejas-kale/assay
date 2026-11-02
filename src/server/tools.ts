@@ -5,7 +5,7 @@ import { oneLine } from '../core/text.ts'
 import { closeThread, focusThread, orderThreads, parkThread } from '../core/threads.ts'
 import { ANALYSIS_FILE } from '../core/analyses.ts'
 import { Assay } from './assay.ts'
-import { linkNotes, reviseNote, searchHint, writeNote } from './notes.ts'
+import { linkNotes, noteLabels, reviseNote, searchHint, writeNote } from './notes.ts'
 
 export type ToolSpec = { name: string; description: string; inputSchema: { type: 'object'; properties: Record<string, object>; required: readonly string[] } }
 
@@ -145,6 +145,19 @@ export const TOOLS = [
       required: ['ids'],
     },
   },
+  {
+    name: 'note_labels',
+    description:
+      "The label of each citation in the root notes this analysis wrote: per note a line `<ID> <title>`, then one line `[<analysis> q N] <label>` per citation. Labels: trusted, queried, computed, unverified (no result), stale (a trusted run whose calculation has a newer commit), missing (no such run). Notes with a weak citation (unverified, stale, missing) come first, and weak citations first within a note. With weak: true only notes with a weak citation are listed. With id, that one note, which may be any root note. When the calculation's current commit cannot be found, the reply ends with a line saying stale was not checked.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'One note ID, any root note; default: every note this analysis wrote.' },
+        weak: { type: 'boolean', description: 'List only notes with an unverified, stale or missing citation.' },
+      },
+      required: [],
+    },
+  },
 ] as const satisfies readonly ToolSpec[]
 
 export type ToolName = (typeof TOOLS)[number]['name']
@@ -219,6 +232,8 @@ async function dispatch(assay: Assay, name: string, args: Args): Promise<string>
       return reviseNote(assay, args)
     case 'link_notes':
       return linkNotes(assay, args)
+    case 'note_labels':
+      return noteLabels(assay, args)
     default:
       return `Unknown tool: ${name}.`
   }

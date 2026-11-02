@@ -54,11 +54,14 @@ Every shortcut is in `src/core/keymap.ts`: `COMMANDS` (Cmd keys, caught in main 
 - `src/renderer`: React UI. `terminal.ts` is the only file that imports `ghostty-web`.
 - `src/server`: the MCP server `assay`, one per Claude session (plugin `.mcp.json`). Claude's tools are
   `mcp__plugin_assay_assay__<tool>` (Claude Code's name for a plugin's MCP tools): `sql`, `python`, `trusted`, `park`,
-  `close`, `focus`, `order`, `note`, `revise_note`, `link_notes`. It owns the kernel
+  `close`, `focus`, `order`, `note`, `revise_note`, `link_notes`, `note_labels`. It owns the kernel
   (`python/analysis_kernel.py serve`), started with the server and ended with it.
 - `src/hooks`: UserPromptSubmit (the rules on each typed prompt, the trusted calculations, the user's runs since the
   last prompt), PreToolUse on Bash (no Python through Bash) and on Write/Edit/NotebookEdit (nothing into
-  `$ASSAY_ROOT/trusted` or `dictionaries`, nor into another analysis). `plugin/skills`: `assay:resume`, `assay:wrap-up`.
+  `$ASSAY_ROOT/trusted` or `dictionaries`, nor into another analysis). `plugin/skills`:
+  - `assay:resume`: report where the analysis stands and offer past root notes to link.
+  - `assay:wrap-up`: close threads, write findings as root notes, settle weak citations, link the notes read.
+  - `assay:propose-trusted`: draft a trusted calculation or dictionary entry, with every file Check needs.
 - `python/`: `analysis_db`, `analysis_kernel`, `analysis_trust`, built into venv-assay by `claude-pkg venv-assay`.
 - The app talks to the server through files: it writes `.assay/requests/<id>.json` (`sql`, `python`, `interrupt`,
   `restart`, `replay`, `trust-list`, `trust-check`, `trust-answer`), the server answers in `.assay/replies/`, and

@@ -67,7 +67,7 @@ test('streamed check lines split into events; partial and stray lines are left o
 })
 
 test('every pointer to approval names the Trust tab, never /an trust', () => {
-  const texts = [trustRules('/c/notes-src'), calculationRules(undefined), draftHint('m.p.t')]
+  const texts = [calculationRules(undefined)]
   for (const text of texts) {
     expect(text).toContain('the Trust tab in Assay')
     expect(text).not.toContain('/an')

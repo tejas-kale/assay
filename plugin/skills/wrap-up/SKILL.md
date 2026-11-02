@@ -7,32 +7,24 @@ description: Close out an analysis session so the next one can resume. Use when 
 
 The open analysis's folder, `analyses/<slug>/` from the root, is named in the rules on each prompt;
 `threads.md`, `analysis.yaml` and `queries/` below are in it; root notes are in `notes/` at the root.
+Never Write or Edit under `notes/`: use the note tools.
 
 1. Read `threads.md`. For each open thread this conversation answered, call
-   `mcp__plugin_assay_assay__close` with the thread's number and a one-line outcome.
-2. For each fork that came up in this conversation and is not in `threads.md`, call
-   `mcp__plugin_assay_assay__park` with it as a one-line question.
-3. Read the notes `analysis.yaml` lists under `notes.written`. List each finding a query in this
-   conversation showed that is not noted yet, one line each with its run. Ask the user which to
-   keep. Do not write any yet.
-4. For each one the user approves, call `mcp__plugin_assay_assay__note` with a title and text citing
-   its run as `[<slug> q N]`. The server derives the label; never write one.
-5. To change a note this analysis wrote, Read it and call `mcp__plugin_assay_assay__revise_note`
-   (`old` and `new`, or `delete: true`); never Write or Edit under `notes/`.
-6. Write the session into the analysis's denote note in `~/Code/notes/claude/`, following
-   that repo's `AGENTS.md`. `<path>` is the analysis folder relative to `~/Code/notes-src`:
-   `analyses/<folder>`. The note's tags are `analysis` and the folder name with everything but letters
-   and digits removed, so `quarantine-high-anchor` gives `__analysis_quarantinehighanchor`.
-   If a `claude/*__analysis_<tag>.md` exists, update it. Else, if an older
-   `claude/*__investigation_<tag>.md` exists, update that one and change its `investigation`
-   tag to `analysis` in its file name and front matter. Otherwise create
-   `<ID>--<folder>__analysis_<tag>.md` with the ID from `date +%Y%m%dT%H%M%S`. The note
-   holds:
-   - a claim-first summary of what is settled;
-   - `## Findings`: the title of each note under `notes.written`, its run linked to
-     `https://github.com/tejaskale-cint/notes-src/blob/main/<path>/queries/<file>.sql`;
-   - `## Open threads`: the lines under `## Open` in `threads.md`.
-7. Run `wiki-check` in `~/Code/notes` and fix the note until it exits 0. Do not commit in
-   either repo.
-8. Reply with one line: the open thread count, the next open thread, and the note's path.
-   Do not export the notebook or make slides.
+   `mcp__plugin_assay_assay__close` with the thread's number and a one-line outcome. For each fork that came
+   up and is not in `threads.md`, call `mcp__plugin_assay_assay__park` with it as a one-line question.
+2. Read the notes `analysis.yaml` lists under `notes.written`. List each verified finding (a query or
+   trusted run in this conversation showed it) that no note holds yet, one line each with its run. Where a
+   finding extends a written note, offer `mcp__plugin_assay_assay__revise_note` on that note instead of a new one. Ask the user which to keep (one
+   AskUserQuestion), then write each kept finding with `mcp__plugin_assay_assay__note` (a title and text citing its
+   run as `[<slug> q N]`; the server derives the label, never write one).
+3. Call `mcp__plugin_assay_assay__note_labels` with `{ weak: true }`. For each note with an unverified, stale or
+   missing citation, ask verify, keep or delete with AskUserQuestion, at most four notes per question; offer
+   delete only for notes this analysis wrote. Then act:
+   - verify: run a query that backs the number (for a stale citation, rerun the calculation with
+     `mcp__plugin_assay_assay__trusted`), then call `mcp__plugin_assay_assay__revise_note` to cite the new run;
+   - keep: change nothing;
+   - delete: call `mcp__plugin_assay_assay__revise_note` with `delete: true`.
+4. Call `mcp__plugin_assay_assay__link_notes` with the IDs of root notes you Read this session that
+   `analysis.yaml` does not list under `notes.written` or `notes.found`.
+5. Reply with one line: the open thread count, the next open thread, and the notes written this session.
+   Export nothing and make no slides.
