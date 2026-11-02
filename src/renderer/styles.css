@@ -44,7 +44,7 @@ button, input { font: inherit; color: inherit; }
 .pane:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 
 /* ghostty-web makes the host contenteditable; hide the browser caret it would draw over the canvas. */
-.terminal { flex: 1; min-height: 0; min-width: 0; overflow: hidden; background: var(--bg); caret-color: transparent; outline: none; }
+.terminal { flex: 1; min-height: 0; min-width: 0; overflow: hidden; padding: 10px 12px; background: var(--bg); caret-color: transparent; outline: none; }
 .terminal * { caret-color: transparent; }
 .terminal-error { position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 10px; background: var(--panel); color: var(--bad); border: 1px solid var(--bad); border-radius: 4px; }
 

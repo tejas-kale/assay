@@ -9,8 +9,7 @@
 //  4. `term.onData(cb)` calls `cb(string)` for user input and returns `{ dispose() }`.
 //  5. `term.cols` and `term.rows` are numbers; `term.resize(cols, rows)` exists. Both are feature-detected.
 //  6. A `FitAddon` export with `fit()` may exist. It is feature-detected; without it, the cell size is
-//     measured from a hidden span that uses the same font family and size (assumes ghostty-web draws
-//     cells of that size, and that the terminal element has no padding of its own).
+//     read from the renderer's metrics and divided into the element's size inside its padding.
 //  7. `term.focus()` exists and focuses a hidden textarea or the canvas. `focus()` below checks that
 //     focus really landed inside the element and falls back to focusing an inner element.
 //  8. Text selection and Cmd+C copy work inside the terminal (Verify-first item 1).
@@ -28,6 +27,9 @@ import { currentMode, onModeChange } from './appearance.ts'
 
 const FONT_SIZE = 13
 const FONT_FAMILY = MONO_FONT
+// Row height as a multiple of the font size. ghostty-web measures rows from "M", which has no
+// descender, so its rows clip g, j and y and set lines touching; `roomyRows` replaces that.
+const LINE_HEIGHT = 1.35
 const RESIZE_DEBOUNCE_MS = 100
 
 export type TerminalSize = { cols: number; rows: number }
@@ -64,7 +66,10 @@ type RawTerminal = {
   viewportY?: number
   dispose(): void
 }
+type CellMetrics = { width: number; height: number; baseline: number }
 type RawRenderer = {
+  metrics?: CellMetrics
+  measureFont?: () => CellMetrics
   setTheme(theme: unknown): void
   render(buffer: unknown, forceAll: boolean, viewportY: number, scrollback: unknown, scrollbarOpacity: number): void
   renderLine?: (cells: CellColors[], y: number, cols: number) => void
@@ -94,15 +99,34 @@ function followSystemTheme(term: RawTerminal, created: ThemeMode): () => void {
   })
 }
 
-/** Measures one cell of the terminal font. Fallback for when there is no fit addon. */
-function measureCell(host: HTMLElement): { width: number; height: number } {
-  const probe = document.createElement('span')
-  probe.textContent = 'W'.repeat(20)
-  probe.style.cssText = `position:absolute;visibility:hidden;white-space:pre;font:${FONT_SIZE}px ${FONT_FAMILY};`
-  host.appendChild(probe)
-  const box = probe.getBoundingClientRect()
-  probe.remove()
-  return { width: box.width / 20, height: box.height }
+/** Cell metrics with room for ascenders and descenders, the glyphs centred in a `LINE_HEIGHT` row. */
+function cellMetrics(): CellMetrics {
+  const ctx = document.createElement('canvas').getContext('2d')
+  if (!ctx) return { width: Math.ceil(FONT_SIZE * 0.6), height: Math.ceil(FONT_SIZE * LINE_HEIGHT), baseline: FONT_SIZE }
+  ctx.font = `${FONT_SIZE}px ${FONT_FAMILY}`
+  const m = ctx.measureText('M')
+  const ascent = m.fontBoundingBoxAscent || FONT_SIZE * 0.8
+  const descent = m.fontBoundingBoxDescent || FONT_SIZE * 0.2
+  const height = Math.max(Math.ceil(ascent + descent), Math.ceil(FONT_SIZE * LINE_HEIGHT))
+  return { width: Math.ceil(m.width), height, baseline: Math.round((height - ascent - descent) / 2 + ascent) }
+}
+
+/** Makes the library use `cellMetrics`, now and whenever it remeasures. */
+function roomyRows(term: RawTerminal) {
+  const renderer = term.renderer
+  if (!renderer || !renderer.metrics) return
+  renderer.measureFont = cellMetrics
+  renderer.metrics = cellMetrics()
+}
+
+/** The element's size inside its padding. */
+function innerSize(el: HTMLElement): { width: number; height: number } {
+  const style = getComputedStyle(el)
+  const px = (name: string) => Number.parseFloat(style.getPropertyValue(name)) || 0
+  return {
+    width: el.clientWidth - px('padding-left') - px('padding-right'),
+    height: el.clientHeight - px('padding-top') - px('padding-bottom'),
+  }
 }
 
 export async function createTerminal(el: HTMLElement): Promise<TerminalHandle> {
@@ -114,6 +138,7 @@ export async function createTerminal(el: HTMLElement): Promise<TerminalHandle> {
   const created = currentMode()
   const term = new Ctor({ fontSize: FONT_SIZE, fontFamily: FONT_FAMILY, theme: THEMES[created].terminal })
   term.open(el)
+  roomyRows(term)
   const stopFollowingTheme = followSystemTheme(term, created)
 
   let fitAddon: RawFit | undefined
@@ -150,9 +175,10 @@ export async function createTerminal(el: HTMLElement): Promise<TerminalHandle> {
     if (fitAddon) {
       fitAddon.fit()
     } else if (typeof term.resize === 'function') {
-      const cell = measureCell(el)
-      if (cell.width > 0 && cell.height > 0 && el.clientWidth > 0 && el.clientHeight > 0) {
-        term.resize(Math.max(2, Math.floor(el.clientWidth / cell.width)), Math.max(1, Math.floor(el.clientHeight / cell.height)))
+      const cell = term.renderer?.metrics ?? cellMetrics()
+      const box = innerSize(el)
+      if (cell.width > 0 && cell.height > 0 && box.width > 0 && box.height > 0) {
+        term.resize(Math.max(2, Math.floor(box.width / cell.width)), Math.max(1, Math.floor(box.height / cell.height)))
       }
     }
     const now = size()
