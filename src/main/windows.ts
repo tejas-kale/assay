@@ -271,7 +271,7 @@ export async function startPty(ctx: WindowCtx, cols: number, rows: number) {
   const root = (await analysisRoot().catch(() => undefined)) ?? dirname(dirname(ctx.analysis.path))
   ctx.isStarting = false
   if (!ctx.analysis || ctx.session) return
-  const spec = spawnSpec(ctx.analysis.path, process.env, root)
+  const spec = spawnSpec(ctx.analysis.path, process.env, root, nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
   try {
     const session = startSession(spec, cols, rows, {
       onData: data => send(ctx, CHANNELS.ptyData, data),

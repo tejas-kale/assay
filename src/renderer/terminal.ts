@@ -22,12 +22,12 @@
 import * as ghostty from 'ghostty-web'
 
 import { inputOverride, leavesTerminal } from '../core/terminalKeys.ts'
-import { THEMES, cellRecolor, minimumContrast } from '../core/theme.ts'
+import { MONO_FONT, THEMES, cellRecolor, minimumContrast } from '../core/theme.ts'
 import type { CellColors, ThemeMode } from '../core/theme.ts'
 import { currentMode, onModeChange } from './appearance.ts'
 
 const FONT_SIZE = 13
-const FONT_FAMILY = 'Menlo, "SF Mono", Monaco, monospace'
+const FONT_FAMILY = MONO_FONT
 const RESIZE_DEBOUNCE_MS = 100
 
 export type TerminalSize = { cols: number; rows: number }
@@ -107,6 +107,9 @@ function measureCell(host: HTMLElement): { width: number; height: number } {
 
 export async function createTerminal(el: HTMLElement): Promise<TerminalHandle> {
   await (library['init'] as () => Promise<unknown>)()
+  // The canvas measures cells from the font as it is when the terminal is made: load it first, or the
+  // cells are sized for the fallback. A missing font resolves to nothing and the fallback is used.
+  await document.fonts.load(`${FONT_SIZE}px ${FONT_FAMILY}`).catch(() => undefined)
   const Ctor = library['Terminal'] as new (options: unknown) => RawTerminal
   const created = currentMode()
   const term = new Ctor({ fontSize: FONT_SIZE, fontFamily: FONT_FAMILY, theme: THEMES[created].terminal })

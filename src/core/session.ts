@@ -1,7 +1,16 @@
+import type { ThemeMode } from './theme.ts'
+
 export type SpawnSpec = { file: string; args: string[]; cwd: string; env: Record<string, string> }
 
 /** Where the wrapper mounts this repository's plugin in the container (config repo, bin/claude). */
 export const PLUGIN_DIR = '/opt/assay/plugin'
+
+/**
+ * Claude Code's theme for a session. The ANSI themes draw with the terminal's 16 colours, which are
+ * Ayu's here, so Claude matches the app; and a live light/dark switch recolours them like any other
+ * cell. The wrapper passes it to Claude through `--settings`, over the theme saved in its own home.
+ */
+export const claudeTheme = (mode: ThemeMode) => (mode === 'dark' ? 'dark-ansi' : 'light-ansi')
 
 /**
  * How to start the wrapper. A GUI app has a thin PATH, so it runs through the user's login,
@@ -9,7 +18,7 @@ export const PLUGIN_DIR = '/opt/assay/plugin'
  * server finds the analysis in ASSAY_ANALYSIS and the shared folder (Settings) in ASSAY_ROOT. Claude starts in the
  * root, so it can read what is shared; the prompt hook names the open analysis.
  */
-export function spawnSpec(folder: string, env: Record<string, string | undefined>, root: string): SpawnSpec {
+export function spawnSpec(folder: string, env: Record<string, string | undefined>, root: string, mode: ThemeMode): SpawnSpec {
   const clean: Record<string, string> = {}
   for (const [name, value] of Object.entries(env)) {
     if (value !== undefined && name !== 'ELECTRON_RUN_AS_NODE') clean[name] = value
@@ -18,7 +27,7 @@ export function spawnSpec(folder: string, env: Record<string, string | undefined
     file: env.SHELL || '/bin/zsh',
     args: ['-lic', `exec "\${ASSAY_CLAUDE_BIN:-claude}" --plugin-dir ${PLUGIN_DIR}`],
     cwd: root,
-    env: { ...clean, ASSAY_APP: '1', ASSAY_ROOT: root, ASSAY_ANALYSIS: folder, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
+    env: { ...clean, ASSAY_APP: '1', ASSAY_ROOT: root, ASSAY_ANALYSIS: folder, ASSAY_THEME: claudeTheme(mode), TERM: 'xterm-256color', COLORTERM: 'truecolor' },
   }
 }
 

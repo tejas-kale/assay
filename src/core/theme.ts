@@ -4,6 +4,9 @@
 
 export type ThemeMode = 'light' | 'dark'
 
+/** The code font everywhere: the terminal, the code views and file text. Maple Mono, as in Ghostty and Emacs. */
+export const MONO_FONT = '"Maple Mono", Menlo, "SF Mono", Monaco, monospace'
+
 export type TerminalColors = {
   foreground: string
   background: string

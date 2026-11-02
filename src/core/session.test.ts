@@ -5,7 +5,7 @@ import { closeFlow, spawnSpec } from './session.ts'
 import type { CloseState } from './session.ts'
 
 test('spawnSpec runs the wrapper through the login shell from SHELL', () => {
-  const spec = spawnSpec('/notes/analyses/a', { SHELL: '/opt/homebrew/bin/fish', PATH: '/usr/bin' }, '/notes')
+  const spec = spawnSpec('/notes/analyses/a', { SHELL: '/opt/homebrew/bin/fish', PATH: '/usr/bin' }, '/notes', 'dark')
   assert.equal(spec.file, '/opt/homebrew/bin/fish')
   assert.deepEqual(spec.args, ['-lic', 'exec "${ASSAY_CLAUDE_BIN:-claude}" --plugin-dir /opt/assay/plugin'])
   // Claude starts in the root; the open analysis is named in ASSAY_ANALYSIS.
@@ -15,7 +15,7 @@ test('spawnSpec runs the wrapper through the login shell from SHELL', () => {
 })
 
 test('spawnSpec falls back to zsh and sets the terminal and app variables', () => {
-  const spec = spawnSpec('/f', { PATH: '/usr/bin', HOME: '/Users/me' }, '/')
+  const spec = spawnSpec('/f', { PATH: '/usr/bin', HOME: '/Users/me' }, '/', 'dark')
   assert.equal(spec.file, '/bin/zsh')
   assert.equal(spec.env.ASSAY_APP, '1')
   assert.equal(spec.env.TERM, 'xterm-256color')
@@ -23,9 +23,14 @@ test('spawnSpec falls back to zsh and sets the terminal and app variables', () =
   assert.equal(spec.env.HOME, '/Users/me')
 })
 
+test("spawnSpec asks for Claude Code's ANSI theme in the system's mode", () => {
+  assert.equal(spawnSpec('/f', {}, '/', 'dark').env.ASSAY_THEME, 'dark-ansi')
+  assert.equal(spawnSpec('/f', {}, '/', 'light').env.ASSAY_THEME, 'light-ansi')
+})
+
 test('spawnSpec removes ELECTRON_RUN_AS_NODE, overrides TERM, drops undefined values, leaves the input alone', () => {
   const env = { ELECTRON_RUN_AS_NODE: '1', TERM: 'dumb', GONE: undefined, KEEP: 'x' }
-  const spec = spawnSpec('/f', env, '/')
+  const spec = spawnSpec('/f', env, '/', 'dark')
   assert.equal('ELECTRON_RUN_AS_NODE' in spec.env, false)
   assert.equal('GONE' in spec.env, false)
   assert.equal(spec.env.TERM, 'xterm-256color')

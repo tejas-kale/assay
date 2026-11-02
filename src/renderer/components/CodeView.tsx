@@ -28,6 +28,8 @@ import type { Ref } from 'react'
 import { useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import { format } from 'sql-formatter'
 
+import { MONO_FONT } from '../../core/theme.ts'
+
 const highlight = HighlightStyle.define([
   { tag: [tags.keyword, tags.operatorKeyword, tags.modifier], color: 'var(--syn-keyword)' },
   { tag: [tags.string, tags.special(tags.string)], color: 'var(--syn-string)' },
@@ -42,7 +44,7 @@ const highlight = HighlightStyle.define([
 
 const theme = EditorView.theme({
   '&': { height: '100%', color: 'var(--text)', backgroundColor: 'transparent', fontSize: '12px' },
-  '.cm-scroller': { fontFamily: 'Menlo, "SF Mono", Monaco, monospace', lineHeight: '1.5' },
+  '.cm-scroller': { fontFamily: MONO_FONT, lineHeight: '1.5' },
   '.cm-content': { padding: '8px 0', caretColor: 'var(--accent)' },
   '.cm-line': { padding: '0 12px' },
   '&.cm-focused': { outline: 'none' },
