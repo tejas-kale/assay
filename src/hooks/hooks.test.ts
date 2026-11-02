@@ -164,6 +164,20 @@ test('the other-analysis guard compares real paths, ignoring case: symlinks, Ana
   }
 })
 
+test('the dictionaries/trusted guard compares real paths, ignoring case', async () => {
+  const { dir, root, env } = await scratch()
+  await mkdir(join(root, 'trusted'), { recursive: true })
+  await symlink(root, join(dir, 'link'))
+  const write = (path: string, over: Record<string, string> = {}) =>
+    hook('write', { hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: path, content: 'x' }, cwd: root }, { ...env, ...over })
+  for (const [path, over] of [[`${root}/Trusted/x.sql`, {}], [`${root}/DICTIONARIES/a.yaml`, {}], [`${dir}/link/trusted/x.sql`, {}], [`${root}/trusted/x.sql`, { ASSAY_ROOT: `${dir}/link` }]] as const) {
+    const said = await write(path, over)
+    expect([path, said?.permissionDecision]).toEqual([path, 'deny'])
+    expect(said?.permissionDecisionReason).toMatch(/change only through the user's approval/)
+  }
+  expect(await write(`${root}/trusted-old/x.sql`)).toBeUndefined()
+})
+
 test('outside an Assay session a prompt carries no rule', async () => {
   expect(await hook('prompt', { prompt: 'hi' }, { PATH: process.env.PATH })).toBeUndefined()
 })

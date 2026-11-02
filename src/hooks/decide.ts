@@ -52,12 +52,14 @@ export async function writeDecision(input: Record<string, unknown>, env: Env) {
   const base = field(input, 'cwd') || env.ASSAY_ANALYSIS
   if (!path) return undefined
   const root = home.replace(/\/+$/, '')
-  const other = otherAnalysis(realPath(path, base), realPath(root, '/'), realPath(env.ASSAY_ANALYSIS, '/'), '/')
+  const real = realPath(path, base)
+  const realRoot = realPath(root, '/')
+  const other = otherAnalysis(real, realRoot, realPath(env.ASSAY_ANALYSIS, '/'), '/')
   if (other) {
     const open = await openRef(env.ASSAY_ANALYSIS, root)
     return deny(`${other} is not the open analysis. The open analysis is "${open.title}" (${open.folder}/): write only there.`)
   }
-  if (!isGuarded(path, root, base)) return undefined
+  if (!isGuarded(real, realRoot, '/')) return undefined
   return deny(
     `${path} is in the data dictionary or the trusted calculations, which change only through the user's approval. Draft it under lib/dictionaries/ or lib/trusted/ in the analysis, and ask the user to check it in ${TRUST_TAB}.`,
   )

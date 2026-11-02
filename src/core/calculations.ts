@@ -73,10 +73,14 @@ export function normalPath(path: string, base: string): string {
   return `/${parts.join('/')}`
 }
 
-/** Whether `path` is inside the shared folder's dictionaries/ or trusted/: what only the user's approval writes. */
+/**
+ * Whether `path` is inside the shared folder's dictionaries/ or trusted/: what only the user's approval writes.
+ * Compared ignoring case (macOS); callers pass real paths, so a symlink cannot hide the folder.
+ */
 export function isGuarded(path: string, home: string, base: string): boolean {
-  const full = normalPath(path, base)
-  return [DICTIONARIES, TRUSTED].some(folder => full === `${home}/${folder}` || full.startsWith(`${home}/${folder}/`))
+  const full = normalPath(path, base).toLowerCase()
+  const root = home.toLowerCase()
+  return [DICTIONARIES, TRUSTED].some(folder => full === `${root}/${folder}` || full.startsWith(`${root}/${folder}/`))
 }
 
 /**
