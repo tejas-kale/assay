@@ -58,6 +58,8 @@ export function NotesTab(props: {
       },
       confirmDelete: deleteItem,
     })
+  const latest = useRef({ mode, selected })
+  latest.current = { mode, selected }
 
   /** Reads a note's text, then opens its editor. */
   const openEditor = (name: string, trail: string[], from: 'read' | 'list') =>
@@ -106,7 +108,11 @@ export function NotesTab(props: {
             // The text is read now, so a change made while the prompt is open stops the delete.
             const item = selected
             void window.app.noteFiles.read(item.note.name).then(result => {
-              if (result.ok) setMode({ type: 'confirmDelete', item, text: result.text })
+              // Skip when the user left the list or moved while the read ran.
+              const current = latest.current
+              if (result.ok && current.mode.type === 'list' && current.selected && idOf(current.selected) === idOf(item))
+                setMode({ type: 'confirmDelete', item, text: result.text })
+              else if (result.ok) return
               else setMessage(result.message)
             })
           }
@@ -165,9 +171,12 @@ export function NotesTab(props: {
           onLeave={() => (mode.from === 'read' ? (setMode({ type: 'read', name: mode.name, trail: mode.trail })) : cancel())}
           onStale={unsaved => {
             // The reload drops the user's text, so it goes to the clipboard first.
-            void navigator.clipboard.writeText(unsaved).catch(() => undefined)
-            setMessage('Changed on disk, reloaded. Your edit is on the clipboard.')
-            setMode({ type: 'read', name: mode.name, trail: mode.trail })
+            const { name, trail } = mode
+            void navigator.clipboard.writeText(unsaved).then(
+              () => 'Changed on disk, reloaded. Your edit is on the clipboard.',
+              () => 'Changed on disk, reloaded. Your edit could not be copied.',
+            ).then(setMessage)
+            setMode({ type: 'read', name, trail })
           }}
         />
       ) : (
@@ -275,7 +284,7 @@ function NoteReader(props: {
         setError(undefined)
       } else setError(result.message)
     })
-  }, [note.name, note.mtimeMs, note.size])
+  }, [note.name, note.mtimeMs, note.size, error ? status : undefined])
   useEffect(() => root.current?.focus(), [])
 
   const blocks = useMemo(() => noteBlocks(noteBody(text ?? '')), [text])

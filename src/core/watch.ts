@@ -7,7 +7,6 @@ export type WatchPort = {
 
 /** `mtime:size`, or `missing`. */
 export const statSignature = (stat: WatchStat | undefined) => (stat ? `${stat.mtimeMs}:${stat.size}` : 'missing')
-const signature = statSignature
 
 /**
  * Calls `onChange(path)` when a file's mtime, size or existence changes (a rename-over save
@@ -18,7 +17,7 @@ export function pollFiles(port: WatchPort, paths: readonly string[], onChange: (
   let isStopped = false
   let isBusy = false
 
-  const look = (path: string) => port.stat(path).then(signature, () => 'missing')
+  const look = (path: string) => port.stat(path).then(statSignature, () => 'missing')
   const ready = Promise.all(paths.map(async path => seen.set(path, await look(path))))
 
   const stop = port.setInterval(async () => {
