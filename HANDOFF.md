@@ -269,6 +269,12 @@ Decide these while building, and record each here:
 - What do note files show for trust? Suggested: no label on the file, and each cited run's label shown beside its citation.
 - How does Claude create a note file: with `Write` under a rule, or with a new tool that claims the number?
 
+### Decided while building
+
+- **Slice 2b** (`docs/slice-2b.md`): the app writes `.assay/requests/<id>.json`; the mod polls it every 500 ms, runs it
+  through `runQuery` with `-- author: user` and `-- from: NNN` header lines, and answers in `.assay/replies/<id>.json`.
+  A user's run is never `trusted`. Editing starts from the SQL on screen (formatted unless `o`), header lines removed.
+
 ## Not in v1
 
 - Signing with a real identity, notarising, auto-update; platforms other than the Mac. (A local ad-hoc-signed
