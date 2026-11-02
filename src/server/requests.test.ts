@@ -18,14 +18,14 @@ const codeFile = (argv: readonly string[]) => argv[argv.indexOf('--code-file') +
 const userRuns = async (ws: Fake) => JSON.parse((await ws.file('.assay/user-runs.json')) ?? '[]')
 
 async function sqlSession(files: Record<string, string> = {}) {
-  const ws = await fake({ '.analysis': '', 'queries/002_old.sql': 'SELECT 2\n', ...files })
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', 'queries/002_old.sql': 'SELECT 2\n', ...files })
   ws.setRun(answering([['1']], ['n']))
   return ws
 }
 
 /** A session whose kernel is up, with a project .venv. */
 async function pythonSession(files: Record<string, string> = {}) {
-  const ws = await fake({ '.analysis': '', '.venv/bin/python': '', ...files })
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', '.venv/bin/python': '', ...files })
   ws.setRun(argv => (isRun(argv) ? printed() : {}))
   await ws.assay.startKernel()
   await until(async () => (await ws.status())?.kernel?.state === 'idle')

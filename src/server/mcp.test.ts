@@ -19,6 +19,7 @@ const VENV = process.env.ASSAY_TEST_VENV
 
 /** A Databricks CLI that answers every query with one row. */
 const STUB = `#!/bin/sh
+echo "$@" > "$HOME/last-args"
 echo '[{"state":"SUCCEEDED","columns":["n"],"rows":[["1"]]},{"state":"SUCCEEDED","columns":["1"],"rows":[["1"]]}]'
 `
 
@@ -30,13 +31,14 @@ async function session() {
   await mkdir(analysis, { recursive: true })
   await writeFile(join(dir, 'bin/databricks'), STUB)
   await chmod(join(dir, 'bin/databricks'), 0o755)
-  await writeFile(join(analysis, '.analysis'), '')
+  await writeFile(join(analysis, 'analysis.yaml'), 'title: Panel\nprofile: P1\n')
   await writeFile(join(analysis, 'notes.md'), 'old fact [q 001]\n')
   const out = await bundle()
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [join(out, 'server/index.mjs')],
-    cwd: analysis,
+    // Claude starts in the root; the server finds the analysis in ASSAY_ANALYSIS.
+    cwd: root,
     stderr: 'pipe',
     env: {
       PATH: `${join(dir, 'bin')}:${process.env.PATH}`,
@@ -69,6 +71,9 @@ test('the bundled server lists its tools and answers each once', { timeout: 120_
 
   expect(await s.call('sql', { sql: 'SELECT 1 AS n', slug: 'one' })).toBe('Query 001: 1 row. Columns: n\nn\n1')
   expect(await s.file('queries/001_one.csv')).toBe('n\n1\n')
+  // The server started with the cwd at the root, wrote under the analysis, and took the target from analysis.yaml.
+  expect(await readFile(join(s.dir, 'last-args'), 'utf8')).toMatch(/--profile P1 --warehouse 455a178462311474 /)
+  expect(await readFile(join(s.root, 'queries/001_one.csv'), 'utf8').catch(() => undefined)).toBeUndefined()
   if (VENV) {
     expect(await until(async () => (await s.kernel()) === 'idle', 60_000)).toBe(true)
     expect(await s.call('python', { code: 'x = q(1)\nprint(int(x.n[0]) + 41)', slug: 'answer' })).toMatch(/^Run 002: ok \(\d+\.\d s\)\.\n42$/)
@@ -85,7 +90,7 @@ test('the bundled server lists its tools and answers each once', { timeout: 120_
   expect(await s.call('close', { thread: '1', outcome: 'stub' })).toBe('Closed "Why is n 1?". Next open thread: 1. Is it per site?')
   expect(await s.call('note', { text: 'n is 1', query: 1 })).toBe('Noted as queried q 001.')
   expect(await s.call('revise_note', { note: '1', query: 1 })).toBe('Note 1 is now queried q 001.')
-  expect(await s.call('new_note', { title: 'One', slug: 'one', text: 'It is 1 [q 1].' })).toBe('Wrote notes/001-one.md. Link it from other notes with [[one]].')
+  expect(await s.call('new_note', { title: 'One', slug: 'one', text: 'It is 1 [q 1].' })).toBe('Wrote analyses/panel/notes/001-one.md. Link it from other notes with [[one]].')
   await writeFile(join(s.dir, 'wiki.md'), '# Wiki page\n')
   expect(await s.call('link_note', { path: join(s.dir, 'wiki.md') })).toBe(`Listed "Wiki page" in notes.md; the app's Notes tab shows it.`)
   await s.close()

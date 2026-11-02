@@ -6,7 +6,7 @@ import { VENV_ASSAY_HINT } from '../core/rules.ts'
 import { fake, READY, RUNNER, until } from './testing.ts'
 import type { Fake, Run } from './testing.ts'
 
-const VENV = { '.analysis': '', '.venv/bin/python': '' }
+const VENV = { 'analysis.yaml': 'title: Feature\n', '.venv/bin/python': '' }
 const ASSAY = { '/opt/venv-assay/bin/python': '' }
 const HINT = VENV_ASSAY_HINT
 const printed = (out: object = {}) => ({ stdout: `${JSON.stringify({ status: 'ok', stdout: '', tables: [], plots: [], reads: [], ...out })}\n` })
@@ -40,7 +40,7 @@ test('the serve process is stopped when the session ends', async () => {
 })
 
 test('neither a project .venv nor venv-assay: the kernel is missing with the hint, and the python tool says what to do', async () => {
-  const ws = await fake({ '.analysis': '' })
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n' })
   await ws.assay.startKernel()
   expect((await ws.status())?.kernel).toEqual({ state: 'missing', message: HINT })
   expect(await ws.call('python', { code: 'print(1)', slug: 'x' })).toBe(`The Python kernel is not available: ${HINT}`)
@@ -83,7 +83,7 @@ test('a project .venv whose import check fails to run falls back too', async () 
 })
 
 test('no project .venv: venv-assay runs the kernel, and no import check runs', async () => {
-  const ws = await fake({ '.analysis': '', ...ASSAY })
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', ...ASSAY })
   await ws.assay.startKernel()
   expect(ws.serves[0]?.argv.slice(0, 2)).toEqual([`${ws.venv}/bin/python`, RUNNER])
   expect(ws.runs.some(importsIpykernel)).toBe(false)
@@ -132,7 +132,7 @@ test('the python tool saves the .py, runs it in the kernel and replies with the 
   await ws.assay.startKernel()
   const reply = await ws.call('python', { code: '  print("hello")  ', slug: 'Stats!' })
   expect(await ws.file('queries/003_stats.py')).toBe('print("hello")\n')
-  expect(reply).toBe('Run 003: ok (0.0 s).\nhello\nTable 1 (003_stats.t1.csv): 1 row. Columns: a, b\na  b\n1  x\nPlot: queries/003_stats.p1.png (Read it to check the chart.)')
+  expect(reply).toBe('Run 003: ok (0.0 s).\nhello\nTable 1 (analyses/feature/queries/003_stats.t1.csv): 1 row. Columns: a, b\na  b\n1  x\nPlot: analyses/feature/queries/003_stats.p1.png (Read it to check the chart.)')
   const command = ws.runs.find(isRun) ?? []
   expect(command.slice(0, 4)).toEqual([project(ws), RUNNER, 'run', '--connection'])
   expect(command[4]).toMatch(/assay-kernel-.*\.json$/)
@@ -167,7 +167,7 @@ test('a runner that cannot reach the kernel is a failed run, recorded in runs.js
   const ws = await fake(VENV)
   ws.setRun(argv => (isRun(argv) ? { exitCode: 2, stderr: 'no connection file\n' } : {}))
   await ws.assay.startKernel()
-  expect(await ws.call('python', { code: '1', slug: 'x' })).toBe('Run 001 failed (saved queries/001_x.py):\nno connection file')
+  expect(await ws.call('python', { code: '1', slug: 'x' })).toBe('Run 001 failed (saved analyses/feature/queries/001_x.py):\nno connection file')
   expect((await ws.status())?.failed).toEqual({ '1': 'no connection file' })
   await ws.done()
 })

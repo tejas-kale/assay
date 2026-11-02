@@ -11,7 +11,7 @@ import { queryLabel } from '../core/pythonRuns.ts'
 import type { Engine } from '../core/runs.ts'
 import { oneLine } from '../core/text.ts'
 import { closeThread, focusThread, orderThreads, parkThread } from '../core/threads.ts'
-import { Assay, NOTE_FILES, NOTES } from './assay.ts'
+import { Assay, MARKER, NOTE_FILES, NOTES } from './assay.ts'
 
 export type ToolSpec = { name: string; description: string; inputSchema: { type: 'object'; properties: Record<string, object>; required: readonly string[] } }
 
@@ -182,6 +182,7 @@ const integer = (args: Args, key: string) => (typeof args[key] === 'number' && N
 
 /** One tool call: its reply text. */
 export async function callTool(assay: Assay, name: string, args: Args): Promise<string> {
+  if (!assay.hasMarker()) return `${assay.shown('')} has no ${MARKER}. Run "npm run migrate:root" in the Assay repo, then open the analysis again.`
   switch (name) {
     case 'sql': {
       const sql = field(args, 'sql')
@@ -271,14 +272,14 @@ export async function callTool(assay: Assay, name: string, args: Args): Promise<
       return assay.serially(async () => {
         const names = await assay.names(NOTE_FILES)
         const taken = names.find(each => parseNoteFileName(each)?.slug === slug)
-        if (taken) return `A note ${slug} exists: ${NOTE_FILES}/${taken}. Edit it with Edit.`
+        if (taken) return `A note ${slug} exists: ${assay.shown(`${NOTE_FILES}/${taken}`)}. Edit it with Edit.`
         const file = noteFileName(nextNoteNumber(names), slug)
         await assay.write(`${NOTE_FILES}/${file}`, noteFileText(title, body))
         const known = new Set((await assay.listQueries()).map(query => query.number))
         const unknown = noteCitations(body).filter(number => !known.has(number))
         const unresolved = noteLinks(body).filter(target => target !== slug && !resolvesToNote(target, [...names, file]))
         return [
-          `Wrote ${NOTE_FILES}/${file}. Link it from other notes with [[${slug}]].`,
+          `Wrote ${assay.shown(`${NOTE_FILES}/${file}`)}. Link it from other notes with [[${slug}]].`,
           ...(unknown.length > 0 ? [`Unknown runs: ${unknown.map(queryLabel).join(', ')}.`] : []),
           ...(unresolved.length > 0 ? [`Unresolved links: ${unresolved.map(target => `[[${target}]]`).join(', ')}.`] : []),
         ].join('\n')
@@ -287,8 +288,9 @@ export async function callTool(assay: Assay, name: string, args: Args): Promise<
     case 'link_note': {
       const given = field(args, 'path').trim()
       if (!given || given.startsWith('~')) return 'Give the note file as an absolute path.'
-      // A linked note's path is absolute, or relative to the analysis folder.
-      const path = isAbsolute(given) ? given : join(assay.config.analysis, given)
+      // A linked note's path is absolute, or relative to the root (where Claude works) or else to the analysis folder.
+      const underRoot = join(assay.config.root, given)
+      const path = isAbsolute(given) ? given : (await assay.exists(underRoot)) ? underRoot : join(assay.config.analysis, given)
       const text = await readFile(path, 'utf8').catch(() => undefined)
       if (text === undefined) return `Cannot read ${path}. Write the note there first.`
       const title = titleOf(text) ?? baseName(path)

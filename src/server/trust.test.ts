@@ -44,7 +44,7 @@ function scripted(ws: Fake, answers: Answers, git: (readonly string[])[] = [], i
   }
 }
 
-const files = (extra: Record<string, string> = {}) => ({ '.analysis': '', '/opt/venv-assay/bin/python': '', ...extra })
+const files = (extra: Record<string, string> = {}) => ({ 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay/bin/python': '', ...extra })
 
 test('trusted runs a calculation by name: arguments checked, the run recorded with its commit, a note on it is trusted', async () => {
   const ws = await fake(files())
@@ -79,7 +79,7 @@ test('trusted refuses bad arguments, unknown names and a calculation changed sin
 })
 
 test('trusted without venv-assay built says how to build it, even with a project .venv', async () => {
-  const ws = await fake({ '.analysis': '', '.venv/bin/python': '' })
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', '.venv/bin/python': '' })
   expect(await ws.call('trusted', { name: 'completes_by_site' })).toBe(`Cannot list the trusted calculations: ${VENV_ASSAY_HINT}`)
   expect(ws.runs.some(argv => argv[2] === 'analysis_trust')).toBe(false)
   await ws.done()
@@ -383,7 +383,7 @@ test('a helper that cannot run ends the review as an error', async () => {
 })
 
 test('without venv-assay the review ends as an error saying how to build it', async () => {
-  const ws = await fake({ '.analysis': '', ...PROPOSAL })
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', ...PROPOSAL })
   await perform(ws, { kind: 'trust-check', name: 'completes_by_site' })
   expect(await until(async () => (await stateOf(ws)) === 'error')).toBe(true)
   expect(await stored(ws)).toMatchObject({ message: VENV_ASSAY_HINT })

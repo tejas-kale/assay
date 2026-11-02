@@ -17,15 +17,19 @@ test('a session in an analysis sets up the files, leaving what exists', async ()
   await ws.done()
 })
 
-test('a folder without .analysis gets the marker too', async () => {
+test('a folder without analysis.yaml is not set up, and every tool says to run the migration', async () => {
   const ws = await fake({})
   await ws.assay.setUp()
-  expect(await ws.file('.analysis')).toBe('# Marks this folder for the analysis mod.\n')
+  expect(await ws.file('.analysis')).toBeUndefined()
+  expect(await ws.file('analysis.yaml')).toBeUndefined()
+  expect(await ws.file('notes.md')).toBeUndefined()
+  for (const tool of ['sql', 'python', 'park', 'note']) expect(await ws.call(tool, { sql: 'SELECT 1', code: '1', thread: 'Q?', text: 'x' })).toMatch(/analyses\/feature has no analysis\.yaml.*migrate:root/s)
+  expect(ws.runs).toEqual([])
   await ws.done()
 })
 
 test('existing files are left as they are', async () => {
-  const ws = await fake({ '.analysis': '', 'notes.md': 'kept\n', 'threads.md': '## Open\n1. Q?\n', 'notebook.md': 'mine\n', 'lib/__init__.py': 'x = 1\n' })
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', 'notes.md': 'kept\n', 'threads.md': '## Open\n1. Q?\n', 'notebook.md': 'mine\n', 'lib/__init__.py': 'x = 1\n' })
   await ws.assay.setUp()
   await ws.assay.relabel()
   expect(await ws.file('notes.md')).toBe('kept [unverified]\n')
@@ -36,7 +40,7 @@ test('existing files are left as they are', async () => {
 })
 
 test('sql numbers after the highest query, saves both files and runs the CLI', async () => {
-  const ws = await fake({ '.analysis': '', 'queries/004_old.sql': 'SELECT 4\n' })
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', 'queries/004_old.sql': 'SELECT 4\n' })
   ws.setRun(answering([['1', 'a,b']], ['id', 'name']))
   const reply = await ws.call('sql', { sql: 'SELECT id, name FROM t', slug: 'Ids and Names' })
   expect(await ws.file('queries/005_ids-and-names.sql')).toBe('SELECT id, name FROM t\n')
@@ -50,8 +54,8 @@ test('sql numbers after the highest query, saves both files and runs the CLI', a
   await ws.done()
 })
 
-test('sql uses the profile and warehouse .analysis names', async () => {
-  const ws = await fake({ '.analysis': 'profile: DEFAULT\nwarehouse: abc123\n' })
+test('sql uses the profile and warehouse analysis.yaml names', async () => {
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\nprofile: DEFAULT\nwarehouse: abc123\n' })
   await ws.call('sql', { sql: 'SELECT 1', slug: 'one' })
   expect(ws.runs.at(-1)?.slice(5, 9)).toEqual(['--profile', 'DEFAULT', '--warehouse', 'abc123'])
   await ws.done()
@@ -68,8 +72,15 @@ test('sql with engine postgres runs rds-psql, marks the .sql and reads its CSV',
   await ws.done()
 })
 
-test('sql with engine postgres uses the pg_database .analysis names', async () => {
-  const ws = await fake({ '.analysis': 'pg_database: panel\n' })
+test('sql reads the target from analysis.yaml: quotes, comments and other keys do not matter', async () => {
+  const ws = await fake({ 'analysis.yaml': '# mine\ntitle: "Churn: Q3"\ncreated: 2026-11-02\nprofile: Cint mkt   # default\nwarehouse: \'w9\'\n' })
+  await ws.call('sql', { sql: 'SELECT 1', slug: 'one' })
+  expect(ws.runs.at(-1)?.slice(5, 9)).toEqual(['--profile', 'Cint mkt', '--warehouse', 'w9'])
+  await ws.done()
+})
+
+test('sql with engine postgres uses the pg_database analysis.yaml names', async () => {
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\npg_database: panel\n' })
   ws.setRun(() => ({ stdout: 'x\n' }))
   expect(await ws.call('sql', { sql: 'SELECT 1 AS x WHERE false', slug: 'none', engine: 'postgres' })).toBe('Query 001: 0 rows. Columns: x')
   expect(ws.runs.at(-1)?.slice(5)).toEqual(['-d', 'panel', '-f', 'queries/001_none.sql'])
@@ -80,7 +91,7 @@ test("a failed postgres query returns psql's error without its file prefix", asy
   const ws = await fake()
   ws.setRun(() => ({ exitCode: 3, stderr: 'psql:queries/001_bad.sql:2: ERROR:  relation "t" does not exist\nLINE 1: SELECT 1 FROM t\n' }))
   const reply = await ws.call('sql', { sql: 'SELECT 1 FROM t', slug: 'bad', engine: 'postgres' })
-  expect(reply).toBe('Query 001 failed (saved queries/001_bad.sql):\nERROR:  relation "t" does not exist\nLINE 1: SELECT 1 FROM t')
+  expect(reply).toBe('Query 001 failed (saved analyses/feature/queries/001_bad.sql):\nERROR:  relation "t" does not exist\nLINE 1: SELECT 1 FROM t')
   expect(await ws.file('queries/001_bad.csv')).toBeUndefined()
   await ws.done()
 })
@@ -93,7 +104,7 @@ test('sql returns at most 50 rows and says how many there are', async () => {
   expect(lines).toHaveLength(1 + 1 + 50 + 1)
   expect(lines[2]).toBe('1')
   expect(lines[51]).toBe('50')
-  expect(lines.at(-1)).toBe('Truncated: showing 50 of 60 rows. The app and queries/001_sixty.csv have all of them.')
+  expect(lines.at(-1)).toBe('Truncated: showing 50 of 60 rows. The app and analyses/feature/queries/001_sixty.csv have all of them.')
   expect((await ws.file('queries/001_sixty.csv'))?.split('\n')).toHaveLength(62)
   await ws.done()
 })
@@ -101,14 +112,14 @@ test('sql returns at most 50 rows and says how many there are', async () => {
 test('a result over 4 MiB is refused, not saved', async () => {
   const ws = await fake()
   ws.setRun(() => ({ stdout: '[', isStdoutTruncated: true }))
-  expect(await ws.call('sql', { sql: 'SELECT *', slug: 'big' })).toBe('Query 001 failed (saved queries/001_big.sql):\nThe result is over 4 MiB. Aggregate it or add a LIMIT.')
+  expect(await ws.call('sql', { sql: 'SELECT *', slug: 'big' })).toBe('Query 001 failed (saved analyses/feature/queries/001_big.sql):\nThe result is over 4 MiB. Aggregate it or add a LIMIT.')
   await ws.done()
 })
 
 test('a failed query keeps its .sql, writes no .csv and returns the error; runs.json records it', async () => {
   const ws = await fake()
   ws.setRun(() => ({ exitCode: 1, stdout: JSON.stringify([{ state: 'FAILED', error: { message: '\n[PARSE_SYNTAX_ERROR] near SELEC\n' } }]) }))
-  expect(await ws.call('sql', { sql: 'SELEC 1', slug: 'bad' })).toBe('Query 001 failed (saved queries/001_bad.sql):\n[PARSE_SYNTAX_ERROR] near SELEC')
+  expect(await ws.call('sql', { sql: 'SELEC 1', slug: 'bad' })).toBe('Query 001 failed (saved analyses/feature/queries/001_bad.sql):\n[PARSE_SYNTAX_ERROR] near SELEC')
   expect(await ws.file('queries/001_bad.sql')).toBe('SELEC 1\n')
   expect(await ws.file('queries/001_bad.csv')).toBeUndefined()
   expect(await ws.status()).toEqual({ running: null, failed: { '1': '[PARSE_SYNTAX_ERROR] near SELEC' } })
@@ -153,7 +164,7 @@ test('park and close round-trip through threads.md', async () => {
 })
 
 test('focus moves an open thread to the top', async () => {
-  const ws = await fake({ '.analysis': '', 'threads.md': '## Open\n1. A?\n2. B?\n3. C?\n\n## Closed\n' })
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', 'threads.md': '## Open\n1. A?\n2. B?\n3. C?\n\n## Closed\n' })
   expect(await ws.call('focus', { thread: '3' })).toBe('Focused: 1. C?')
   expect(await ws.file('threads.md')).toBe('## Open\n1. C?\n2. A?\n3. B?\n\n## Closed\n')
   expect(await ws.call('focus', { thread: 'nope' })).toBe('No open thread matches "nope".')
@@ -161,7 +172,7 @@ test('focus moves an open thread to the top', async () => {
 })
 
 test('order rearranges the open threads and returns the new list', async () => {
-  const ws = await fake({ '.analysis': '', 'threads.md': '## Open\n1. A?\n2. B?\n3. C?\n\n## Closed\n- Z? → no\n' })
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', 'threads.md': '## Open\n1. A?\n2. B?\n3. C?\n\n## Closed\n- Z? → no\n' })
   expect(await ws.call('order', { threads: ['3', 'A?'] })).toBe('Open threads now:\n1. C?\n2. A?\n3. B?')
   expect(await ws.file('threads.md')).toBe('## Open\n1. C?\n2. A?\n3. B?\n\n## Closed\n- Z? → no\n')
   expect(await ws.call('order', { threads: [] })).toBe('Give the threads to move to the top, in order.')
@@ -180,7 +191,7 @@ test('note appends one line, with the query that verified it', async () => {
 
 test('note labels a Python run computed when its .json says ok, unverified otherwise', async () => {
   const ws = await fake({
-    '.analysis': '',
+    'analysis.yaml': 'title: Feature\n',
     'queries/001_a.py': 'print(1)\n',
     'queries/001_a.json': '{"status":"ok"}',
     'queries/002_b.py': 'raise KeyError\n',
@@ -197,7 +208,7 @@ test('note labels a Python run computed when its .json says ok, unverified other
 })
 
 test('note labels from the query: queried with its .csv, unverified without; a label Claude writes is dropped', async () => {
-  const ws = await fake({ '.analysis': '', 'queries/001_a.sql': 'SELECT 1\n', 'queries/001_a.csv': 'x\n1\n', 'queries/002_b.sql': 'SELECT nope\n' })
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', 'queries/001_a.sql': 'SELECT 1\n', 'queries/001_a.csv': 'x\n1\n', 'queries/002_b.sql': 'SELECT nope\n' })
   const note = (text: string, query?: number) => ws.call('note', { text, ...(query ? { query } : {}) })
   expect(await note('one row', 1)).toBe('Noted as queried q 001.')
   expect(await note('failed', 2)).toBe('Noted as unverified q 002. Query 002 has no result (.csv).')
@@ -208,14 +219,14 @@ test('note labels from the query: queried with its .csv, unverified without; a l
 })
 
 test('a note citing a trusted run with its result is trusted', async () => {
-  const ws = await fake({ '.analysis': '', 'queries/001_t.sql': '-- trusted: f\n-- args: {}\n-- commit: abc\nSELECT 1\n', 'queries/001_t.csv': 'x\n1\n' })
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', 'queries/001_t.sql': '-- trusted: f\n-- args: {}\n-- commit: abc\nSELECT 1\n', 'queries/001_t.csv': 'x\n1\n' })
   expect(await ws.call('note', { text: 'f is 1', query: 1 })).toBe('Noted as trusted q 001.')
   await ws.done()
 })
 
 test('notes from before labels are labelled on activation; labelled ones and note files are kept', async () => {
   const ws = await fake({
-    '.analysis': '',
+    'analysis.yaml': 'title: Feature\n',
     'notes.md': 'has result [q 001]\nfailed [q 002]\nno query\nkept [unverified]\n[A note](</n/a.md>)\ntrusted run [q 003]\n',
     'queries/001_a.sql': 'SELECT 1\n',
     'queries/001_a.csv': 'x\n1\n',
@@ -231,7 +242,7 @@ test('notes from before labels are labelled on activation; labelled ones and not
 })
 
 test('an old note citing an ok Python run is relabelled computed, not unverified', async () => {
-  const ws = await fake({ '.analysis': '', 'notes.md': 'rate is 4 [q 1]\nrate is 5 [q 2]\n', 'queries/001_x.py': 'print(4)\n', 'queries/001_x.json': JSON.stringify({ status: 'ok' }), 'queries/002_y.py': '1/0\n', 'queries/002_y.json': JSON.stringify({ status: 'error' }) })
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', 'notes.md': 'rate is 4 [q 1]\nrate is 5 [q 2]\n', 'queries/001_x.py': 'print(4)\n', 'queries/001_x.json': JSON.stringify({ status: 'ok' }), 'queries/002_y.py': '1/0\n', 'queries/002_y.json': JSON.stringify({ status: 'error' }) })
   await ws.assay.relabel()
   expect(await ws.file('notes.md')).toBe('rate is 4 [computed q 001]\nrate is 5 [unverified q 002]\n')
   await ws.done()
@@ -239,7 +250,7 @@ test('an old note citing an ok Python run is relabelled computed, not unverified
 
 test('revise_note cites a new query, or deletes, by line number or text', async () => {
   const ws = await fake({
-    '.analysis': '',
+    'analysis.yaml': 'title: Feature\n',
     'notes.md': 'alpha is 0 [unverified]\n[A note](</n/a.md>)\nbeta per panel [unverified]\n',
     'queries/003_c.sql': 'SELECT 3\n',
     'queries/003_c.csv': 'x\n3\n',
@@ -255,7 +266,7 @@ test('revise_note cites a new query, or deletes, by line number or text', async 
 })
 
 test('link_note lists the file Claude wrote, by the title at its top, once', async () => {
-  const ws = await fake({ '.analysis': '', 'notes.md': 'beta is per panel [unverified q 001]\n', '/repos/llm-wiki/panels/alpha.md': '# Alpha is 0 for test panels\n\nBody.\n' })
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', 'notes.md': 'beta is per panel [unverified q 001]\n', '/repos/llm-wiki/panels/alpha.md': '# Alpha is 0 for test panels\n\nBody.\n' })
   const path = `${ws.dir}/repos/llm-wiki/panels/alpha.md`
   expect(await ws.call('link_note', { path })).toBe(`Listed "Alpha is 0 for test panels" in notes.md; the app's Notes tab shows it.`)
   expect(await ws.file('notes.md')).toBe(`beta is per panel [unverified q 001]\n[Alpha is 0 for test panels](<${path}>)\n`)
@@ -267,17 +278,17 @@ test('link_note lists the file Claude wrote, by the title at its top, once', asy
 })
 
 test('new_note numbers the note, writes its title and text, and says what does not resolve', async () => {
-  const ws = await fake({ '.analysis': '', 'queries/002_x.sql': 'SELECT 1' })
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', 'queries/002_x.sql': 'SELECT 1' })
   await ws.assay.setUp()
   const make = (title: string, slug: string, body: string) => ws.call('new_note', { title, slug, text: body })
-  expect(await make('First look', 'first-look', 'The panel has 5 sites [q 2].\n')).toBe('Wrote notes/001-first-look.md. Link it from other notes with [[first-look]].')
+  expect(await make('First look', 'first-look', 'The panel has 5 sites [q 2].\n')).toBe('Wrote analyses/feature/notes/001-first-look.md. Link it from other notes with [[first-look]].')
   expect(await ws.file('notes/001-first-look.md')).toBe('# First look\n\nThe panel has 5 sites [q 2].\n')
   await ws.put('notes/007-old.md', '# Old\n')
   expect(await make('Second', 'second', '  See [[first-look]], [[007-old]], [[nope]], [[second]] and [[later]]. Runs [q 2], [q 99], [q 120].  ')).toBe(
-    ['Wrote notes/008-second.md. Link it from other notes with [[second]].', 'Unknown runs: 099, 120.', 'Unresolved links: [[nope]], [[later]].'].join('\n'),
+    ['Wrote analyses/feature/notes/008-second.md. Link it from other notes with [[second]].', 'Unknown runs: 099, 120.', 'Unresolved links: [[nope]], [[later]].'].join('\n'),
   )
   expect(await ws.file('notes/008-second.md')).toBe('# Second\n\nSee [[first-look]], [[007-old]], [[nope]], [[second]] and [[later]]. Runs [q 2], [q 99], [q 120].\n')
-  expect(await make('Again', 'first-look', 'x')).toBe('A note first-look exists: notes/001-first-look.md. Edit it with Edit.')
+  expect(await make('Again', 'first-look', 'x')).toBe('A note first-look exists: analyses/feature/notes/001-first-look.md. Edit it with Edit.')
   expect(await ws.file('notes/009-first-look.md')).toBeUndefined()
   expect(await make('Bad', 'Not A Slug', 'x')).toBe('The slug is lower case letters, digits and -, starting with a letter or digit.')
   expect(await make('  ', 'ok', 'x')).toBe('Give the note a title.')

@@ -130,7 +130,7 @@ const TRACEBACK_LINES = 30
  * stdout, the error's traceback (last 30 lines), each table (at most 50 rows)
  * and each plot's file.
  */
-export function formatPythonRun(number: number, run: PythonRun, ms: number, maxCell = 80): string {
+export function formatPythonRun(number: number, run: PythonRun, ms: number, queriesDir = 'queries', maxCell = 80): string {
   const lines = [`Run ${queryLabel(number)}: ${run.status} (${((run.durationMs ?? ms) / 1000).toFixed(1)} s).`]
   if (run.stdout.trim()) lines.push(run.stdout.trimEnd())
   if (run.error) {
@@ -140,11 +140,12 @@ export function formatPythonRun(number: number, run: PythonRun, ms: number, maxC
   run.tables.forEach((table, i) => {
     const shown = table.rows.slice(0, 50)
     const rows = `${table.rowCount} ${table.rowCount === 1 ? 'row' : 'rows'}`
-    lines.push(`Table ${i + 1} (${table.file}): ${rows}. Columns: ${table.columns.join(', ')}`)
+    const file = `${queriesDir}/${table.file}`
+    lines.push(`Table ${i + 1} (${file}): ${rows}. Columns: ${table.columns.join(', ')}`)
     if (shown.length > 0) lines.push(formatTable(table.columns, shown, maxCell))
-    if (table.rowCount > shown.length) lines.push(`Truncated: showing ${shown.length} of ${table.rowCount} rows. ${table.file} has ${table.truncated ? 'the first 100000 of them' : 'all of them'}.`)
+    if (table.rowCount > shown.length) lines.push(`Truncated: showing ${shown.length} of ${table.rowCount} rows. ${file} has ${table.truncated ? 'the first 100000 of them' : 'all of them'}.`)
   })
-  for (const plot of run.plots) lines.push(`Plot: queries/${plot} (Read it to check the chart.)`)
+  for (const plot of run.plots) lines.push(`Plot: ${queriesDir}/${plot} (Read it to check the chart.)`)
   return lines.join('\n')
 }
 

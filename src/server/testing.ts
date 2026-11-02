@@ -64,9 +64,9 @@ export type Fake = {
   done: () => Promise<void>
 }
 
-export async function fake(files: Record<string, string> = { '.analysis': '' }): Promise<Fake> {
+export async function fake(files: Record<string, string> = { 'analysis.yaml': 'title: Feature\n' }): Promise<Fake> {
   const dir = await mkdtemp(join(tmpdir(), 'assay-test-'))
-  const analysis = join(dir, 'work/feature')
+  const analysis = join(dir, 'work/analyses/feature')
   const root = join(dir, 'work')
   const venv = join(dir, 'opt/venv-assay')
   await mkdir(analysis, { recursive: true })

@@ -1,8 +1,9 @@
 // The server's state for one session in one analysis: its files, its runs and its kernel. Ported from the analysis
 // mod's hooks/register.tsx, without the pane: the app draws everything, so what the mod kept for the pane is gone and
 // what it wrote only inside the app (`.assay/runs.json`) is always written.
+import { existsSync } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 
 import { dictionaryText, newSeen, parseTrustedHeader, TRUSTED } from '../core/calculations.ts'
 import type { CalculationList, DictionaryAnswer, Seen } from '../core/calculations.ts'
@@ -22,8 +23,7 @@ import { formatThreads, parseThreads } from '../core/threads.ts'
 import type { Threads } from '../core/threads.ts'
 import type { Child, Proc } from './proc.ts'
 
-export const MARKER = '.analysis'
-const MARKER_TEXT = '# Marks this folder for the analysis mod.\n'
+export const MARKER = 'analysis.yaml'
 export const NOTES = 'notes.md'
 export const THREADS = 'threads.md'
 export const QUERIES = 'queries'
@@ -124,6 +124,16 @@ export class Assay {
     return join(this.config.analysis, path)
   }
 
+  /** A file in the analysis as a reply names it: relative to the root, where Claude's working directory is. */
+  shown(path: string) {
+    return relative(this.config.root, this.at(path))
+  }
+
+  /** Whether the folder is an analysis (it holds analysis.yaml). Synchronous, so concurrent calls keep their order. */
+  hasMarker() {
+    return existsSync(this.at(MARKER))
+  }
+
   get python() {
     return `${this.config.venv}/bin/python`
   }
@@ -160,13 +170,14 @@ export class Assay {
   // -------------------------------------------------------------------------
   // Activation: what the mod did when the session started in an analysis.
 
-  /** Creates whatever is missing (never overwriting): the marker, notes.md, threads.md, queries/, notes/, lib/__init__.py, tests/. */
+  /** Creates whatever is missing (never overwriting): notes.md, threads.md, queries/, notes/, lib/__init__.py, tests/. */
   async setUp() {
+    // A folder without analysis.yaml is not an analysis (the migration makes it one): nothing is created in it.
+    if (!this.hasMarker()) return
     for (const dir of [QUERIES, LIB, TESTS, NOTE_FILES]) await mkdir(this.at(dir), { recursive: true })
     const give = async (name: string, text: string) => {
       if (!(await this.exists(this.at(name)))) await this.write(name, text)
     }
-    await give(MARKER, MARKER_TEXT)
     await give(NOTES, '')
     await give(THREADS, formatThreads({ open: [], closed: [] }))
     await give(`${LIB}/__init__.py`, '')
@@ -309,13 +320,13 @@ export class Assay {
     const dictionary = runner.hasTables ? await this.dictionaryFor(`${base}.sql`).catch(() => undefined) : undefined
     const withDictionary = (text: string) => (dictionary ? `${text}\n\n${dictionary}` : text)
     const named = `${runner.noun ?? 'Query'} ${label}${runner.named ?? ''}`
-    if ('error' in outcome) return withDictionary(`${named} failed (saved ${base}.${ext}):\n${outcome.error}`)
+    if ('error' in outcome) return withDictionary(`${named} failed (saved ${this.shown(`${base}.${ext}`)}):\n${outcome.error}`)
 
     const total = outcome.rows.length
     const shown = outcome.rows.slice(0, REPLY_ROWS)
     const lines = [`${named}: ${total} ${total === 1 ? 'row' : 'rows'}. Columns: ${outcome.columns.join(', ')}`]
     if (total > 0) lines.push(formatTable(outcome.columns, shown, REPLY_CELL))
-    if (total > shown.length) lines.push(`Truncated: showing ${shown.length} of ${total} rows. The app and ${base}.csv have all of them.`)
+    if (total > shown.length) lines.push(`Truncated: showing ${shown.length} of ${total} rows. The app and ${this.shown(`${base}.csv`)} have all of them.`)
     return withDictionary(lines.join('\n'))
   }
 
@@ -609,7 +620,7 @@ export class Assay {
           if (ran.exitCode === 3) await this.setKernel(current, { state: 'dead', message: ('status' in parsed ? parsed.error?.message : parsed.error) || said })
           if (!('status' in parsed)) return parsed
           status = parsed.status
-          return { reply: `${prepared.note ? `${prepared.note}\n` : ''}${formatPythonRun(claimed, parsed, Date.now() - startedAt)}` }
+          return { reply: `${prepared.note ? `${prepared.note}\n` : ''}${formatPythonRun(claimed, parsed, Date.now() - startedAt, this.shown(QUERIES))}` }
         } finally {
           current.runs--
           if (current.runs === 0 && current.state === 'busy') await this.setKernel(current, { state: 'idle' })
