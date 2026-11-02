@@ -4,10 +4,14 @@ import type { KeyboardEvent } from 'react'
 import { backlinks, noteBlocks, noteBody, noteTargets, resolveLink, targetIndices } from '../../core/noteFiles.ts'
 import type { NoteTarget, Segment } from '../../core/noteFiles.ts'
 import { runLabel } from '../../core/runs.ts'
+import { NOTES_DIR, factPreview } from '../../core/search.ts'
+import type { PreviewSource } from '../../core/search.ts'
 import type { EditResult, Fact, NoteFile, Run, RunStatus } from '../../shared/ipc.ts'
 import { CodeEditor } from './CodeView.tsx'
 import type { EditorHandle } from './CodeView.tsx'
-import { InlineInput, SearchLine, isPaneKey, useListPane } from './common.tsx'
+import { InlineInput, SearchLine, isPaneKey, useListPane, useReveal } from './common.tsx'
+import type { Reveal } from './common.tsx'
+import { Preview } from './Preview.tsx'
 
 type Item = { kind: 'fact'; fact: Fact } | { kind: 'note'; note: NoteFile }
 
@@ -35,8 +39,11 @@ export function NotesTab(props: {
   status: RunStatus
   /** Makes run `number` the data pane's current (held) run and focuses the pane. */
   onShowRun: (number: number) => void
+  /** A universal-search hit to select: a fact, or a note file to open in the reader. */
+  reveal?: Reveal | undefined
+  onRevealed: () => void
 }) {
-  const { facts, noteFiles } = props
+  const { facts, noteFiles, reveal } = props
   const items = useMemo<Item[]>(
     () => [...facts.map((fact): Item => ({ kind: 'fact', fact })), ...noteFiles.map((note): Item => ({ kind: 'note', note }))],
     [facts, noteFiles],
@@ -60,6 +67,21 @@ export function NotesTab(props: {
     })
   const latest = useRef({ mode, selected })
   latest.current = { mode, selected }
+  const [preview, setPreview] = useState(false)
+  const previewRef = useRef<HTMLDivElement>(null)
+
+  useReveal(
+    reveal,
+    items,
+    (item, target) =>
+      (target.kind === 'fact' && item.kind === 'fact' && item.fact.index === target.index) ||
+      (target.kind === 'note' && item.kind === 'note' && item.note.name === target.name),
+    (index, item) => {
+      setNav({ selected: index, search: undefined })
+      setMode(item.kind === 'note' ? { type: 'read', name: item.note.name, trail: [] } : { type: 'list' })
+    },
+    props.onRevealed,
+  )
 
   /** Reads a note's text, then opens its editor. */
   const openEditor = (name: string, trail: string[], from: 'read' | 'list') =>
@@ -83,6 +105,7 @@ export function NotesTab(props: {
     if (mode.type !== 'list') return
 
     setMessage(undefined)
+    if (previewKey(e)) return
     if (!nav.search?.active) {
       switch (e.key) {
         case 'a':
@@ -132,6 +155,22 @@ export function NotesTab(props: {
     }
   }
 
+  /** Tab toggles the preview; while it shows, J / K scroll it and Esc (with no search kept) hides it. */
+  function previewKey(e: KeyboardEvent): boolean {
+    if (e.key === 'Tab' && !e.shiftKey) setPreview(p => !p)
+    else if (preview && !nav.search?.active && (e.key === 'J' || e.key === 'K')) previewRef.current?.scrollBy(0, (e.key === 'J' ? 1 : -1) * 120)
+    else if (preview && !nav.search && e.key === 'Escape') setPreview(false)
+    else return false
+    e.preventDefault()
+    return true
+  }
+
+  const previewSource: PreviewSource | undefined = !selected
+    ? undefined
+    : selected.kind === 'note'
+      ? { type: 'path', path: `${NOTES_DIR}/${selected.note.name}` }
+      : factPreview(selected.fact, props.runs)
+
   const readNote = mode.type === 'read' ? noteFiles.find(n => n.name === mode.name) : undefined
   const editNote = mode.type === 'editNote' ? noteFiles.find(n => n.name === mode.name) : undefined
   // The reader and the editor carry the focus target themselves, so Cmd+2 reaches them rather than the list.
@@ -180,7 +219,8 @@ export function NotesTab(props: {
           }}
         />
       ) : (
-        <>
+        <div className={preview ? 'split' : 'split-off'}>
+        <div className="split-list">
           <SearchLine search={nav.search} />
           {items.length === 0 && mode.type !== 'add' && <div className="empty">No facts yet. Press a to add one, n for a note.</div>}
           <ul role="listbox" aria-label="Facts and note files">
@@ -250,7 +290,9 @@ export function NotesTab(props: {
             </div>
           )}
           {message && <div className="status warn">{message}</div>}
-        </>
+        </div>
+        {preview && <Preview source={previewSource} bodyRef={previewRef} refreshKey={noteFiles} />}
+        </div>
       )}
       {ownsFocus && message && <div className="status warn">{message}</div>}
     </div>

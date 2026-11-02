@@ -10,7 +10,7 @@ import { shell } from 'electron'
 import { ghosttyArgs, ghosttyTabArgs, kindByBytes, kindByName, walkFiles } from '../core/files.ts'
 import type { FileEntry, FileKind } from '../core/files.ts'
 import { resolveInside } from '../core/safePath.ts'
-import type { OpenFileResult } from '../shared/ipc.ts'
+import type { OpenFileResult, PreviewResult } from '../shared/ipc.ts'
 
 const run = promisify(execFile)
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024
@@ -58,19 +58,32 @@ const findNvim = () =>
     .then(({ stdout }) => stdout.trim().split('\n').pop() || 'nvim')
     .catch(() => 'nvim'))
 
-export async function openFile(folder: string, target: string): Promise<OpenFileResult> {
+/** The real path of a file inside `folder`, symlinks resolved, or why it cannot be used. Throws when it cannot be read. */
+async function realFileInside(folder: string, target: string): Promise<{ real: string; size: number } | { message: string }> {
   const lexical = resolveInside(folder, target)
-  if (!lexical) return { ok: false, message: 'Outside the analysis folder' }
+  if (!lexical) return { message: 'Outside the analysis folder' }
+  const [realFolder, real] = await Promise.all([realpath(folder), realpath(lexical)])
+  if (!resolveInside(realFolder, real)) return { message: 'Outside the analysis folder' }
+  const info = await stat(real)
+  if (!info.isFile()) return { message: 'Not a file' }
+  return { real, size: info.size }
+}
+
+const imageDataUrl = async (real: string) =>
+  `data:${MIME[extname(real).toLowerCase()] ?? 'application/octet-stream'};base64,${(await readFile(real)).toString('base64')}`
+
+const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err))
+const isMissing = (err: unknown) => err instanceof Error && 'code' in err && err.code === 'ENOENT'
+
+export async function openFile(folder: string, target: string): Promise<OpenFileResult> {
   try {
-    const [realFolder, real] = await Promise.all([realpath(folder), realpath(lexical)])
-    if (!resolveInside(realFolder, real)) return { ok: false, message: 'Outside the analysis folder' }
-    const info = await stat(real)
-    if (!info.isFile()) return { ok: false, message: 'Not a file' }
+    const found = await realFileInside(folder, target)
+    if ('message' in found) return { ok: false, message: found.message }
+    const { real, size } = found
     const kind = kindByName(target) ?? (await sniff(real))
     if (kind === 'image') {
-      if (info.size > MAX_IMAGE_BYTES) return { ok: false, message: 'Image is too large to preview' }
-      const mime = MIME[extname(real).toLowerCase()] ?? 'application/octet-stream'
-      return { ok: true, how: 'image', dataUrl: `data:${mime};base64,${(await readFile(real)).toString('base64')}` }
+      if (size > MAX_IMAGE_BYTES) return { ok: false, message: 'Image is too large to preview' }
+      return { ok: true, how: 'image', dataUrl: await imageDataUrl(real) }
     }
     if (kind === 'text') {
       const nvim = await findNvim()
@@ -83,6 +96,33 @@ export async function openFile(folder: string, target: string): Promise<OpenFile
     const failed = await shell.openPath(real)
     return failed ? { ok: false, message: failed } : { ok: true, how: 'default' }
   } catch (err) {
-    return { ok: false, message: err instanceof Error ? err.message : String(err) }
+    return { ok: false, message: messageOf(err) }
+  }
+}
+
+const MAX_PREVIEW_BYTES = 256 * 1024
+
+/** A file's content for a preview: the first MAX_PREVIEW_BYTES of text, an image, or just the size of anything else. */
+export async function previewFile(folder: string, target: string): Promise<PreviewResult> {
+  try {
+    const found = await realFileInside(folder, target)
+    if ('message' in found) return { ok: false, message: found.message }
+    const { real, size } = found
+    const kind = kindByName(target) ?? (await sniff(real))
+    if (kind === 'image') {
+      if (size > MAX_IMAGE_BYTES) return { ok: false, message: 'Image is too large to preview' }
+      return { ok: true, kind: 'image', dataUrl: await imageDataUrl(real) }
+    }
+    if (kind === 'other') return { ok: true, kind: 'binary', size }
+    const file = await open(real, 'r')
+    try {
+      const buffer = Buffer.alloc(Math.min(size, MAX_PREVIEW_BYTES))
+      const { bytesRead } = await file.read(buffer, 0, buffer.length, 0)
+      return { ok: true, kind: 'text', text: buffer.subarray(0, bytesRead).toString('utf8'), truncated: size > MAX_PREVIEW_BYTES }
+    } finally {
+      await file.close()
+    }
+  } catch (err) {
+    return { ok: false, message: isMissing(err) ? 'File not found' : `Could not read: ${messageOf(err)}` }
   }
 }

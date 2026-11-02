@@ -13,8 +13,8 @@ import type { ClosedThread } from '../core/threads.ts'
 import { CHANNELS } from '../shared/ipc.ts'
 import type { EditResult, NoteFileCreateResult, NoteFileResult, OpenResult, PlotResult, RequestResult, SetRootResult, SettingsView } from '../shared/ipc.ts'
 import { analysisRoot, chooseRootPath, saveRoot } from './settings.ts'
-import { listFiles, openFile } from './browse.ts'
-import { NOTES, THREADS, createNoteFile, deleteNoteFile, editFile, fsPort, loadState, readNoteFile, readNoteFileByName, saveNoteFile, readPlot, readRun, readRuns, writeRequest } from './files.ts'
+import { listFiles, openFile, previewFile } from './browse.ts'
+import { NOTES, THREADS, createNoteFile, deleteNoteFile, editFile, fsPort, loadState, readNoteFile, readNoteFileByName, saveNoteFile, readPlot, readRun, readRuns, readSearchContents, writeRequest } from './files.ts'
 import { attachAnalysis, broadcast, contextFor, createWindow, pushState, requestClose, startPty } from './windows.ts'
 import type { WindowCtx } from './windows.ts'
 
@@ -166,6 +166,11 @@ export function registerIpc() {
     if (!ctx.analysis || typeof path !== 'string' || path.length > 4096) return { ok: false, message: 'Invalid path' }
     return openFile(ctx.analysis.path, path)
   })
+  handle(CHANNELS.filesPreview, (ctx, path) => {
+    if (!ctx.analysis || typeof path !== 'string' || path.length > 4096) return { ok: false, message: 'Invalid path' }
+    return previewFile(ctx.analysis.path, path)
+  })
+  handle(CHANNELS.searchContents, ctx => (ctx.analysis ? readSearchContents(ctx.analysis.path) : { notes: [], runs: [] }))
   handle(CHANNELS.runRead, (ctx, number, options) => {
     if (!ctx.analysis || !isIndex(number)) return undefined
     const table = typeof options === 'object' && options !== null ? Reflect.get(options, 'table') : undefined

@@ -6,11 +6,13 @@ import type { AnalysisState, SettingsView } from '../shared/ipc.ts'
 import { GlobalHints, ShortcutsOverlay } from './components/KeyHints.tsx'
 import { Palette } from './components/Palette.tsx'
 import { Picker } from './components/Picker.tsx'
+import { Search } from './components/Search.tsx'
 import { Settings } from './components/Settings.tsx'
 import { Workspace } from './components/Workspace.tsx'
 import type { DataCommand } from './components/DataPane.tsx'
 import type { FocusRequest } from './components/Workspace.tsx'
-import type { DataTabName, NotesTabName, PaneName } from './components/common.tsx'
+import type { DataTabName, NotesTabName, PaneName, Reveal } from './components/common.tsx'
+import type { SearchTarget } from '../core/search.ts'
 
 type View = { type: 'loading' } | { type: 'picker' } | { type: 'workspace'; state: AnalysisState }
 
@@ -24,6 +26,8 @@ export function App() {
   const [focusRequest, setFocusRequest] = useState<FocusRequest>()
   const [dataCommand, setDataCommand] = useState<DataCommand>()
   const [palette, setPalette] = useState<{ returnTo: PaneName | undefined }>()
+  const [searchOpen, setSearchOpen] = useState<{ returnTo: PaneName | undefined }>()
+  const [reveal, setReveal] = useState<Reveal>()
   const [settingsOpen, setSettingsOpen] = useState<{ returnTo: PaneName | undefined }>()
   const [settings, setSettings] = useState<SettingsView>()
   const [hints, setHints] = useState(false)
@@ -34,6 +38,8 @@ export function App() {
   const counter = useRef(0)
   const paletteRef = useRef(palette)
   paletteRef.current = palette
+  const searchRef = useRef(searchOpen)
+  searchRef.current = searchOpen
   const settingsOpenRef = useRef(settingsOpen)
   settingsOpenRef.current = settingsOpen
   const settingsRef = useRef(settings)
@@ -110,8 +116,9 @@ export function App() {
           focusPane('data')
           return true
         case 'settings.open': {
-          const from = paletteRef.current
+          const from = paletteRef.current ?? searchRef.current
           setPalette(undefined)
+          setSearchOpen(undefined)
           if (!settingsOpenRef.current) setSettingsOpen({ returnTo: from ? from.returnTo : paneOfActive() })
           return true
         }
@@ -120,13 +127,34 @@ export function App() {
           if (settingsOpenRef.current || (settingsRef.current && !settingsRef.current.root)) return true
           const open = paletteRef.current
           if (!open) {
-            setPalette({ returnTo: paneOfActive() })
+            // Over the search, the palette takes its place and its way back.
+            const search = searchRef.current
+            setSearchOpen(undefined)
+            setPalette({ returnTo: search ? search.returnTo : paneOfActive() })
             return true
           }
           // Toggle off: give focus back to where the palette came from.
           setPalette(undefined)
           if (open.returnTo) focusPane(open.returnTo)
           else setPickerFocus(n => n + 1)
+          return true
+        }
+        case 'search.open': {
+          if (settingsOpenRef.current) return true
+          if (viewRef.current.type !== 'workspace') {
+            showToast('Open an analysis first.')
+            return false
+          }
+          const open = searchRef.current
+          if (open) {
+            setSearchOpen(undefined)
+            if (open.returnTo) focusPane(open.returnTo)
+            return true
+          }
+          // From the palette, the way back is the palette's.
+          const from = paletteRef.current
+          setPalette(undefined)
+          setSearchOpen({ returnTo: from ? from.returnTo : paneOfActive() })
           return true
         }
         case 'code.run':
@@ -181,6 +209,25 @@ export function App() {
     else setPickerFocus(n => n + 1)
   }
 
+  const closeSearch = () => {
+    const returnTo = searchOpen?.returnTo
+    setSearchOpen(undefined)
+    if (returnTo) focusPane(returnTo)
+  }
+
+  /** Shows a search hit in its own tab: a run in the data pane, the rest in the notes pane. */
+  const showHit = (target: SearchTarget) => {
+    setSearchOpen(undefined)
+    if (target.kind === 'run') {
+      setDataCommand({ id: 'run.show', number: target.number, n: ++counter.current })
+      focusPane('data')
+      return
+    }
+    setNotesTab(target.kind === 'thread' ? 'threads' : target.kind === 'file' ? 'files' : 'notes')
+    setReveal({ target, n: ++counter.current })
+    focusPane('notes')
+  }
+
   const closePalette = (restore: boolean) => {
     const returnTo = palette?.returnTo
     setPalette(undefined)
@@ -211,8 +258,11 @@ export function App() {
           toast={toast}
           hints={hints}
           onShowRun={number => setDataCommand({ id: 'run.show', number, n: ++counter.current })}
+          reveal={reveal}
+          onRevealed={() => setReveal(undefined)}
         />
       )}
+      {searchOpen && view.type === 'workspace' && <Search state={view.state} onChoose={showHit} onClose={closeSearch} />}
       {palette && (
         <Palette
           onClose={() => closePalette(true)}

@@ -1,7 +1,8 @@
 import type { KeyboardEvent, ReactNode } from 'react'
 
 import type { ClosedThread, EditResult, Threads } from '../../shared/ipc.ts'
-import { InlineInput, SearchLine, isPaneKey, useListPane } from './common.tsx'
+import { InlineInput, SearchLine, isPaneKey, useListPane, useReveal } from './common.tsx'
+import type { Reveal } from './common.tsx'
 
 /** `index` is the position in threads.open or threads.closed, which is what edits take. */
 type Item = { kind: 'open'; index: number; text: string } | { kind: 'closed'; index: number; text: string; closed: ClosedThread }
@@ -13,7 +14,7 @@ type Mode =
   | { type: 'close'; item: Item & { kind: 'open' } }
   | { type: 'confirmDelete'; item: Item }
 
-export function ThreadsTab({ threads }: { threads: Threads }) {
+export function ThreadsTab({ threads, reveal, onRevealed }: { threads: Threads; reveal?: Reveal | undefined; onRevealed: () => void }) {
   const items: Item[] = [
     ...threads.open.map((text, index): Item => ({ kind: 'open', index, text })),
     ...threads.closed.map((closed, index): Item => ({
@@ -34,6 +35,17 @@ export function ThreadsTab({ threads }: { threads: Threads }) {
       },
       confirmDelete: m => remove(m.item),
     })
+
+  useReveal(
+    reveal,
+    items,
+    (item, target) => target.kind === 'thread' && target.closed === (item.kind === 'closed') && target.index === item.index,
+    index => {
+      setMode({ type: 'list' })
+      setNav({ selected: index, search: undefined })
+    },
+    onRevealed,
+  )
 
   function remove(item: Item): Promise<EditResult> {
     return item.kind === 'open'

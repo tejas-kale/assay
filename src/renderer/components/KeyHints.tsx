@@ -5,6 +5,7 @@ import type { CommandId } from '../../core/keymap.ts'
 
 const GLOBAL: [CommandId, string][] = [
   ['palette.open', 'Palette'],
+  ['search.open', 'Search'],
   ['window.new', 'New window'],
   ['window.close', 'Close'],
   ['settings.open', 'Settings'],

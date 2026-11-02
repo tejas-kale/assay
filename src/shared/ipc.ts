@@ -13,10 +13,11 @@ import type { NoteFile } from '../core/noteFiles.ts'
 import type { CloseState } from '../core/session.ts'
 import type { Reply, RunRequest } from '../core/requests.ts'
 import type { Engine, KernelState, Run, RunResult, RunStatus, Table } from '../core/runs.ts'
+import type { SearchContents } from '../core/search.ts'
 import type { ClosedThread, Threads } from '../core/threads.ts'
 import type { TrustReview } from '../core/trust.ts'
 
-export type { Analysis, ClosedThread, CloseState, CommandId, Engine, Fact, FileEntry, KernelState, NoteFile, Reply, Run, RunRequest, RunResult, RunStatus, Table, Threads, TrustReview }
+export type { Analysis, ClosedThread, CloseState, CommandId, Engine, Fact, FileEntry, KernelState, NoteFile, Reply, Run, RunRequest, RunResult, RunStatus, SearchContents, Table, Threads, TrustReview }
 
 /** Call to stop listening. */
 export type Unsubscribe = () => void
@@ -67,6 +68,13 @@ export type OpenResult =
 export type OpenFileResult =
   | { ok: true; how: 'nvim' | 'default' }
   | { ok: true; how: 'image'; dataUrl: string }
+  | { ok: false; message: string }
+
+/** A file's content for a preview: text (cut at a size limit), an image, or a binary file it cannot show. */
+export type PreviewResult =
+  | { ok: true; kind: 'text'; text: string; truncated: boolean }
+  | { ok: true; kind: 'image'; dataUrl: string }
+  | { ok: true; kind: 'binary'; size: number }
   | { ok: false; message: string }
 
 export type NoteFileResult = { ok: true; text: string } | { ok: false; message: string }
@@ -135,7 +143,12 @@ export type AppApi = {
     list(): Promise<FileEntry[]>
     /** Opens `FileEntry.path`: text in Neovim, images as a preview, the rest in their default app. */
     open(path: string): Promise<OpenFileResult>
+    /** `FileEntry.path` (or any path inside the analysis) for a preview; nothing is opened. */
+    preview(path: string): Promise<PreviewResult>
   }
+
+  /** The text of every note file and every run's code, for universal search to match bodies. */
+  searchContents(): Promise<SearchContents>
 
   /** One run's code and result by number; undefined when the run is gone. `table` picks table K (1-based) of a Python run. */
   readRun(number: number, options?: { table?: number }): Promise<RunView | undefined>
@@ -221,6 +234,8 @@ export const CHANNELS = {
   runRequest: 'run:request',
   filesList: 'files:list',
   filesOpen: 'files:open',
+  filesPreview: 'files:preview',
+  searchContents: 'search:contents',
   windowNew: 'window:new',
   windowClose: 'window:close',
   settingsGet: 'settings:get',

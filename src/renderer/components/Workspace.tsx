@@ -11,7 +11,7 @@ import { FilesTab } from './FilesTab.tsx'
 import { NotesTab } from './NotesTab.tsx'
 import { TerminalPane } from './TerminalPane.tsx'
 import { ThreadsTab } from './ThreadsTab.tsx'
-import type { DataTabName, NotesTabName, PaneName } from './common.tsx'
+import type { DataTabName, NotesTabName, PaneName, Reveal } from './common.tsx'
 
 export type FocusRequest = { pane: PaneName; n: number }
 
@@ -31,9 +31,19 @@ type Props = {
   hints: boolean
   /** A note's citation was followed: hold that run in the data pane. */
   onShowRun: (number: number) => void
+  /** A universal-search hit for the notes pane's tabs to select. */
+  reveal: Reveal | undefined
+  onRevealed: () => void
 }
 
-export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, focusRequest, dataCommand, onToast, toast, hints, onShowRun }: Props) {
+/** The notes-pane tab that shows a hit of this kind. */
+const tabOf = (reveal: Reveal | undefined): NotesTabName | undefined => {
+  const kind = reveal?.target.kind
+  return kind === 'thread' ? 'threads' : kind === 'fact' || kind === 'note' ? 'notes' : kind === 'file' ? 'files' : undefined
+}
+
+export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, focusRequest, dataCommand, onToast, toast, hints, onShowRun, reveal, onRevealed }: Props) {
+  const revealFor = (tab: NotesTabName) => (tabOf(reveal) === tab ? reveal : undefined)
   const terminalRef = useRef<TerminalHandle | undefined>(undefined)
   const notesRef = useRef<HTMLElement>(null)
   const dataRef = useRef<HTMLElement>(null)
@@ -80,11 +90,11 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
           </PaneHint>
         )}
         {notesTab === 'notes' ? (
-          <NotesTab key="notes" facts={state.facts} noteFiles={state.noteFiles} runs={state.runs} status={state.runStatus} onShowRun={onShowRun} />
+          <NotesTab key="notes" facts={state.facts} noteFiles={state.noteFiles} runs={state.runs} status={state.runStatus} onShowRun={onShowRun} reveal={revealFor('notes')} onRevealed={onRevealed} />
         ) : notesTab === 'threads' ? (
-          <ThreadsTab key="threads" threads={state.threads} />
+          <ThreadsTab key="threads" threads={state.threads} reveal={revealFor('threads')} onRevealed={onRevealed} />
         ) : (
-          <FilesTab key="files" refreshKey={state} />
+          <FilesTab key="files" refreshKey={state} reveal={revealFor('files')} onRevealed={onRevealed} />
         )}
       </section>
 

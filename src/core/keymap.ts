@@ -3,6 +3,7 @@ export type CommandId =
   | 'focus.notes'
   | 'focus.data'
   | 'palette.open'
+  | 'search.open'
   | 'code.run'
   | 'code.edit'
   | 'run.interrupt'
@@ -36,6 +37,7 @@ export const COMMANDS: readonly Command[] = [
   { id: 'focus.notes', title: 'Focus notes and threads', accelerator: { code: 'Digit2' } },
   { id: 'focus.data', title: 'Focus data pane', accelerator: { code: 'Digit3' } },
   { id: 'palette.open', title: 'Command palette', accelerator: { code: 'KeyP' } },
+  { id: 'search.open', title: 'Search everything', accelerator: { code: 'KeyF' } },
   { id: 'code.run', title: 'Run current code', accelerator: { code: 'Enter' } },
   { id: 'code.edit', title: 'Edit current code', accelerator: { code: 'KeyE' } },
   { id: 'run.interrupt', title: 'Interrupt run', accelerator: { code: 'Period' } },
@@ -85,7 +87,7 @@ export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
   },
   {
     pane: 'Notes',
-    keys: [['⌘2 again', 'switch to Files'], ['j / k', 'move'], ['/', 'search'], ['Enter', 'open file note or read note'], ['a', 'add fact'], ['n', 'new note'], ['e', 'edit'], ['d', 'delete']],
+    keys: [['⌘2 again', 'switch to Files'], ['j / k', 'move'], ['/', 'search'], ['Enter', 'open file note or read note'], ['Tab', 'preview on / off'], ['J / K', 'scroll preview'], ['a', 'add fact'], ['n', 'new note'], ['e', 'edit'], ['d', 'delete']],
   },
   {
     pane: 'Note reader',
@@ -113,7 +115,11 @@ export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
   { pane: 'Trust', keys: [['j / k', 'scroll'], ['g / G', 'top / bottom']] },
   {
     pane: 'Files',
-    keys: [['j / k', 'move'], ['/', 'search'], ['Enter', 'open: text in Neovim, image preview'], ['r', 'refresh'], ['⌘2 again', 'switch to Threads']],
+    keys: [['j / k', 'move'], ['/', 'search'], ['Enter', 'open: text in Neovim, image preview'], ['Tab', 'preview on / off'], ['J / K', 'scroll preview'], ['r', 'refresh'], ['⌘2 again', 'switch to Threads']],
+  },
+  {
+    pane: 'Search (⌘F)',
+    keys: [['↑ / ↓ or Ctrl-N / Ctrl-P', 'move'], ['Enter', 'show it in its tab'], ['Tab', 'preview on / off'], ['Ctrl-D / Ctrl-U', 'scroll preview'], ['Esc', 'close']],
   },
   { pane: 'Picker', keys: [['↑ / ↓ or Ctrl-N / Ctrl-P', 'move'], ['Enter', 'open or create']] },
 ]

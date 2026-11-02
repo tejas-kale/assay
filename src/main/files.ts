@@ -19,6 +19,7 @@ import { latestReview, parseTrustReview } from '../core/trust.ts'
 import type { TrustReview } from '../core/trust.ts'
 import { statSignature } from '../core/watch.ts'
 import type { WatchPort } from '../core/watch.ts'
+import type { SearchContents } from '../core/search.ts'
 import type { AnalysisState, EditResult, NoteFileCreateResult, NoteFileResult, PlotResult, RequestResult, RunRequest, RunView } from '../shared/ipc.ts'
 
 export const NOTES = 'notes.md'
@@ -482,5 +483,36 @@ export async function deleteNoteFile(folder: string, name: string, expectedText:
   } catch (err) {
     if (isMissing(err)) return { ok: false, reason: 'stale', message: 'Changed on disk, reloaded' }
     return invalidEdit(`Could not delete: ${messageOf(err)}`)
+  }
+}
+
+const MAX_SEARCH_BYTES = 256 * 1024
+// Run code never changes, so it is read once per path; note files are few and are read each time.
+const runCodeCache = new Map<string, string>()
+
+/** The text of every note file and every run's code, each cut at MAX_SEARCH_BYTES, for universal search. */
+export async function readSearchContents(folder: string): Promise<SearchContents> {
+  const [noteNames, runs] = await Promise.all([noteFileNames(folder), readQueryNames(folder).then(parseRuns)])
+  const notes = await Promise.all(
+    noteNames.map(async name => ({ name, text: await readHead(join(folder, NOTE_FILES, name), MAX_SEARCH_BYTES).then(r => r.text, () => undefined) })),
+  )
+  const codes = await Promise.all(
+    runs.map(async run => {
+      if (!run.code) return undefined
+      const path = join(folder, QUERIES, run.code)
+      let code = runCodeCache.get(path)
+      if (code === undefined) {
+        const head = await readHead(path, MAX_SEARCH_BYTES).catch(() => undefined)
+        if (!head) return undefined
+        code = head.text
+        // A file still being written may end mid-line: keep only finished ones.
+        if (code.endsWith('\n') || head.cut) runCodeCache.set(path, code)
+      }
+      return { number: run.number, code }
+    }),
+  )
+  return {
+    notes: notes.filter((n): n is { name: string; text: string } => n.text !== undefined),
+    runs: codes.filter((r): r is { number: number; code: string } => r !== undefined),
   }
 }

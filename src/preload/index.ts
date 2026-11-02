@@ -63,7 +63,9 @@ const api: AppApi = {
   files: {
     list: () => invoke(CHANNELS.filesList),
     open: path => invoke(CHANNELS.filesOpen, path),
+    preview: path => invoke(CHANNELS.filesPreview, path),
   },
+  searchContents: () => invoke(CHANNELS.searchContents),
   onCommand: cb => subscribe(CHANNELS.command, cb),
   newWindow: () => invoke(CHANNELS.windowNew),
   closeWindow: () => invoke(CHANNELS.windowClose),

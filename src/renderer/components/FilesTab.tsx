@@ -5,7 +5,9 @@ import { formatAge } from '../../core/age.ts'
 import { INITIAL, filterItems, listNav } from '../../core/listNav.ts'
 import type { ListNavState } from '../../core/listNav.ts'
 import type { FileEntry } from '../../shared/ipc.ts'
-import { NAV_KEYS, SearchLine, isPaneKey } from './common.tsx'
+import { NAV_KEYS, SearchLine, isPaneKey, useReveal } from './common.tsx'
+import type { Reveal } from './common.tsx'
+import { Preview } from './Preview.tsx'
 
 const size = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : bytes < 1024 ** 2 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`
@@ -15,13 +17,16 @@ const KIND_LABEL = { text: 'nvim', image: 'preview', other: 'open' } as const
 /**
  * Every file in the analysis, newest first. `/` searches, Enter opens: text in Neovim (a new
  * Ghostty window), images as a preview here, anything else in its default app. `r` refreshes.
+ * Tab shows a preview of the selected file beside the list; J / K scroll it.
  */
-export function FilesTab({ refreshKey }: { refreshKey: unknown }) {
+export function FilesTab({ refreshKey, reveal, onRevealed }: { refreshKey: unknown; reveal?: Reveal | undefined; onRevealed: () => void }) {
   const [files, setFiles] = useState<FileEntry[]>()
   const [nav, setNav] = useState<ListNavState>(INITIAL)
   const [message, setMessage] = useState<string>()
   const [preview, setPreview] = useState<{ path: string; dataUrl: string }>()
+  const [side, setSide] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+  const sideRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(() => {
     void window.app.files.list().then(setFiles, err => setMessage(String(err)))
@@ -33,6 +38,17 @@ export function FilesTab({ refreshKey }: { refreshKey: unknown }) {
   const selectedIndex = Math.max(0, Math.min(nav.selected, visible.length - 1))
   const selected = visible[selectedIndex]
   const images = visible.filter(f => f.kind === 'image')
+
+  useReveal(
+    reveal,
+    files,
+    (file, target) => target.kind === 'file' && target.path === file.path,
+    index => {
+      setPreview(undefined)
+      setNav({ selected: index, search: undefined })
+    },
+    onRevealed,
+  )
 
   useEffect(() => {
     rootRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
@@ -66,6 +82,21 @@ export function FilesTab({ refreshKey }: { refreshKey: unknown }) {
       e.preventDefault()
       return
     }
+    if (e.key === 'Tab' && !e.shiftKey) {
+      e.preventDefault()
+      setSide(on => !on)
+      return
+    }
+    if (side && !nav.search?.active && (e.key === 'J' || e.key === 'K')) {
+      e.preventDefault()
+      sideRef.current?.scrollBy(0, (e.key === 'J' ? 1 : -1) * 120)
+      return
+    }
+    if (side && !nav.search && e.key === 'Escape') {
+      e.preventDefault()
+      setSide(false)
+      return
+    }
     if (!nav.search?.active && e.key === 'r') {
       e.preventDefault()
       load()
@@ -87,7 +118,8 @@ export function FilesTab({ refreshKey }: { refreshKey: unknown }) {
           <img src={preview.dataUrl} alt={preview.path} />
         </div>
       ) : (
-        <>
+        <div className={side ? 'split' : 'split-off'}>
+        <div className="split-list">
           <SearchLine search={nav.search} />
           {files === undefined && <div className="empty">Reading the folder…</div>}
           {files?.length === 0 && <div className="empty">No files.</div>}
@@ -115,7 +147,11 @@ export function FilesTab({ refreshKey }: { refreshKey: unknown }) {
               </li>
             ))}
           </ul>
-        </>
+        </div>
+        {side && (
+          <Preview source={selected && { type: 'path', path: selected.path }} bodyRef={sideRef} refreshKey={selected?.mtimeMs} />
+        )}
+        </div>
       )}
       {message && <div className="status">{message}</div>}
     </div>

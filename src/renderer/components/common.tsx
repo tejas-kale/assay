@@ -3,11 +3,39 @@ import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from 'react'
 
 import { INITIAL, filterItems, listNav } from '../../core/listNav.ts'
 import type { ListNavEffect, ListNavState } from '../../core/listNav.ts'
+import type { SearchTarget } from '../../core/search.ts'
 import type { EditResult } from '../../shared/ipc.ts'
 
 export type PaneName = 'terminal' | 'notes' | 'data'
 export type NotesTabName = 'threads' | 'notes' | 'files'
 export type DataTabName = 'data' | 'plots' | 'code' | 'history' | 'trust'
+
+/** A universal-search hit for a tab to select. `n` makes a repeat of the same hit a new request. */
+export type Reveal = { target: SearchTarget; n: number }
+
+/**
+ * Carries out a reveal once `items` are there: finds the item `matches` picks and hands it to `apply`
+ * (which selects it), then calls `onDone` so a later remount of the tab does not select it again.
+ */
+export function useReveal<T>(
+  reveal: Reveal | undefined,
+  items: readonly T[] | undefined,
+  matches: (item: T, target: SearchTarget) => boolean,
+  apply: (index: number, item: T) => void,
+  onDone: () => void,
+) {
+  const latest = useRef({ items, matches, apply, onDone })
+  latest.current = { items, matches, apply, onDone }
+  const ready = items !== undefined
+  useEffect(() => {
+    const { items: now, matches: test, apply: select, onDone: done } = latest.current
+    if (!reveal || !now) return
+    const index = now.findIndex(item => test(item, reveal.target))
+    const item = now[index]
+    if (item !== undefined) select(index, item)
+    done()
+  }, [reveal?.n, ready])
+}
 
 /** True for inputs, textareas, selects, editable elements and anything inside a dialog: pane keys must not run there. */
 export function isTypingTarget(target: EventTarget | null): boolean {
