@@ -204,7 +204,7 @@ export function NotesTab(props: {
               onCancel={cancel}
               onSubmit={value =>
                 void window.app.facts.add(value).then(result => {
-                  if (result.ok) setNav(s => ({ ...s, selected: facts.length - 1 }))
+                  if (result.ok) setNav(s => ({ ...s, selected: facts.length }))
                   finish(result)
                 })
               }
