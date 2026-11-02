@@ -1,15 +1,6 @@
+/* The colour variables (--bg, --text, ...) are set from core/theme.ts by appearance.ts. */
 :root {
-  --bg: #14161a;
-  --panel: #1a1d23;
-  --line: #2b303a;
-  --text: #d7dae0;
-  --dim: #8a909c;
-  --accent: #5aa0f0;
-  --sel: #263447;
-  --good: #4cc38a;
-  --warn: #e5a94b;
-  --bad: #e5675b;
-  color-scheme: dark;
+  color-scheme: light dark;
   font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
 }
 
@@ -51,7 +42,7 @@ button, input { font: inherit; color: inherit; }
 .pane:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 
 .terminal { flex: 1; min-height: 0; min-width: 0; overflow: hidden; background: var(--bg); }
-.terminal-error { position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 10px; background: #3a1f1d; color: #ffd9d4; border: 1px solid var(--bad); border-radius: 4px; }
+.terminal-error { position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 10px; background: var(--panel); color: var(--bad); border: 1px solid var(--bad); border-radius: 4px; }
 
 .tabs { display: flex; align-items: center; gap: 2px; padding: 4px 6px 0; border-bottom: 1px solid var(--line); }
 .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 4px 10px; color: var(--dim); cursor: pointer; }
@@ -64,13 +55,13 @@ button, input { font: inherit; color: inherit; }
 .section { padding: 8px 12px 2px; color: var(--dim); text-transform: uppercase; font-size: 11px; letter-spacing: 0.06em; }
 .subhead { padding: 6px 12px; border-bottom: 1px solid var(--line); }
 .filetext { margin: 0; padding: 8px 12px; white-space: pre-wrap; font: 12px/1.5 Menlo, monospace; }
-.searchline { padding: 3px 12px; color: var(--accent); font-family: Menlo, monospace; }
+.searchline { padding: 3px 12px; color: var(--info); font-family: Menlo, monospace; }
 .status { padding: 4px 12px; }
 .status.warn { color: var(--warn); }
 
 .chip { padding: 0 6px; border-radius: 8px; font-size: 11px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }
 .chip-trusted { color: var(--good); border-color: var(--good); }
-.chip-queried { color: var(--accent); border-color: var(--accent); }
+.chip-queried { color: var(--info); border-color: var(--info); }
 .chip-unverified { color: var(--warn); border-color: var(--warn); }
 
 .inline-input { padding: 3px 12px; }
@@ -79,14 +70,14 @@ input { background: var(--bg); border: 1px solid var(--line); border-radius: 3px
 input:focus { border-color: var(--accent); }
 
 .banner { padding: 3px 10px; border-radius: 3px; }
-.banner.closing { background: #3b3017; color: #ffdf9c; }
-.banner.ended { background: #2a2f38; color: var(--text); }
+.banner.closing { background: var(--closing); color: var(--text); }
+.banner.ended { background: var(--ended); color: var(--text); }
 .toast { color: var(--warn); }
 .toast.floating { position: fixed; left: 12px; bottom: 12px; }
 
 /* Navigation hints, shown only while left Cmd is long-pressed. */
 @keyframes hint-in { from { opacity: 0; } }
-.key-hint, .key-hints { pointer-events: none; color: var(--text); background: rgba(20, 22, 26, 0.72); border: 1px solid var(--line); border-radius: 4px; font-size: 11px; white-space: pre; animation: hint-in 120ms ease-out; opacity: 0.85; z-index: 5; }
+.key-hint, .key-hints { pointer-events: none; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; font-size: 11px; white-space: pre; animation: hint-in 120ms ease-out; opacity: 0.85; z-index: 5; }
 .key-hint { position: absolute; top: 5px; right: 6px; padding: 1px 7px; }
 .key-hints { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 14px; padding: 3px 10px; }
 .key-hints b { font-weight: 600; }

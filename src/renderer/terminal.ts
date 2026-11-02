@@ -14,11 +14,19 @@
 //  7. `term.focus()` exists and focuses a hidden textarea or the canvas. `focus()` below checks that
 //     focus really landed inside the element and falls back to focusing an inner element.
 //  8. Text selection and Cmd+C copy work inside the terminal (Verify-first item 1).
+//
+// Read from ghostty-web 0.4.0's source and run: colours are fixed at creation, and `options.theme` and
+// OSC 10/11/4 do nothing afterwards. A live theme switch therefore relies on `term.renderer`,
+// `term.wasmTerm`, `term.viewportY` and the private `renderer.renderLine(cells, y, cols)`. Without them,
+// a terminal keeps the theme it was created with and everything else still works.
 import * as ghostty from 'ghostty-web'
+
+import { THEMES, cellRecolor } from '../core/theme.ts'
+import type { CellColors, ThemeMode } from '../core/theme.ts'
+import { currentMode, onModeChange } from './appearance.ts'
 
 const FONT_SIZE = 13
 const FONT_FAMILY = 'Menlo, "SF Mono", Monaco, monospace'
-const THEME = { background: '#14161a', foreground: '#d7dae0', cursor: '#d7dae0' }
 const RESIZE_DEBOUNCE_MS = 100
 
 export type TerminalSize = { cols: number; rows: number }
@@ -49,11 +57,37 @@ type RawTerminal = {
   resize?: (cols: number, rows: number) => void
   focus?: () => void
   loadAddon?: (addon: unknown) => void
+  renderer?: RawRenderer
+  wasmTerm?: unknown
+  viewportY?: number
   dispose(): void
+}
+type RawRenderer = {
+  setTheme(theme: unknown): void
+  render(buffer: unknown, forceAll: boolean, viewportY: number, scrollback: unknown, scrollbarOpacity: number): void
+  renderLine?: (cells: CellColors[], y: number, cols: number) => void
 }
 type RawFit = { fit(): void }
 
 const library = ghostty as unknown as Record<string, unknown>
+
+/** Keeps an open terminal in the system's theme and repaints it on a switch. Returns the unsubscribe. */
+function followSystemTheme(term: RawTerminal, created: ThemeMode): () => void {
+  const renderer = term.renderer
+  const drawLine = renderer?.renderLine
+  if (!renderer || !drawLine || !term.wasmTerm) return () => {}
+
+  const original = THEMES[created].terminal
+  let recolor: ((cells: CellColors[]) => CellColors[]) | undefined
+  renderer.renderLine = (cells, y, cols) => drawLine.call(renderer, recolor ? recolor(cells) : cells, y, cols)
+
+  return onModeChange(mode => {
+    recolor = mode === created ? undefined : cellRecolor(original, THEMES[mode].terminal)
+    renderer.setTheme(THEMES[mode].terminal)
+    // The scrollbar comes back on the next scroll; the library tracks its fade privately.
+    renderer.render(term.wasmTerm, true, term.viewportY ?? 0, term, 0)
+  })
+}
 
 /** Measures one cell of the terminal font. Fallback for when there is no fit addon. */
 function measureCell(host: HTMLElement): { width: number; height: number } {
@@ -69,8 +103,10 @@ function measureCell(host: HTMLElement): { width: number; height: number } {
 export async function createTerminal(el: HTMLElement): Promise<TerminalHandle> {
   await (library['init'] as () => Promise<unknown>)()
   const Ctor = library['Terminal'] as new (options: unknown) => RawTerminal
-  const term = new Ctor({ fontSize: FONT_SIZE, fontFamily: FONT_FAMILY, theme: THEME })
+  const created = currentMode()
+  const term = new Ctor({ fontSize: FONT_SIZE, fontFamily: FONT_FAMILY, theme: THEMES[created].terminal })
   term.open(el)
+  const stopFollowingTheme = followSystemTheme(term, created)
 
   let fitAddon: RawFit | undefined
   const FitCtor = library['FitAddon'] as (new () => RawFit) | undefined
@@ -139,6 +175,7 @@ export async function createTerminal(el: HTMLElement): Promise<TerminalHandle> {
     hasFocus,
     dispose() {
       clearTimeout(timer)
+      stopFollowingTheme()
       observer.disconnect()
       resizeListeners.clear()
       term.dispose()

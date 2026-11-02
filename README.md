@@ -14,6 +14,10 @@ Slice 1 of `HANDOFF.md`; the spec is `docs/slice-1.md`.
 - The analysis folder, which holds `analyses/`, is set in Settings (Cmd+,). There is no default: the app asks on first run.
 - `ASSAY_CLAUDE_BIN`: the wrapper to run (default `claude`, found through your login shell)
 
+## Appearance
+
+The app follows the macOS light or dark setting live, using Ayu Light and Ayu Dark. All colours are in `src/core/theme.ts`.
+
 ## Verify first (do by hand, in this order)
 
 1. ghostty-web with fullscreen mode: open an analysis, run a long Claude session. Look for correct drawing,

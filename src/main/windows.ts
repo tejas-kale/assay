@@ -1,7 +1,7 @@
 // One BrowserWindow per analysis. A window starts on the picker and becomes a workspace once an
 // analysis is attached. All per-window state (pty, poller) lives in a WindowCtx found from the
 // sender's webContents, never from anything the renderer sends.
-import { BrowserWindow, dialog } from 'electron'
+import { BrowserWindow, dialog, nativeTheme } from 'electron'
 import type { WebContents } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { cmdHold } from '../core/cmdHold.ts'
 import { commandForInput } from '../core/keymap.ts'
 import { spawnSpec } from '../core/session.ts'
+import { THEMES } from '../core/theme.ts'
 import { pollFiles } from '../core/watch.ts'
 import { CHANNELS } from '../shared/ipc.ts'
 import type { OpenResult, PtyExit } from '../shared/ipc.ts'
@@ -58,12 +59,23 @@ export function broadcast(channel: string, ...args: unknown[]) {
   for (const ctx of contexts.values()) send(ctx, channel, ...args)
 }
 
+const windowBackground = () => THEMES[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'].ui.bg
+
+/** Keeps the colour a window shows before and around its page in step with the system. */
+export function followSystemTheme() {
+  nativeTheme.on('updated', () => {
+    for (const ctx of contexts.values()) {
+      if (!ctx.win.isDestroyed()) ctx.win.setBackgroundColor(windowBackground())
+    }
+  })
+}
+
 export function createWindow(): WindowCtx {
   const win = new BrowserWindow({
     width: 1500,
     height: 900,
     show: false,
-    backgroundColor: '#14161a',
+    backgroundColor: windowBackground(),
     webPreferences: {
       preload: join(here, '../preload/index.cjs'),
       sandbox: true,

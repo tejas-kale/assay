@@ -50,6 +50,10 @@ exercised, but a physical key press is not. CDP key events do not reach that han
 | Hints over the workspace panes | NOT TESTED | | Needs an open analysis. |
 | Workspace has no bottom bar; banners float at the bottom right | NOT TESTED | | Needs an open analysis. |
 | Settings Choose button | NOT TESTED | | Opens a native dialog. |
+| UI follows the system theme | PASS | Claude | `nativeTheme.themeSource` flipped over the inspector, then back to `system`: `--bg` went `#f8f9fa`, `#0b0e14`, `#f8f9fa`; screenshots read. The macOS setting itself was not changed. |
+| Terminal repaints on a switch, including text written after it | PASS | Claude | A terminal with no pty, created in Light: canvas background `248,249,250`, `11,14,20`, then `248,249,250`. Screenshots show ANSI colours swapped and truecolor unchanged. |
+| Native window background follows | PASS | Claude | `getBackgroundColor()` read straight after each flip shows the previous mode's colour (`#F8F9FA`, then `#0B0E14`), so the update had landed by the next flip. |
+| Theme with a live Claude session and the workspace panes | NOT TESTED | | Needs an open analysis. |
 
 ## Changes made
 
@@ -68,3 +72,5 @@ exercised, but a physical key press is not. CDP key events do not reach that han
    is `extract-zip` 2.0.1 under Node 26, but that is not confirmed. Workaround used: `ditto -x -k <zip> node_modules/electron/dist`, then
    write `Electron.app/Contents/MacOS/Electron` to `path.txt`. A fresh install will hit this again.
 2. **`~/Code/notes-src` does not exist on this Mac**, so the picker shows "No analyses yet" and Gate 7's default root has nothing to open.
+3. **Claude cannot detect the terminal's theme.** `ghostty-web` 0.4.0 ignores OSC 10/11 and sends no reply to an OSC 11 query (probed against its WASM). Claude's
+   truecolor output comes from Claude's own theme setting and is not repainted, so it may be hard to read after a switch to the opposite mode.

@@ -3,7 +3,7 @@ import type { MenuItemConstructorOptions } from 'electron'
 import { fileURLToPath } from 'node:url'
 
 import { registerIpc } from './ipc.ts'
-import { allContexts, createWindow, isLive, requestClose, setOnClosed, setOnKeepWaiting } from './windows.ts'
+import { allContexts, createWindow, followSystemTheme, isLive, requestClose, setOnClosed, setOnKeepWaiting } from './windows.ts'
 
 // Only standard roles. Shortcuts of the app's own commands (Cmd+W, Cmd+N, ...) live in core/keymap.ts
 // and are caught in before-input-event; a duplicate accelerator here would fire twice.
@@ -71,5 +71,6 @@ void app.whenReady().then(() => {
   app.dock?.setIcon(fileURLToPath(new URL('../../resources/icon.png', import.meta.url)))
   Menu.setApplicationMenu(buildMenu())
   registerIpc()
+  followSystemTheme()
   createWindow()
 })
