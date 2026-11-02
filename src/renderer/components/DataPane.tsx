@@ -15,7 +15,7 @@ import type { Run, RunRequest, RunStatus, RunView, TrustReview } from '../../sha
 import { CodeEditor, CodeView, formatSql } from './CodeView.tsx'
 import type { EditorHandle } from './CodeView.tsx'
 import { isPaneKey } from './common.tsx'
-import { TrustTab } from './TrustTab.tsx'
+import { TrustTab, trustRequests } from './TrustTab.tsx'
 import type { DataTabName } from './common.tsx'
 
 export const DATA_TABS: { id: DataTabName; title: string }[] = [
@@ -162,12 +162,14 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
   latestRef.current = { status, runCount: runs.length }
   useEffect(() => {
     const stop = window.app.runs.onReply(reply => {
+      // The Trust tab reads the replies to its own requests.
+      if (trustRequests.has(reply.id) || 'proposals' in reply) return
       const sent = pending.current.get(reply.id)
       if (sent) clearTimeout(sent.timer)
       pending.current.delete(reply.id)
       const kind = sent?.kind
       if ('error' in reply) onToast(kind === 'interrupt' || kind === 'restart' || kind === 'replay' ? reply.error : `The run was refused: ${reply.error}`)
-      else if ('ok' in reply && kind && kind !== 'sql' && kind !== 'python') onToast(DONE_TEXT[kind])
+      else if ('ok' in reply && (kind === 'interrupt' || kind === 'restart' || kind === 'replay')) onToast(DONE_TEXT[kind])
     })
     return () => {
       stop()
@@ -316,7 +318,7 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
 
   let body
   if (replay) body = <ReplayView state={replay.state} onKey={onReplayKey} />
-  else if (tab === 'trust') body = <TrustTab review={trust} />
+  else if (tab === 'trust') body = <TrustTab review={trust} onToast={onToast} />
   else if (tab === 'history') body = <History runs={runs} status={status} current={current} onChoose={choose} onPin={togglePin} />
   else if (!current) body = <Placeholder text="No runs yet. Claude's queries appear here." />
   else {

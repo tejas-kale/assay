@@ -1,19 +1,29 @@
-// The Trust tab: the latest `/an trust` review, live, in pytest style. Read-only; the approval is
-// the mod's question in the Claude pane.
+// The Trust tab: the proposals in the analysis, each with Check, and the latest review, live, in pytest style.
+// A review whose checks all passed shows Trust and Reject. The server (Assay's MCP server in Claude's session)
+// runs the checks and the commit; this tab only sends `trust-list`, `trust-check` and `trust-answer` requests.
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 
-import { diffLines, stateLine, stepDetail, stepTitle } from '../../core/trust.ts'
+import type { Proposal, Reply, TrustAnswer } from '../../core/requests.ts'
+import { canAnswer, canCheck, diffLines, stateLine, stepDetail, stepTitle } from '../../core/trust.ts'
 import type { TrustReview } from '../../core/trust.ts'
 import { CodeView } from './CodeView.tsx'
 import { isPaneKey } from './common.tsx'
 
 const LINE = 40
 
-export function TrustTab({ review }: { review: TrustReview | undefined }) {
+/** The ids of the requests this tab sent: the data pane leaves their replies to it. */
+export const trustRequests = new Set<string>()
+
+type Props = { review: TrustReview | undefined; onToast: (text: string) => void }
+
+export function TrustTab({ review, onToast }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const checking = review?.state === 'checking'
   const [now, setNow] = useState(Date.now())
+  const [proposals, setProposals] = useState<Proposal[] | undefined>(undefined)
+  const [selected, setSelected] = useState(0)
+  const [isSending, setSending] = useState(false)
   useEffect(() => {
     setNow(Date.now())
     if (!checking) return
@@ -21,22 +31,74 @@ export function TrustTab({ review }: { review: TrustReview | undefined }) {
     return () => clearInterval(timer)
   }, [checking])
 
+  // Replies to this tab's requests: the list, or why a check or an answer was refused.
+  useEffect(
+    () =>
+      window.app.runs.onReply((reply: Reply) => {
+        if (!trustRequests.delete(reply.id)) return
+        setSending(false)
+        if ('proposals' in reply) setProposals(reply.proposals)
+        else if ('error' in reply) onToast(reply.error)
+      }),
+    [onToast],
+  )
+
+  const send = (request: Parameters<typeof window.app.runs.request>[0]) => {
+    void window.app.runs.request(request).then(result => {
+      if (!result.ok) return onToast(result.message)
+      trustRequests.add(result.id)
+      if (request.kind !== 'trust-list') setSending(true)
+    })
+  }
+  const list = () => send({ kind: 'trust-list' })
+  const check = (name: string) => send({ kind: 'trust-check', name })
+  const answer = (said: TrustAnswer) => review && send({ kind: 'trust-answer', name: review.name, answer: said })
+
+  // The list on opening the tab, and again whenever a review ends (an approval removes its draft).
+  const settled = review && !checking && review.state !== 'asking' ? `${review.name}:${review.state}:${review.startedAt}` : ''
+  useEffect(list, [settled])
+
+  const chosen = proposals?.[Math.min(selected, proposals.length - 1)]
   const onKeyDown = (e: KeyboardEvent) => {
     if (!isPaneKey(e)) return
     const body = ref.current
-    if (!body) return
-    if (e.key === 'j') body.scrollBy({ top: LINE })
-    else if (e.key === 'k') body.scrollBy({ top: -LINE })
-    else if (e.key === 'g') body.scrollTo({ top: 0 })
-    else if (e.key === 'G') body.scrollTo({ top: body.scrollHeight })
+    if (e.key === 'j') body?.scrollBy({ top: LINE })
+    else if (e.key === 'k') body?.scrollBy({ top: -LINE })
+    else if (e.key === 'g') body?.scrollTo({ top: 0 })
+    else if (e.key === 'G') body?.scrollTo({ top: body.scrollHeight })
+    else if (e.key === 'J') setSelected(i => Math.min((proposals?.length ?? 1) - 1, i + 1))
+    else if (e.key === 'K') setSelected(i => Math.max(0, i - 1))
+    else if (e.key === 'c' && chosen && canCheck(review) && !isSending) check(chosen.name)
+    else if (e.key === 't' && canAnswer(review) && !isSending) answer('trust')
+    else if (e.key === 'r' && canAnswer(review) && !isSending) answer('reject')
+    else if (e.key === 'l') list()
     else return
     e.preventDefault()
   }
 
+  const proposalList = (
+    <div className="trust-proposals">
+      {proposals === undefined && <div className="dim">Asking Claude's session for the proposals…</div>}
+      {proposals?.length === 0 && <div className="dim">No proposals: Claude proposes calculations in lib/trusted/ and drafts dictionary entries in lib/dictionaries/.</div>}
+      {proposals?.map((p, i) => (
+        <div key={p.name} className={p === chosen ? 'trust-proposal selected' : 'trust-proposal'} onClick={() => setSelected(i)}>
+          <span>{p.name}</span>
+          <span className="dim">{p.folder}/</span>
+          <button disabled={!canCheck(review) || isSending} onClick={() => check(p.name)}>
+            Check
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+
   if (!review) {
     return (
-      <div className="list placeholder" tabIndex={-1} data-focus-target>
-        <div className="empty">No review. Type /an trust &lt;name&gt; in Claude.</div>
+      <div className="run" tabIndex={-1} data-focus-target onKeyDown={onKeyDown}>
+        <div className="run-body trust-body" ref={ref}>
+          {proposalList}
+          <div className="empty">No review yet. Check a proposal to start one.</div>
+        </div>
       </div>
     )
   }
@@ -46,6 +108,7 @@ export function TrustTab({ review }: { review: TrustReview | undefined }) {
   return (
     <div className="run" tabIndex={-1} data-focus-target onKeyDown={onKeyDown}>
       <div className="run-body trust-body" ref={ref}>
+        {proposalList}
         <div className="trust-title">
           Trust {review.name} · {review.what}
           {review.replaces ? ' · replaces the trusted version' : ''}
@@ -100,7 +163,19 @@ export function TrustTab({ review }: { review: TrustReview | undefined }) {
           </div>
         )}
       </div>
-      <div className={`trust-state ${state.tone}`}>{state.text}</div>
+      <div className={`trust-state ${state.tone}`}>
+        <span>{state.text}</span>
+        {canAnswer(review) && (
+          <span className="trust-answer">
+            <button disabled={isSending} onClick={() => answer('trust')}>
+              Trust
+            </button>
+            <button disabled={isSending} onClick={() => answer('reject')}>
+              Reject
+            </button>
+          </span>
+        )}
+      </div>
     </div>
   )
 }

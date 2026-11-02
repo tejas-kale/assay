@@ -96,3 +96,19 @@ test('parseRunRequest refuses bad input with a reason', () => {
   assert.equal(err({ kind: 'sql', sql: 'x'.repeat((1 << 20) + 1), engine: 'postgres' }), 'Invalid SQL')
   assert.equal(err({ kind: 'sql', sql: 'select 1', engine: 'mysql' }), 'Invalid engine')
 })
+
+test('the trust requests are checked and written; a reply may carry the proposals', () => {
+  assert.deepEqual(parseRunRequest({ kind: 'trust-list' }), { kind: 'trust-list' })
+  assert.deepEqual(parseRunRequest({ kind: 'trust-check', name: 'main.panel.sites' }), { kind: 'trust-check', name: 'main.panel.sites' })
+  assert.deepEqual(parseRunRequest({ kind: 'trust-answer', name: 'f', answer: 'reject' }), { kind: 'trust-answer', name: 'f', answer: 'reject' })
+  assert.deepEqual(parseRunRequest({ kind: 'trust-check', name: '../x' }), { error: 'Invalid proposal' })
+  assert.deepEqual(parseRunRequest({ kind: 'trust-answer', name: 'f', answer: 'yes' }), { error: 'Invalid answer' })
+  assert.deepEqual(JSON.parse(requestText('i', { kind: 'trust-answer', name: 'f', answer: 'trust' })), { id: 'i', kind: 'trust-answer', name: 'f', answer: 'trust' })
+  assert.deepEqual(parseReply('{"id":"a","proposals":[{"name":"f","kind":"calculation","folder":"lib/trusted"},{"name":3},{"name":"m.p.t","kind":"dictionary"}]}'), {
+    id: 'a',
+    proposals: [
+      { name: 'f', kind: 'calculation', folder: 'lib/trusted' },
+      { name: 'm.p.t', kind: 'dictionary', folder: 'lib/dictionaries' },
+    ],
+  })
+})

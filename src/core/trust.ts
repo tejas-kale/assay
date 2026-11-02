@@ -121,6 +121,12 @@ export function diffLines(diff: string): DiffLine[] {
 /** The state line: the ticking count while checking, a pointer while asking, else the message. */
 export function stateLine(review: TrustReview, now: number): { text: string; tone: Tone } {
   if (review.state === 'checking') return { text: `checking… ${Math.max(0, Math.round((now - review.startedAt) / 1000))} s`, tone: 'dim' }
-  if (review.state === 'asking') return { text: 'Answer in the Claude pane (⌘1)', tone: 'dim' }
+  if (review.state === 'asking') return { text: 'Every check passed: Trust (t) or Reject (r).', tone: 'dim' }
   return { text: review.message ?? review.state, tone: stateTone(review.state) }
 }
+
+/** Whether the Trust tab offers Trust and Reject for this review: only once every check passed. */
+export const canAnswer = (review: TrustReview | undefined): boolean => review?.state === 'asking'
+
+/** Whether the Trust tab offers Check: no review of any name is checking or waiting for its answer. */
+export const canCheck = (review: TrustReview | undefined): boolean => !review || !isActive(review.state)

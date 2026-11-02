@@ -42,6 +42,7 @@ export type RunRequest =
   | { kind: 'interrupt' }
   | { kind: 'restart' }
   | { kind: 'replay'; runs: number[] }
+  | TrustRequest
 
 /** The request file's text for any kind. */
 export function requestText(id: string, request: RunRequest): string {
@@ -56,10 +57,14 @@ export function requestText(id: string, request: RunRequest): string {
       return restartRequest(id)
     case 'replay':
       return replayRequest(id, request.runs)
+    case 'trust-list':
+    case 'trust-check':
+    case 'trust-answer':
+      return trustRequestText(id, request)
   }
 }
 
-export type Reply = { id: string; number: number } | { id: string; ok: true } | { id: string; error: string }
+export type Reply = { id: string; number: number } | { id: string; ok: true } | { id: string; error: string } | { id: string; proposals: Proposal[] }
 
 export function parseReply(text: string): Reply | undefined {
   let raw: unknown
@@ -73,10 +78,20 @@ export function parseReply(text: string): Reply | undefined {
   if (typeof id !== 'string') return undefined
   const number: unknown = Reflect.get(raw, 'number')
   if (typeof number === 'number') return { id, number }
+  const proposals: unknown = Reflect.get(raw, 'proposals')
+  if (Array.isArray(proposals)) return { id, proposals: proposals.flatMap(parseProposal) }
   const error: unknown = Reflect.get(raw, 'error')
   if (typeof error === 'string') return { id, error }
   if (Reflect.get(raw, 'ok') === true) return { id, ok: true }
   return undefined
+}
+
+function parseProposal(raw: unknown): Proposal[] {
+  if (typeof raw !== 'object' || raw === null) return []
+  const name: unknown = Reflect.get(raw, 'name')
+  const kind: unknown = Reflect.get(raw, 'kind')
+  if (typeof name !== 'string' || (kind !== 'calculation' && kind !== 'dictionary')) return []
+  return [{ name, kind, folder: kind === 'calculation' ? 'lib/trusted' : 'lib/dictionaries' }]
 }
 
 const TRUSTED_PYTHON = "Run a trusted calculation with Claude's trusted tool"
@@ -86,6 +101,9 @@ export function canRerun(run: Run, header: RunHeader, body?: string): string | u
   if (run.language !== 'python' && header.trusted && body !== undefined && /^-- python:/m.test(body)) return TRUSTED_PYTHON
   return undefined
 }
+
+/** A proposal's name: a calculation's or a table's full name (as the server's PROPOSAL_NAME, any case). */
+const PROPOSAL = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+){0,2}$/
 
 /** The most text a request may carry (1 MiB). */
 export const MAX_REQUEST_TEXT = 1 << 20
@@ -97,8 +115,14 @@ export const isIndex = (v: unknown): v is number => typeof v === 'number' && Num
 /** Checks what the renderer sent, per kind, and returns the request or the reason it is refused. */
 export function parseRunRequest(input: unknown): RunRequest | { error: string } {
   if (typeof input !== 'object' || input === null) return { error: 'Invalid request' }
-  const { kind, sql, code, engine, from, slug, runs } = input as Record<string, unknown>
-  if (kind === 'interrupt' || kind === 'restart') return { kind }
+  const { kind, sql, code, engine, from, slug, runs, name, answer } = input as Record<string, unknown>
+  if (kind === 'interrupt' || kind === 'restart' || kind === 'trust-list') return { kind }
+  if (kind === 'trust-check' || kind === 'trust-answer') {
+    if (typeof name !== 'string' || !PROPOSAL.test(name)) return { error: 'Invalid proposal' }
+    if (kind === 'trust-check') return { kind, name }
+    if (answer !== 'trust' && answer !== 'reject') return { error: 'Invalid answer' }
+    return { kind, name, answer }
+  }
   if (kind === 'replay') {
     if (!Array.isArray(runs) || runs.length === 0 || runs.length > MAX_REPLAY_RUNS || !runs.every(isIndex)) return { error: 'Invalid runs' }
     return { kind, runs: runs as number[] }

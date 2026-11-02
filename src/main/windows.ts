@@ -3,7 +3,7 @@
 // sender's webContents, never from anything the renderer sends.
 import { BrowserWindow, dialog, nativeTheme } from 'electron'
 import type { WebContents } from 'electron'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { cmdHold } from '../core/cmdHold.ts'
@@ -15,6 +15,7 @@ import { CHANNELS } from '../shared/ipc.ts'
 import type { OpenResult, PtyExit } from '../shared/ipc.ts'
 import { NOTES, QUERIES, REPLIES_DIR, RUN_STATUS, THREADS, TRUST_DIR, loadState, noteFilesSignature, takeReplies, watchPort } from './files.ts'
 import { startSession } from './session.ts'
+import { analysisRoot } from './settings.ts'
 import type { PtySession } from './session.ts'
 
 export type WindowCtx = {
@@ -26,6 +27,8 @@ export type WindowCtx = {
   stopPoll: (() => void) | undefined
   /** The user (or Cmd+Q) asked to close while the session ran: close the window when it exits. */
   closeRequested: boolean
+  /** Set while startPty looks up the Settings folder, so two calls cannot both spawn. */
+  isStarting?: boolean
   /** Lets the next `close` event through. */
   allowClose: boolean
   dialogOpen: boolean
@@ -261,9 +264,14 @@ export function attachAnalysis(ctx: WindowCtx, analysis: { name: string; path: s
 }
 
 /** Spawns the wrapper at the renderer's size. Does nothing without an analysis or when already started. */
-export function startPty(ctx: WindowCtx, cols: number, rows: number) {
+export async function startPty(ctx: WindowCtx, cols: number, rows: number) {
+  if (!ctx.analysis || ctx.session || ctx.isStarting) return
+  ctx.isStarting = true
+  // The Settings folder is the shared one (dictionaries/, trusted/); an analysis sits two below it.
+  const root = (await analysisRoot().catch(() => undefined)) ?? dirname(dirname(ctx.analysis.path))
+  ctx.isStarting = false
   if (!ctx.analysis || ctx.session) return
-  const spec = spawnSpec(ctx.analysis.path, process.env)
+  const spec = spawnSpec(ctx.analysis.path, process.env, root)
   try {
     const session = startSession(spec, cols, rows, {
       onData: data => send(ctx, CHANNELS.ptyData, data),
