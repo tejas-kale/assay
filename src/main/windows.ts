@@ -236,11 +236,13 @@ export function attachAnalysis(ctx: WindowCtx, analysis: { name: string; path: s
     () => void pushState(ctx),
   )
   // A reply file's arrival changes the folder's mtime; each one is delivered once, then deleted.
-  const stopReplies = pollFiles(watchPort, [join(analysis.path, REPLIES_DIR)], () => {
+  const deliverReplies = () =>
     void takeReplies(analysis.path).then(replies => {
       for (const reply of replies) send(ctx, CHANNELS.runReply, reply)
     })
-  })
+  const stopReplies = pollFiles(watchPort, [join(analysis.path, REPLIES_DIR)], deliverReplies)
+  // Replies that were already waiting when the window attached.
+  deliverReplies()
   const stopState = ctx.stopPoll
   ctx.stopPoll = () => {
     stopState()

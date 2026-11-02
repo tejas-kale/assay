@@ -1,6 +1,6 @@
 // Request and reply files: the app asks the mod to run SQL by writing `.assay/requests/<id>.json`
 // and reads `.assay/replies/<id>.json` back. The shapes are the contract in docs/slice-2b.md.
-import type { Run, RunHeader } from './runs.ts'
+import type { Engine, Run, RunHeader } from './runs.ts'
 
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789'
 
@@ -11,7 +11,7 @@ export function newRequestId(now: number, random: () => number): string {
   return `${String(now).padStart(13, '0')}-${suffix}`
 }
 
-export type SqlRequest = { id: string; sql: string; engine: 'databricks' | 'postgres'; from?: number; slug?: string }
+export type SqlRequest = { id: string; sql: string; engine: Engine; from?: number; slug?: string }
 
 /** The request file's text. */
 export function sqlRequest({ id, sql, engine, from, slug }: SqlRequest): string {

@@ -1,6 +1,8 @@
 // Runs are the files in an analysis's `queries/` folder: `NNN_<slug>.sql` (or `.py`) is the code,
 // `NNN_<slug>.csv` the saved result. One number names one run, so the Code and Data tabs link by it.
 
+export type Engine = 'databricks' | 'postgres'
+
 export type Run = {
   number: number
   /** The zero-padded number as written in the file name, such as `020`. */
@@ -14,7 +16,7 @@ export type Run = {
   author?: 'user' | 'claude'
   from?: number
   trusted?: string
-  engine?: 'databricks' | 'postgres'
+  engine?: Engine
 }
 
 const NAME = /^(\d+)_(.+)\.(sql|py|csv)$/
@@ -113,7 +115,7 @@ export function parseRunStatus(text: string): RunStatus {
   return status
 }
 
-export type RunHeader = { author: 'user' | 'claude'; from?: number; trusted?: string; engine: 'databricks' | 'postgres' }
+export type RunHeader = { author: 'user' | 'claude'; from?: number; trusted?: string; engine: Engine }
 
 const HEADER_LINE = /^-- (?:author: |from: |trusted: |commit: |args: |postgres\s*$)/
 

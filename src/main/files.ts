@@ -113,11 +113,13 @@ async function withHeaders(folder: string, runs: Run[]): Promise<Run[]> {
       let header = headers.get(path)
       if (!header) {
         try {
-          header = parseRunHeader((await readHead(path, HEADER_BYTES)).text)
+          const { text, cut } = await readHead(path, HEADER_BYTES)
+          header = parseRunHeader(text)
+          // The mod may still be writing the file: only a finished one (ends in a newline, or is longer than the head read) is kept.
+          if (text.endsWith('\n') || (cut && text !== '')) headers.set(path, header)
         } catch {
           return run
         }
-        headers.set(path, header)
       }
       const { author, from, trusted, engine } = header
       return { ...run, author, engine, ...(from !== undefined && { from }), ...(trusted !== undefined && { trusted }) }
@@ -131,7 +133,7 @@ export const RUN_STATUS = '.assay/runs.json'
 const ASSAY = '.assay'
 const REQUESTS = 'requests'
 const REPLIES = 'replies'
-export const REPLIES_DIR = '.assay/replies'
+export const REPLIES_DIR = join(ASSAY, REPLIES)
 const MAX_DATA_ROWS = 1000
 const MAX_DATA_BYTES = 4 * 1024 * 1024
 const MAX_CODE_BYTES = 512 * 1024
@@ -251,6 +253,8 @@ export async function writeRequest(folder: string, request: RunRequest): Promise
   }
 }
 
+const JUNK_REPLY_MS = 60_000
+
 /** Reads and deletes every reply file the mod has written. */
 export async function takeReplies(folder: string): Promise<Reply[]> {
   const dir = join(folder, ASSAY, REPLIES)
@@ -265,8 +269,13 @@ export async function takeReplies(folder: string): Promise<Reply[]> {
     const path = join(dir, name)
     try {
       const reply = parseReply(await readFile(path, 'utf8'))
-      await unlink(path)
-      if (reply) replies.push(reply)
+      if (reply) {
+        await unlink(path)
+        replies.push(reply)
+      } else if (Date.now() - (await stat(path)).mtimeMs > JUNK_REPLY_MS) {
+        // The mod writes replies in place, so an unreadable one may be half written: wait, then give up.
+        await unlink(path)
+      }
     } catch {
       // Gone already, or half written: the next poll tries again.
     }

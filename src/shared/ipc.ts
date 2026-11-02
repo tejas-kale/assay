@@ -10,11 +10,11 @@ import type { CommandId } from '../core/keymap.ts'
 import type { Fact } from '../core/facts.ts'
 import type { FileEntry } from '../core/files.ts'
 import type { CloseState } from '../core/session.ts'
-import type { Reply } from '../core/requests.ts'
-import type { Run, RunStatus, Table } from '../core/runs.ts'
+import type { Reply, SqlRequest } from '../core/requests.ts'
+import type { Engine, Run, RunStatus, Table } from '../core/runs.ts'
 import type { ClosedThread, Threads } from '../core/threads.ts'
 
-export type { Analysis, ClosedThread, CloseState, CommandId, Fact, FileEntry, Reply, Run, RunStatus, Table, Threads }
+export type { Analysis, ClosedThread, CloseState, CommandId, Engine, Fact, FileEntry, Reply, Run, RunStatus, Table, Threads }
 
 /** Call to stop listening. */
 export type Unsubscribe = () => void
@@ -41,7 +41,7 @@ export type AnalysisState = {
 export type RunView = { run: Run; code?: string; table?: Table; error?: string }
 
 /** A SQL run the user asks Claude's session to make (see docs/slice-2b.md). `from` and `slug` name the run it came from. */
-export type RunRequest = { sql: string; engine: 'databricks' | 'postgres'; from?: number; slug?: string }
+export type RunRequest = Omit<SqlRequest, 'id'>
 
 /** `ok`: the request file is written and `id` will come back in a reply. */
 export type RequestResult = { ok: true; id: string } | { ok: false; message: string }

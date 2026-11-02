@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent, ReactNode, Ref } from 'react'
+import type { KeyboardEvent, ReactNode, RefObject } from 'react'
 
 import { markTabs } from '../../core/dataTabs.ts'
-import type { MarkedTab, Seen } from '../../core/dataTabs.ts'
+import type { Seen } from '../../core/dataTabs.ts'
 import { shortcutLabel } from '../../core/keymap.ts'
 import type { CommandId } from '../../core/keymap.ts'
 import { canRerun } from '../../core/requests.ts'
@@ -42,7 +42,7 @@ const headerOf = (run: Run): RunHeader => ({
 })
 
 /** What a run is open for editing: where it came from, and the text it started with. */
-type Edit = { from: Run; start: string }
+type Edit = { id: number; from: Run; start: string }
 
 /** The user's reply is not expected after this long: the mod only polls while Claude's session is alive. */
 const PICKUP_MS = 10_000
@@ -56,8 +56,9 @@ export function DataPane({ tab, runs, status, onTab, command, onToast }: Props) 
   const [held, setHeld] = useState<number>()
   const [original, setOriginal] = useState(false)
   const [edit, setEdit] = useState<Edit>()
-  const [markers, setMarkers] = useState<ReadonlySet<MarkedTab>>(new Set())
+  const [markers, setMarkers] = useState<ReadonlySet<string>>(new Set())
   const editText = useRef('')
+  const editCount = useRef(0)
   const latest = runs.at(-1)
   // A held run that disappears falls back to following.
   const heldRun = runs.find(r => r.number === held)
@@ -132,14 +133,15 @@ export function DataPane({ tab, runs, status, onTab, command, onToast }: Props) 
   }
 
   const startEdit = () => {
-    if (edit) return
+    // Already editing: only bring the open editor forward, keeping its text.
+    if (edit) return onTab('code')
     if (!current || view?.code === undefined) return onToast('No code to edit')
     const reason = canRerun(current, headerOf(current), view.code)
     if (reason || current.language !== 'sql') return onToast(reason ?? 'Only SQL can be edited')
     const body = sqlBody(view.code)
     const start = original ? body : formatSql(body)
     editText.current = start
-    setEdit({ from: current, start })
+    setEdit({ id: ++editCount.current, from: current, start })
     onTab('code')
   }
 
@@ -168,7 +170,7 @@ export function DataPane({ tab, runs, status, onTab, command, onToast }: Props) 
       {DATA_TABS.map(t => (
         <button key={t.id} role="tab" tabIndex={-1} aria-selected={tab === t.id} onClick={() => onTab(t.id)}>
           {t.title}
-          {markers.has(t.id as MarkedTab) && <span className="mark" title="New since you looked" />}
+          {markers.has(t.id) && <span className="mark" title="New since you looked" />}
         </button>
       ))}
     </div>
@@ -455,6 +457,12 @@ const firstLine = (text: string) => {
   return cut < 0 ? text : `${text.slice(0, cut)} ⏎`
 }
 
+/** Starts the editor from the text held when it mounts: a new edit's start, or what was typed before a tab switch. */
+function EditorHost(props: { editText: { current: string }; handleRef: RefObject<EditorHandle | null> }) {
+  const [initial] = useState(() => props.editText.current)
+  return <CodeEditor initial={initial} onChange={text => (props.editText.current = text)} handleRef={props.handleRef} />
+}
+
 function CodeTab(props: {
   header: ReactNode
   view: RunView | undefined
@@ -466,19 +474,17 @@ function CodeTab(props: {
   onToggleOriginal: () => void
   edit: Edit | undefined
   editText: { current: string }
-  editorRef: Ref<EditorHandle>
+  editorRef: RefObject<EditorHandle | null>
   onLeave: () => void
 }) {
   const { header, view, run, edit, editText } = props
   const [confirm, setConfirm] = useState(false)
-  // The editor starts from the text held so far, so coming back to the tab keeps the edit.
-  const [resume] = useState(() => editText.current)
 
   const leave = () => {
     if (editText.current === edit?.start) props.onLeave()
     else setConfirm(true)
   }
-  const handle = props.editorRef as { current: EditorHandle | null }
+  const handle = props.editorRef
 
   return (
     <div
@@ -510,7 +516,7 @@ function CodeTab(props: {
       {header}
       {confirm && <div className="status warn">Discard edits? y / n</div>}
       {edit ? (
-        <CodeEditor key={edit.from.number} initial={resume} onChange={text => (editText.current = text)} handleRef={props.editorRef} />
+        <EditorHost key={edit.id} editText={editText} handleRef={props.editorRef} />
       ) : !view ? null : view.error ? (
         <div className="status warn">{view.error}</div>
       ) : view.code === undefined ? (
