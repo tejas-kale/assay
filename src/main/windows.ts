@@ -13,7 +13,7 @@ import { THEMES } from '../core/theme.ts'
 import { pollFiles } from '../core/watch.ts'
 import { CHANNELS } from '../shared/ipc.ts'
 import type { OpenResult, PtyExit } from '../shared/ipc.ts'
-import { NOTES, QUERIES, RUN_STATUS, THREADS, loadState, watchPort } from './files.ts'
+import { NOTES, QUERIES, REPLIES_DIR, RUN_STATUS, THREADS, loadState, takeReplies, watchPort } from './files.ts'
 import { startSession } from './session.ts'
 import type { PtySession } from './session.ts'
 
@@ -235,6 +235,17 @@ export function attachAnalysis(ctx: WindowCtx, analysis: { name: string; path: s
     [NOTES, THREADS, QUERIES, RUN_STATUS].map(name => join(analysis.path, name)),
     () => void pushState(ctx),
   )
+  // A reply file's arrival changes the folder's mtime; each one is delivered once, then deleted.
+  const stopReplies = pollFiles(watchPort, [join(analysis.path, REPLIES_DIR)], () => {
+    void takeReplies(analysis.path).then(replies => {
+      for (const reply of replies) send(ctx, CHANNELS.runReply, reply)
+    })
+  })
+  const stopState = ctx.stopPoll
+  ctx.stopPoll = () => {
+    stopState()
+    stopReplies()
+  }
   return { ok: true, outcome: 'opened', path: analysis.path }
 }
 

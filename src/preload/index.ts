@@ -49,6 +49,10 @@ const api: AppApi = {
   },
   readNoteFile: path => invoke(CHANNELS.noteFileRead, path),
   readRun: number => invoke(CHANNELS.runRead, number),
+  runs: {
+    request: request => invoke(CHANNELS.runRequest, request),
+    onReply: cb => subscribe(CHANNELS.runReply, cb),
+  },
   files: {
     list: () => invoke(CHANNELS.filesList),
     open: path => invoke(CHANNELS.filesOpen, path),

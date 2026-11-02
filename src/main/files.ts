@@ -8,10 +8,13 @@ import type { FsPort } from '../core/analyses.ts'
 import { StaleEdit } from '../core/errors.ts'
 import { listFacts } from '../core/facts.ts'
 import { resolveInside } from '../core/safePath.ts'
-import { parseCsv, parseRunStatus, parseRuns } from '../core/runs.ts'
+import { newRequestId, parseReply, sqlRequest } from '../core/requests.ts'
+import { parseCsv, parseRunHeader, parseRunStatus, parseRuns } from '../core/runs.ts'
+import type { Reply } from '../core/requests.ts'
+import type { Run, RunHeader } from '../core/runs.ts'
 import { parseThreads } from '../core/threads.ts'
 import type { WatchPort } from '../core/watch.ts'
-import type { AnalysisState, EditResult, NoteFileResult, RunView } from '../shared/ipc.ts'
+import type { AnalysisState, EditResult, NoteFileResult, RequestResult, RunRequest, RunView } from '../shared/ipc.ts'
 
 export const NOTES = 'notes.md'
 export const THREADS = 'threads.md'
@@ -92,14 +95,43 @@ export async function loadState(analysis: { name: string; path: string }): Promi
     analysis,
     facts: listFacts(notes),
     threads: parseThreads(threads),
-    runs: parseRuns(queries),
+    runs: await withHeaders(analysis.path, parseRuns(queries)),
     runStatus: parseRunStatus(status),
   }
+}
+
+// Runs are immutable, so a parsed header is kept by path and never read again.
+const headers = new Map<string, RunHeader>()
+const HEADER_BYTES = 2048
+
+/** Fills each run's author, origin, trusted name and engine from the first 2 KB of its code file. */
+async function withHeaders(folder: string, runs: Run[]): Promise<Run[]> {
+  return Promise.all(
+    runs.map(async run => {
+      if (!run.code) return run
+      const path = join(folder, QUERIES, run.code)
+      let header = headers.get(path)
+      if (!header) {
+        try {
+          header = parseRunHeader((await readHead(path, HEADER_BYTES)).text)
+        } catch {
+          return run
+        }
+        headers.set(path, header)
+      }
+      const { author, from, trusted, engine } = header
+      return { ...run, author, engine, ...(from !== undefined && { from }), ...(trusted !== undefined && { trusted }) }
+    }),
+  )
 }
 
 export const QUERIES = 'queries'
 /** Written by the mod when the app started it. */
 export const RUN_STATUS = '.assay/runs.json'
+const ASSAY = '.assay'
+const REQUESTS = 'requests'
+const REPLIES = 'replies'
+export const REPLIES_DIR = '.assay/replies'
 const MAX_DATA_ROWS = 1000
 const MAX_DATA_BYTES = 4 * 1024 * 1024
 const MAX_CODE_BYTES = 512 * 1024
@@ -198,4 +230,46 @@ export async function readNoteFile(folder: string, target: string): Promise<Note
   } catch (err) {
     return { ok: false, message: isMissing(err) ? 'Note file not found' : `Could not read: ${messageOf(err)}` }
   }
+}
+
+/** Writes a SQL request for the mod to pick up. The temp name starts with `.`, which the mod ignores. */
+export async function writeRequest(folder: string, request: RunRequest): Promise<RequestResult> {
+  const id = newRequestId(Date.now(), Math.random)
+  try {
+    const assay = join(folder, ASSAY)
+    const dir = join(assay, REQUESTS)
+    await mkdir(dir, { recursive: true })
+    // Written once, never over the user's own file.
+    await writeFile(join(assay, '.gitignore'), '*\n', { encoding: 'utf8', flag: 'wx' }).catch(() => undefined)
+    const path = join(dir, `${id}.json`)
+    const temp = join(dir, `.${id}.json.tmp`)
+    await writeFile(temp, sqlRequest({ id, ...request }), 'utf8')
+    await rename(temp, path)
+    return { ok: true, id }
+  } catch (err) {
+    return { ok: false, message: `Could not send: ${messageOf(err)}` }
+  }
+}
+
+/** Reads and deletes every reply file the mod has written. */
+export async function takeReplies(folder: string): Promise<Reply[]> {
+  const dir = join(folder, ASSAY, REPLIES)
+  let names: string[]
+  try {
+    names = (await readdir(dir)).filter(n => n.endsWith('.json') && !n.startsWith('.')).sort()
+  } catch {
+    return []
+  }
+  const replies: Reply[] = []
+  for (const name of names) {
+    const path = join(dir, name)
+    try {
+      const reply = parseReply(await readFile(path, 'utf8'))
+      await unlink(path)
+      if (reply) replies.push(reply)
+    } catch {
+      // Gone already, or half written: the next poll tries again.
+    }
+  }
+  return replies
 }

@@ -8,10 +8,10 @@ import { addFact, deleteFact, editFact } from '../core/facts.ts'
 import { addThread, closeOpen, deleteClosed, deleteOpen, editOpen, moveOpen } from '../core/threads.ts'
 import type { ClosedThread } from '../core/threads.ts'
 import { CHANNELS } from '../shared/ipc.ts'
-import type { EditResult, NoteFileResult, OpenResult, SetRootResult, SettingsView } from '../shared/ipc.ts'
+import type { EditResult, NoteFileResult, OpenResult, RequestResult, SetRootResult, SettingsView } from '../shared/ipc.ts'
 import { analysisRoot, chooseRootPath, saveRoot } from './settings.ts'
 import { listFiles, openFile } from './browse.ts'
-import { NOTES, THREADS, editFile, fsPort, loadState, readNoteFile, readQueryNames, readRun } from './files.ts'
+import { NOTES, THREADS, editFile, fsPort, loadState, readNoteFile, readQueryNames, readRun, writeRequest } from './files.ts'
 import { attachAnalysis, broadcast, contextFor, createWindow, pushState, requestClose, startPty } from './windows.ts'
 import type { WindowCtx } from './windows.ts'
 
@@ -167,6 +167,17 @@ export function registerIpc() {
   handle(CHANNELS.runRead, (ctx, number) => {
     if (!ctx.analysis || typeof number !== 'number' || !Number.isInteger(number) || number < 0) return undefined
     return readRun(ctx.analysis.path, number)
+  })
+  handle(CHANNELS.runRequest, (ctx, request): Promise<RequestResult> | RequestResult => {
+    const refused = (message: string): RequestResult => ({ ok: false, message })
+    if (!ctx.analysis || typeof request !== 'object' || request === null) return refused('Invalid request')
+    const { sql, engine, from, slug } = request as Record<string, unknown>
+    if (typeof sql !== 'string' || sql.length > MAX_WRITE) return refused('Invalid SQL')
+    if (sql.trim() === '') return refused('The SQL is empty')
+    if (engine !== 'databricks' && engine !== 'postgres') return refused('Invalid engine')
+    if (from !== undefined && !isIndex(from)) return refused('Invalid origin')
+    if (slug !== undefined && (typeof slug !== 'string' || slug.length > 200)) return refused('Invalid slug')
+    return writeRequest(ctx.analysis.path, { sql, engine, ...(from !== undefined && { from }), ...(slug !== undefined && { slug }) })
   })
   handle(CHANNELS.noteFileRead, (ctx, path): Promise<NoteFileResult> | NoteFileResult => {
     if (!ctx.analysis || typeof path !== 'string') return { ok: false, message: 'Invalid path' }

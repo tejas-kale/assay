@@ -10,10 +10,11 @@ import type { CommandId } from '../core/keymap.ts'
 import type { Fact } from '../core/facts.ts'
 import type { FileEntry } from '../core/files.ts'
 import type { CloseState } from '../core/session.ts'
+import type { Reply } from '../core/requests.ts'
 import type { Run, RunStatus, Table } from '../core/runs.ts'
 import type { ClosedThread, Threads } from '../core/threads.ts'
 
-export type { Analysis, ClosedThread, CloseState, CommandId, Fact, FileEntry, Run, RunStatus, Table, Threads }
+export type { Analysis, ClosedThread, CloseState, CommandId, Fact, FileEntry, Reply, Run, RunStatus, Table, Threads }
 
 /** Call to stop listening. */
 export type Unsubscribe = () => void
@@ -38,6 +39,12 @@ export type AnalysisState = {
 
 /** One run's code and saved result, for the Code and Data tabs. */
 export type RunView = { run: Run; code?: string; table?: Table; error?: string }
+
+/** A SQL run the user asks Claude's session to make (see docs/slice-2b.md). `from` and `slug` name the run it came from. */
+export type RunRequest = { sql: string; engine: 'databricks' | 'postgres'; from?: number; slug?: string }
+
+/** `ok`: the request file is written and `id` will come back in a reply. */
+export type RequestResult = { ok: true; id: string } | { ok: false; message: string }
 
 export type OpenResult =
   /** This window is now the workspace for `path`. */
@@ -120,6 +127,13 @@ export type AppApi = {
   /** One run's code and result by number; undefined when the run is gone. */
   readRun(number: number): Promise<RunView | undefined>
 
+  runs: {
+    /** Writes `.assay/requests/<id>.json` for the mod to run. */
+    request(request: RunRequest): Promise<RequestResult>
+    /** The mod's answer to a request; also fired for ids this window did not send. Main has deleted the file. */
+    onReply(cb: (reply: Reply) => void): Unsubscribe
+  }
+
   /** Reads a linked note file, on request. `path` is `Fact.file.path`; main resolves it against the analysis folder. */
   readNoteFile(path: string): Promise<NoteFileResult>
 
@@ -174,6 +188,7 @@ export const CHANNELS = {
   threadsMoveOpen: 'threads:moveOpen',
   noteFileRead: 'noteFile:read',
   runRead: 'run:read',
+  runRequest: 'run:request',
   filesList: 'files:list',
   filesOpen: 'files:open',
   windowNew: 'window:new',
@@ -188,6 +203,7 @@ export const CHANNELS = {
   ptyData: 'pty:data',
   ptyExit: 'pty:exit',
   stateChanged: 'state:changed',
+  runReply: 'run:reply',
   command: 'command',
   closeState: 'close:state',
   settingsChanged: 'settings:changed',
