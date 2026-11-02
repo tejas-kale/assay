@@ -75,6 +75,15 @@ export function DataPane({ tab, runs, status, onTab, command, onToast }: Props) 
     if (!edit) setHeld(following ? current?.number : undefined)
   }
 
+  // Leaving an edit unmounts the focused editor: give the pane its keys back, unless focus moved elsewhere.
+  const wasEditing = useRef(false)
+  useEffect(() => {
+    if (wasEditing.current && !edit && document.activeElement === document.body) {
+      document.querySelector<HTMLElement>('[data-pane="data"] [data-focus-target]')?.focus()
+    }
+    wasEditing.current = edit !== undefined
+  }, [edit])
+
   // Tab markers: what changed in the current run since the last state push.
   const seen: Seen = {
     ...(current && { number: current.number }),
