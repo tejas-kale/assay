@@ -1,7 +1,7 @@
 // The plugin's hooks, run as the bundled scripts Claude Code runs: each gets its JSON on stdin. Ported from the
 // analysis mod's tests of its prompt, Bash and write guards (tools.test.ts, dictionary.test.ts, trust.test.tsx,
 // python-requests.test.ts).
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -140,6 +140,28 @@ test('a Write or Edit into another analysis is refused, naming the open one; the
     expect([path, await write('Write', { file_path: path, content: 'x' })]).toEqual([path, undefined])
   // A session Assay did not start is not guarded.
   expect(await hook('write', { tool_name: 'Write', tool_input: { file_path: `${root}/analyses/other/x` }, cwd: root }, { PATH: process.env.PATH })).toBeUndefined()
+})
+
+test('the other-analysis guard compares real paths, ignoring case: symlinks, Analyses/, trailing slash and .. forms', async () => {
+  const { dir, root, analysis, env } = await scratch()
+  await mkdir(join(root, 'analyses/other'), { recursive: true })
+  await symlink(root, join(dir, 'link'))
+  await symlink(join(root, 'analyses/other'), join(root, 'analyses/panel/to-other'))
+  const write = (path: string, over: Record<string, string> = {}) =>
+    hook('write', { hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: path, content: 'x' }, cwd: root }, { ...env, ...over })
+  const denied = async (path: string, over?: Record<string, string>) => [path, (await write(path, over))?.permissionDecision]
+  // Through a symlink to the root, with the root named by its real path or by the link.
+  expect(await denied(`${dir}/link/analyses/other/new.py`)).toEqual([`${dir}/link/analyses/other/new.py`, 'deny'])
+  expect(await denied(`${root}/analyses/other/new.py`, { ASSAY_ROOT: `${dir}/link` })).toEqual([`${root}/analyses/other/new.py`, 'deny'])
+  // A symlink inside the open analysis that leads to another one.
+  expect(await denied(`${analysis}/to-other/new.py`)).toEqual([`${analysis}/to-other/new.py`, 'deny'])
+  // Case, as on macOS.
+  expect(await denied(`${root}/Analyses/other/x`)).toEqual([`${root}/Analyses/other/x`, 'deny'])
+  // The open analysis named with a trailing slash, with .., or in another case is still the open one.
+  for (const open of [`${analysis}/`, `${root}/analyses/../analyses/panel`, `${root}/ANALYSES/PANEL`]) {
+    expect(await write(`${analysis}/lib/x.py`, { ASSAY_ANALYSIS: open })).toBeUndefined()
+    expect((await write(`${root}/analyses/other/x.py`, { ASSAY_ANALYSIS: open }))?.permissionDecision).toBe('deny')
+  }
 })
 
 test('outside an Assay session a prompt carries no rule', async () => {

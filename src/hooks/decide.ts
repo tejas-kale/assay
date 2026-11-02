@@ -1,10 +1,11 @@
 // The hooks' decisions as plain functions of their input and environment, so tests can call them directly.
+import { realpathSync } from 'node:fs'
 import { access, readFile, rename, rm } from 'node:fs/promises'
-import { join, relative } from 'node:path'
+import { basename, dirname, join, relative } from 'node:path'
 
 import { bashRunsPython, BASH_PYTHON_DENY } from '../core/bashGuard.ts'
 import { parseAnalysisFile } from '../core/analyses.ts'
-import { isGuarded, otherAnalysis, TRUST_TAB } from '../core/calculations.ts'
+import { isGuarded, normalPath, otherAnalysis, TRUST_TAB } from '../core/calculations.ts'
 import type { CalculationList } from '../core/calculations.ts'
 import { promptContext, runNotice, VENV_ASSAY } from '../core/rules.ts'
 import type { OpenAnalysis, UserRun } from '../core/rules.ts'
@@ -12,6 +13,22 @@ import { deny, addContext, field, toolInput } from './io.ts'
 import type { Proc } from '../server/proc.ts'
 
 type Env = Record<string, string | undefined>
+
+/** A path with symlinks resolved as far as it exists: the deepest existing ancestor is resolved, the rest appended. */
+function realPath(path: string, base: string): string {
+  let at = normalPath(path, base)
+  const rest: string[] = []
+  for (;;) {
+    try {
+      return join(realpathSync.native(at), ...rest)
+    } catch {
+      const parent = dirname(at)
+      if (parent === at) return join(at, ...rest)
+      rest.unshift(basename(at))
+      at = parent
+    }
+  }
+}
 
 /** PreToolUse on Bash: Python goes through the python tool, in the kernel the user sees. Only in an Assay session. */
 export function bashDecision(input: Record<string, unknown>, env: Env) {
@@ -34,7 +51,7 @@ export async function writeDecision(input: Record<string, unknown>, env: Env) {
   const base = field(input, 'cwd') || env.ASSAY_ANALYSIS
   if (!path) return undefined
   const root = home.replace(/\/+$/, '')
-  const other = otherAnalysis(path, root, env.ASSAY_ANALYSIS.replace(/\/+$/, ''), base)
+  const other = otherAnalysis(realPath(path, base), realPath(root, '/'), realPath(env.ASSAY_ANALYSIS, '/'), '/')
   if (other) {
     const open = await openAnalysis(env.ASSAY_ANALYSIS, root)
     return deny(`${other} is not the open analysis. The open analysis is "${open.title}" (${open.folder}/): write only there.`)

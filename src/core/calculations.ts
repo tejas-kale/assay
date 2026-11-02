@@ -79,13 +79,16 @@ export function isGuarded(path: string, home: string, base: string): boolean {
   return [DICTIONARIES, TRUSTED].some(folder => full === `${home}/${folder}` || full.startsWith(`${home}/${folder}/`))
 }
 
-/** The `analyses/<slug>` folder `path` is in when it is another analysis than the open one; undefined otherwise. */
+/**
+ * The `analyses/<slug>` folder `path` is in when it is another analysis than the open one; undefined otherwise.
+ * Compared ignoring case (macOS). Callers pass real paths, so a symlink cannot hide the folder.
+ */
 export function otherAnalysis(path: string, home: string, analysis: string, base: string): string | undefined {
   const full = normalPath(path, base)
   const prefix = `${home}/analyses/`
-  if (!full.startsWith(prefix)) return undefined
-  const folder = `${prefix}${full.slice(prefix.length).split('/')[0]}`
-  return folder === analysis ? undefined : folder.slice(home.length + 1)
+  if (!full.toLowerCase().startsWith(prefix.toLowerCase())) return undefined
+  const slug = full.slice(prefix.length).split('/')[0] ?? ''
+  return `${prefix}${slug}`.toLowerCase() === analysis.toLowerCase() ? undefined : `analyses/${slug}`
 }
 
 // ---------------------------------------------------------------------------
