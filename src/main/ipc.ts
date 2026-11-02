@@ -11,10 +11,10 @@ import { citedLabel } from '../core/runs.ts'
 import { addThread, closeOpen, deleteClosed, deleteOpen, editOpen, moveOpen } from '../core/threads.ts'
 import type { ClosedThread } from '../core/threads.ts'
 import { CHANNELS } from '../shared/ipc.ts'
-import type { EditResult, NoteFileResult, OpenResult, PlotResult, RequestResult, SetRootResult, SettingsView } from '../shared/ipc.ts'
+import type { EditResult, NoteFileCreateResult, NoteFileResult, OpenResult, PlotResult, RequestResult, SetRootResult, SettingsView } from '../shared/ipc.ts'
 import { analysisRoot, chooseRootPath, saveRoot } from './settings.ts'
 import { listFiles, openFile } from './browse.ts'
-import { NOTES, THREADS, editFile, fsPort, loadState, readNoteFile, readPlot, readRun, readRuns, writeRequest } from './files.ts'
+import { NOTES, THREADS, createNoteFile, deleteNoteFile, editFile, fsPort, loadState, readNoteFile, readNoteFileByName, saveNoteFile, readPlot, readRun, readRuns, writeRequest } from './files.ts'
 import { attachAnalysis, broadcast, contextFor, createWindow, pushState, requestClose, startPty } from './windows.ts'
 import type { WindowCtx } from './windows.ts'
 
@@ -183,6 +183,28 @@ export function registerIpc() {
   handle(CHANNELS.noteFileRead, (ctx, path): Promise<NoteFileResult> | NoteFileResult => {
     if (!ctx.analysis || typeof path !== 'string') return { ok: false, message: 'Invalid path' }
     return readNoteFile(ctx.analysis.path, path)
+  })
+  handle(CHANNELS.noteFilesRead, (ctx, name): Promise<NoteFileResult> | NoteFileResult => {
+    if (!ctx.analysis || typeof name !== 'string' || name.length > 255) return { ok: false, message: 'Invalid name' }
+    return readNoteFileByName(ctx.analysis.path, name)
+  })
+  handle(CHANNELS.noteFilesCreate, async (ctx, title): Promise<NoteFileCreateResult> => {
+    if (!ctx.analysis || !isText(title)) return { ok: false, message: 'Invalid title' }
+    const result = await createNoteFile(ctx.analysis.path, title)
+    await pushState(ctx)
+    return result
+  })
+  handle(CHANNELS.noteFilesSave, async (ctx, name, expected, text): Promise<EditResult> => {
+    if (!ctx.analysis || typeof name !== 'string' || typeof expected !== 'string' || typeof text !== 'string') return invalid('Invalid input')
+    const result = await saveNoteFile(ctx.analysis.path, name, expected, text)
+    await pushState(ctx)
+    return result
+  })
+  handle(CHANNELS.noteFilesDelete, async (ctx, name, expected): Promise<EditResult> => {
+    if (!ctx.analysis || typeof name !== 'string' || typeof expected !== 'string') return invalid('Invalid input')
+    const result = await deleteNoteFile(ctx.analysis.path, name, expected)
+    await pushState(ctx)
+    return result
   })
 
   handle(CHANNELS.windowNew, () => {

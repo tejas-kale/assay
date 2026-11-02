@@ -9,12 +9,13 @@ import type { Analysis } from '../core/analyses.ts'
 import type { CommandId } from '../core/keymap.ts'
 import type { Fact } from '../core/facts.ts'
 import type { FileEntry } from '../core/files.ts'
+import type { NoteFile } from '../core/noteFiles.ts'
 import type { CloseState } from '../core/session.ts'
 import type { Reply, RunRequest } from '../core/requests.ts'
 import type { Engine, KernelState, Run, RunResult, RunStatus, Table } from '../core/runs.ts'
 import type { ClosedThread, Threads } from '../core/threads.ts'
 
-export type { Analysis, ClosedThread, CloseState, CommandId, Engine, Fact, FileEntry, KernelState, Reply, Run, RunRequest, RunResult, RunStatus, Table, Threads }
+export type { Analysis, ClosedThread, CloseState, CommandId, Engine, Fact, FileEntry, KernelState, NoteFile, Reply, Run, RunRequest, RunResult, RunStatus, Table, Threads }
 
 /** Call to stop listening. */
 export type Unsubscribe = () => void
@@ -35,6 +36,8 @@ export type AnalysisState = {
   runs: Run[]
   /** Which run is running and which failed, from the mod. */
   runStatus: RunStatus
+  /** The note files in `notes/`, in number order. */
+  noteFiles: NoteFile[]
 }
 
 /**
@@ -64,6 +67,9 @@ export type OpenFileResult =
   | { ok: false; message: string }
 
 export type NoteFileResult = { ok: true; text: string } | { ok: false; message: string }
+
+/** `name` is the new file's name inside `notes/`. */
+export type NoteFileCreateResult = { ok: true; name: string } | { ok: false; message: string }
 
 export type SettingsView = { root: string | undefined }
 export type SetRootResult = { ok: true; root: string } | { ok: false; message: string }
@@ -143,6 +149,16 @@ export type AppApi = {
   /** Reads a linked note file, on request. `path` is `Fact.file.path`; main resolves it against the analysis folder. */
   readNoteFile(path: string): Promise<NoteFileResult>
 
+  /** Note files in `notes/`, by `NoteFile.name`. Main re-sends the state after create, save and delete. */
+  noteFiles: {
+    read(name: string): Promise<NoteFileResult>
+    /** Number and slug are derived from the title; a slug already used gets -2, -3. Never overwrites. */
+    create(title: string): Promise<NoteFileCreateResult>
+    /** Writes `text` if the file still holds `expectedText`, else `stale` (message "Changed on disk, reloaded"). */
+    save(name: string, expectedText: string, text: string): Promise<EditResult>
+    delete(name: string, expectedText: string): Promise<EditResult>
+  }
+
   /**
    * A shortcut claimed in main's before-input-event (see core/keymap.ts). Main handles
    * `window.new` and `window.close` itself and never sends them here; the palette calls
@@ -193,6 +209,10 @@ export const CHANNELS = {
   threadsDeleteClosed: 'threads:deleteClosed',
   threadsMoveOpen: 'threads:moveOpen',
   noteFileRead: 'noteFile:read',
+  noteFilesRead: 'noteFiles:read',
+  noteFilesCreate: 'noteFiles:create',
+  noteFilesSave: 'noteFiles:save',
+  noteFilesDelete: 'noteFiles:delete',
   runRead: 'run:read',
   plotRead: 'plot:read',
   runRequest: 'run:request',

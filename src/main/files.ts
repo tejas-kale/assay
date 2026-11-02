@@ -12,9 +12,11 @@ import { newRequestId, parseReply, requestText } from '../core/requests.ts'
 import { parseCsv, parseRunHeader, parseRunResult, parseRunStatus, parseRuns } from '../core/runs.ts'
 import type { Reply } from '../core/requests.ts'
 import type { ResultStatus, Run, RunHeader } from '../core/runs.ts'
+import { nextNoteNumber, noteFileName, parseNoteFile, parseNoteFileName, slugify } from '../core/noteFiles.ts'
+import type { NoteFile } from '../core/noteFiles.ts'
 import { parseThreads } from '../core/threads.ts'
 import type { WatchPort } from '../core/watch.ts'
-import type { AnalysisState, EditResult, NoteFileResult, PlotResult, RequestResult, RunRequest, RunView } from '../shared/ipc.ts'
+import type { AnalysisState, EditResult, NoteFileCreateResult, NoteFileResult, PlotResult, RequestResult, RunRequest, RunView } from '../shared/ipc.ts'
 
 export const NOTES = 'notes.md'
 export const THREADS = 'threads.md'
@@ -85,11 +87,12 @@ async function writeAtomic(path: string, text: string): Promise<void> {
 }
 
 export async function loadState(analysis: { name: string; path: string }): Promise<AnalysisState> {
-  const [notes, threads, queries, status] = await Promise.all([
+  const [notes, threads, queries, status, noteFiles] = await Promise.all([
     readText(join(analysis.path, NOTES)),
     readText(join(analysis.path, THREADS)),
     readQueryNames(analysis.path),
     readText(join(analysis.path, RUN_STATUS)).catch(() => ''),
+    readNoteFiles(analysis.path),
   ])
   return {
     analysis,
@@ -97,6 +100,7 @@ export async function loadState(analysis: { name: string; path: string }): Promi
     threads: parseThreads(threads),
     runs: await withResults(analysis.path, await withHeaders(analysis.path, parseRuns(queries))),
     runStatus: parseRunStatus(status),
+    noteFiles,
   }
 }
 
@@ -347,4 +351,116 @@ export async function takeReplies(folder: string): Promise<{ replies: Reply[]; w
     }
   }
   return { replies, waiting }
+}
+
+export const NOTE_FILES = 'notes'
+
+/** File names in `notes/` that are note files, in number order. */
+async function noteFileNames(folder: string): Promise<string[]> {
+  try {
+    return (await readdir(join(folder, NOTE_FILES)))
+      .filter(name => parseNoteFileName(name))
+      .sort((a, b) => (parseNoteFileName(a)?.number ?? 0) - (parseNoteFileName(b)?.number ?? 0) || a.localeCompare(b))
+  } catch {
+    return []
+  }
+}
+
+// A parsed note file is kept by path until its mtime or size changes.
+const parsedNotes = new Map<string, { signature: string; note: NoteFile }>()
+
+/** Every note file in `notes/`, parsed, in number order. A file that vanishes or cannot be read is left out. */
+export async function readNoteFiles(folder: string): Promise<NoteFile[]> {
+  const found = await Promise.all(
+    (await noteFileNames(folder)).map(async name => {
+      const path = join(folder, NOTE_FILES, name)
+      try {
+        const info = await stat(path)
+        const signature = `${info.mtimeMs}:${info.size}`
+        const cached = parsedNotes.get(path)
+        if (cached?.signature === signature) return cached.note
+        const note = parseNoteFile(name, (await readHead(path, MAX_NOTE_FILE_BYTES)).text)
+        parsedNotes.set(path, { signature, note })
+        return note
+      } catch {
+        parsedNotes.delete(path)
+        return undefined
+      }
+    }),
+  )
+  return found.filter((n): n is NoteFile => n !== undefined)
+}
+
+/** A change signature of `notes/` (names, sizes, mtimes), for the poll: editing a file in place does not touch the folder. */
+export async function noteFilesSignature(folder: string): Promise<string> {
+  const parts = await Promise.all(
+    (await noteFileNames(folder)).map(async name => {
+      const info = await stat(join(folder, NOTE_FILES, name)).catch(() => undefined)
+      return `${name}:${info?.mtimeMs}:${info?.size}`
+    }),
+  )
+  return parts.join('|')
+}
+
+const invalidEdit = (message: string): EditResult => ({ ok: false, reason: 'invalid', message })
+const noteFilePath = (name: string) => (parseNoteFileName(name) ? `${NOTE_FILES}/${name}` : undefined)
+
+/** Reads one note file by its name in `notes/`. */
+export async function readNoteFileByName(folder: string, name: string): Promise<NoteFileResult> {
+  const path = noteFilePath(name)
+  return path ? readNoteFile(folder, path) : { ok: false, message: 'Not a note file' }
+}
+
+/** Creates `notes/NNN-<slug>.md` with a title line. The number and slug are derived; the file is never overwritten. */
+export async function createNoteFile(folder: string, title: string): Promise<NoteFileCreateResult> {
+  const clean = title.replace(/\s+/g, ' ').trim()
+  if (clean === '') return { ok: false, message: 'A note needs a title' }
+  const dir = join(folder, NOTE_FILES)
+  try {
+    await mkdir(dir, { recursive: true })
+    const base = slugify(clean)
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const names = await noteFileNames(folder)
+      const slugs = new Set(names.map(n => parseNoteFileName(n)?.slug))
+      let slug = base
+      for (let k = 2; slugs.has(slug); k++) slug = `${base}-${k}`
+      const name = noteFileName(nextNoteNumber(names), slug)
+      try {
+        await writeFile(join(dir, name), `# ${clean}\n\n`, { encoding: 'utf8', flag: 'wx' })
+        return { ok: true, name }
+      } catch (err) {
+        // Another writer took the number: look again.
+        if (!(err instanceof Error && 'code' in err && err.code === 'EEXIST')) throw err
+      }
+    }
+    return { ok: false, message: 'Could not find a free note number' }
+  } catch (err) {
+    return { ok: false, message: `Could not create: ${messageOf(err)}` }
+  }
+}
+
+/** Saves a note file's text, if the file still holds `expectedText`. */
+export async function saveNoteFile(folder: string, name: string, expectedText: string, text: string): Promise<EditResult> {
+  const path = noteFilePath(name)
+  if (!path || !resolveInside(folder, path)) return invalidEdit('Not a note file')
+  if (text.length > MAX_NOTE_FILE_BYTES) return invalidEdit('The note is too large to save')
+  return editFile(folder, path, current => {
+    if (current !== expectedText) throw new StaleEdit()
+    return text
+  })
+}
+
+/** Deletes a note file, if it still holds `expectedText`. */
+export async function deleteNoteFile(folder: string, name: string, expectedText: string): Promise<EditResult> {
+  const path = noteFilePath(name)
+  const full = path && resolveInside(folder, path)
+  if (!full) return invalidEdit('Not a note file')
+  try {
+    if ((await readFile(full, 'utf8')) !== expectedText) return { ok: false, reason: 'stale', message: 'Changed on disk, reloaded' }
+    await unlink(full)
+    return { ok: true }
+  } catch (err) {
+    if (isMissing(err)) return { ok: false, reason: 'stale', message: 'Changed on disk, reloaded' }
+    return invalidEdit(`Could not delete: ${messageOf(err)}`)
+  }
 }

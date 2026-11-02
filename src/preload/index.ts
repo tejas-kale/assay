@@ -48,6 +48,12 @@ const api: AppApi = {
     moveOpen: (index, expected, delta) => invoke(CHANNELS.threadsMoveOpen, index, expected, delta),
   },
   readNoteFile: path => invoke(CHANNELS.noteFileRead, path),
+  noteFiles: {
+    read: name => invoke(CHANNELS.noteFilesRead, name),
+    create: title => invoke(CHANNELS.noteFilesCreate, title),
+    save: (name, expectedText, text) => invoke(CHANNELS.noteFilesSave, name, expectedText, text),
+    delete: (name, expectedText) => invoke(CHANNELS.noteFilesDelete, name, expectedText),
+  },
   readRun: (number, options) => invoke(CHANNELS.runRead, number, options),
   readPlot: (number, k) => invoke(CHANNELS.plotRead, number, k),
   runs: {
