@@ -10,6 +10,11 @@ export type Run = {
   code?: string
   data?: string
   language?: 'sql' | 'python'
+  /** From the code file's header; main fills these, `parseRuns` (names only) does not. */
+  author?: 'user' | 'claude'
+  from?: number
+  trusted?: string
+  engine?: 'databricks' | 'postgres'
 }
 
 const NAME = /^(\d+)_(.+)\.(sql|py|csv)$/
@@ -106,4 +111,41 @@ export function parseRunStatus(text: string): RunStatus {
     }
   }
   return status
+}
+
+export type RunHeader = { author: 'user' | 'claude'; from?: number; trusted?: string; engine: 'databricks' | 'postgres' }
+
+const HEADER_LINE = /^-- (?:author: |from: |trusted: |commit: |args: |postgres\s*$)/
+
+/** The mod's header lines, read from the leading `-- ` comments only. A run with no `-- author:` line is Claude's. */
+export function parseRunHeader(text: string): RunHeader {
+  const header: RunHeader = { author: 'claude', engine: 'databricks' }
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('--')) break
+    const value = (key: string) => (line.startsWith(`-- ${key}: `) ? line.slice(key.length + 4).trim() : undefined)
+    if (value('author') === 'user') header.author = 'user'
+    const from = value('from')
+    if (from !== undefined && /^\d+$/.test(from)) header.from = Number(from)
+    const trusted = value('trusted')
+    if (trusted) header.trusted = trusted.split(/\s/)[0] ?? trusted
+    if (/^-- postgres\s*$/.test(line)) header.engine = 'postgres'
+  }
+  return header
+}
+
+/** The SQL with the leading header lines removed, so a re-run or an edit never copies them. */
+export function sqlBody(text: string): string {
+  const lines = text.split('\n')
+  let i = 0
+  while (i < lines.length && HEADER_LINE.test(lines[i] ?? '')) i++
+  return lines.slice(i).join('\n')
+}
+
+export type RunLabel = 'trusted' | 'queried' | 'unverified' | 'running'
+
+/** The trust label, as the mod's `deriveLabel`: no result file is unverified, a trusted header is trusted. */
+export function runLabel(run: Run, header: RunHeader, status: RunStatus): RunLabel {
+  if (status.running?.number === run.number) return 'running'
+  if (!run.data) return 'unverified'
+  return header.trusted ? 'trusted' : 'queried'
 }

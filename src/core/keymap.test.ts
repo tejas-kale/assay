@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { COMMANDS, commandForInput, shortcutLabel } from './keymap.ts'
+import { COMMANDS, PANE_KEYS, commandForInput, shortcutLabel } from './keymap.ts'
 
 const input = (over: Partial<Parameters<typeof commandForInput>[0]>) => ({
   key: '',
@@ -21,6 +21,7 @@ test('every handoff shortcut maps to its command, by code', () => {
     [{ code: 'KeyP', meta: true }, 'palette.open'],
     [{ code: 'Comma', meta: true }, 'settings.open'],
     [{ code: 'Enter', meta: true }, 'code.run'],
+    [{ code: 'KeyE', meta: true }, 'code.edit'],
     [{ code: 'KeyN', meta: true }, 'window.new'],
     [{ code: 'KeyW', meta: true }, 'window.close'],
     [{ code: 'KeyD', meta: true, shift: true }, 'tab.data'],
@@ -62,7 +63,7 @@ test('COMMANDS lists every action once, with titles', () => {
   const ids = COMMANDS.map(c => c.id)
   assert.equal(new Set(ids).size, ids.length)
   for (const id of [
-    'focus.terminal', 'focus.notes', 'focus.data', 'palette.open', 'code.run', 'window.new',
+    'focus.terminal', 'focus.notes', 'focus.data', 'palette.open', 'code.run', 'code.edit', 'window.new',
     'tab.data', 'tab.plots', 'tab.code', 'tab.history', 'tab.notes', 'tab.threads', 'tab.files',
     'window.close', 'settings.open', 'pin.toggle', 'kernel.restart', 'replay.open', 'shortcuts.show',
   ]) assert.ok(ids.includes(id as never), id)
@@ -74,9 +75,9 @@ test('no two commands share an accelerator', () => {
   assert.equal(new Set(keys).size, keys.length)
 })
 
-test('pin, restart and replay are palette-only and say which slice brings them', () => {
+test('restart and replay are palette-only and say which slice brings them; pin works now', () => {
   const later = COMMANDS.filter(c => c.unavailable !== undefined)
-  assert.deepEqual(later.map(c => c.id), ['pin.toggle', 'kernel.restart', 'replay.open'])
+  assert.deepEqual(later.map(c => c.id), ['kernel.restart', 'replay.open'])
   for (const c of later) assert.match(c.unavailable ?? '', /not available until slice \d/)
   assert.equal(later.every(c => c.accelerator === undefined), true)
 })
@@ -90,4 +91,17 @@ test('shortcut labels use the Mac symbols', () => {
   assert.equal(shortcutLabel('tab.threads'), '⇧⌘T')
   assert.equal(shortcutLabel('tab.notes'), '⇧⌘N')
   assert.equal(shortcutLabel('shortcuts.show'), '')
+})
+
+test('Cmd+E edits the current code', () => {
+  assert.equal(shortcutLabel('code.edit'), '⌘E')
+  assert.equal(COMMANDS.find(c => c.id === 'code.edit')?.title, 'Edit current code')
+})
+
+test('the shortcuts overlay lists pin in Data, Code and History, edit in Code, and the edit-mode keys', () => {
+  const keys = (pane: string) => PANE_KEYS.find(p => p.pane === pane)?.keys.map(([key]) => key) ?? []
+  for (const pane of ['Data', 'Code', 'History']) assert.ok(keys(pane).includes('p'), pane)
+  assert.ok(keys('Code').includes('i'))
+  assert.ok(keys('Code editing').includes('Esc'))
+  assert.ok(keys('Code editing').includes('⌘↩'))
 })

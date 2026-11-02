@@ -4,6 +4,7 @@ export type CommandId =
   | 'focus.data'
   | 'palette.open'
   | 'code.run'
+  | 'code.edit'
   | 'window.new'
   | 'tab.data'
   | 'tab.plots'
@@ -36,6 +37,7 @@ export const COMMANDS: readonly Command[] = [
   { id: 'focus.data', title: 'Focus data pane', accelerator: { code: 'Digit3' } },
   { id: 'palette.open', title: 'Command palette', accelerator: { code: 'KeyP' } },
   { id: 'code.run', title: 'Run current code', accelerator: { code: 'Enter' } },
+  { id: 'code.edit', title: 'Edit current code', accelerator: { code: 'KeyE' } },
   { id: 'window.new', title: 'New window', accelerator: { code: 'KeyN' } },
   { id: 'window.close', title: 'Close window', accelerator: { code: 'KeyW' } },
   { id: 'settings.open', title: 'Settings', accelerator: { code: 'Comma' } },
@@ -47,7 +49,7 @@ export const COMMANDS: readonly Command[] = [
   { id: 'tab.notes', title: 'Show Notes tab', accelerator: { code: 'KeyN', shift: true } },
   { id: 'tab.files', title: 'Show Files tab', accelerator: { code: 'KeyF', shift: true } },
   { id: 'shortcuts.show', title: 'Show Shortcuts' },
-  { id: 'pin.toggle', title: 'Pin current run', unavailable: 'Pin is not available until slice 2' },
+  { id: 'pin.toggle', title: 'Pin current run' },
   { id: 'kernel.restart', title: 'Restart kernel', unavailable: 'Restart kernel is not available until slice 3' },
   { id: 'replay.open', title: 'Replay', unavailable: 'Replay is not available until slice 3' },
 ]
@@ -85,10 +87,17 @@ export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
   },
   {
     pane: 'Data',
-    keys: [['h j k l', 'move cell'], ['J / K', 'page'], ['g / G  0 / $', 'first / last'], ['Enter', 'whole row'], ['y', 'copy cell'], ['c', 'its Code']],
+    keys: [['h j k l', 'move cell'], ['J / K', 'page'], ['g / G  0 / $', 'first / last'], ['Enter', 'whole row'], ['y', 'copy cell'], ['c', 'its Code'], ['p', 'pin / follow latest']],
   },
-  { pane: 'Code', keys: [['h j k l  w b', 'move'], ['g / G', 'top / bottom'], ['o', 'original / formatted'], ['d', 'its Data']] },
-  { pane: 'History', keys: [['j / k', 'move'], ['Enter', 'show that run'], ['newest run', 'follow Claude again']] },
+  {
+    pane: 'Code',
+    keys: [['h j k l  w b', 'move'], ['g / G', 'top / bottom'], ['o', 'original / formatted'], ['d', 'its Data'], ['i', 'edit'], ['⌘E', 'edit from anywhere'], ['p', 'pin / follow latest'], ['⌘↩', 're-run as a new run']],
+  },
+  { pane: 'Code editing', keys: [['Esc', 'leave (in Vim normal mode)'], ['⌘↩', 'run as a new run']] },
+  {
+    pane: 'History',
+    keys: [['j / k', 'move'], ['Enter', 'show that run'], ['p', 'pin / follow latest'], ['newest run', 'follow Claude again']],
+  },
   {
     pane: 'Files',
     keys: [['j / k', 'move'], ['/', 'search'], ['Enter', 'open: text in Neovim, image preview'], ['r', 'refresh'], ['⌘2 again', 'switch to Threads']],
