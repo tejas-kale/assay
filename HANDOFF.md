@@ -290,6 +290,11 @@ Decide these while building, and record each here:
 - **Molten notebook (user, 2026-11-02):** marimo was already replaced by a Molten `notebook.md` (config `dfa8910`).
   "Remove marimo" in slice 3 now means: the mod and Assay stop knowing about `notebook.md` (no `run_notebook`, rules,
   Notebook tab, template or Stop hook). Molten stays as the user's private tool; `analysis_notebook.py` is kept.
+- **venv-assay (user, 2026-11-02):** one Linux venv owned by the mod, in the Podman volume `venv-assay` at
+  `/opt/venv-assay`, built from the config repo's `notes-src/pyproject.toml` by `claude-pkg venv-assay`, with the
+  helpers installed editable from the mod's mount. It runs the mod's tools in every analysis in every repo; a project
+  `.venv` with `ipykernel` overrides the kernel only. The runner is run from the mod's mount, not copied into
+  notes-src. See `docs/slice-3b.md`.
 
 ## Not in v1
 
