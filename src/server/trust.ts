@@ -199,6 +199,8 @@ export class TrustReviews {
       isTimedOut = true
       child.kill()
     }, QUERY_TIMEOUT_MS)
+    // The timer alone never keeps the server alive.
+    timer.unref?.()
     child.onOutput((stream, text) => {
       if (isDone) return
       if (stream === 'stderr') {
