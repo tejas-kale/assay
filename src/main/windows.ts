@@ -22,7 +22,7 @@ export type WindowCtx = {
   win: BrowserWindow
   /** webContents id, kept because `win.webContents` throws once destroyed. */
   id: number
-  analysis: { name: string; path: string } | undefined
+  analysis: { name: string; title: string; path: string } | undefined
   session: PtySession | undefined
   stopPoll: (() => void) | undefined
   /** The user (or Cmd+Q) asked to close while the session ran: close the window when it exits. */
@@ -223,7 +223,7 @@ export async function pushState(ctx: WindowCtx) {
 }
 
 /** Makes this window the workspace for `analysis`, or focuses the window that already holds it. */
-export function attachAnalysis(ctx: WindowCtx, analysis: { name: string; path: string }): OpenResult {
+export function attachAnalysis(ctx: WindowCtx, analysis: { name: string; title: string; path: string }): OpenResult {
   const other = allContexts().find(c => c !== ctx && c.analysis?.path === analysis.path)
   if (other) {
     if (other.win.isMinimized()) other.win.restore()
@@ -235,7 +235,7 @@ export function attachAnalysis(ctx: WindowCtx, analysis: { name: string; path: s
     return { ok: false, message: 'This window already holds an analysis. Use Cmd+N for another.' }
   }
   ctx.analysis = analysis
-  ctx.win.setTitle(`${analysis.name} — Assay`)
+  ctx.win.setTitle(`${analysis.title} — Assay`)
   ctx.stopPoll = pollFiles(
     watchPort,
     // The queries folder's mtime changes when a run's file is added or renamed into place.
@@ -267,7 +267,7 @@ export function attachAnalysis(ctx: WindowCtx, analysis: { name: string; path: s
 export async function startPty(ctx: WindowCtx, cols: number, rows: number) {
   if (!ctx.analysis || ctx.session || ctx.isStarting) return
   ctx.isStarting = true
-  // The Settings folder is the shared one (dictionaries/, trusted/); an analysis sits two below it.
+  // The Settings folder is the root: Claude starts there, and an analysis sits two below it.
   const root = (await analysisRoot().catch(() => undefined)) ?? dirname(dirname(ctx.analysis.path))
   ctx.isStarting = false
   if (!ctx.analysis || ctx.session) return

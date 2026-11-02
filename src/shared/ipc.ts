@@ -31,7 +31,7 @@ export type EditResult =
 /** What the Notes and Threads tabs show. Re-derived by main from the files after each poll hit or edit. */
 export type AnalysisState = {
   /** The analysis this window holds. */
-  analysis: { name: string; path: string }
+  analysis: { name: string; title: string; path: string }
   facts: Fact[]
   threads: Threads
   /** The runs in `queries/`, oldest first. */
@@ -91,8 +91,10 @@ export type AppApi = {
   analyses: {
     /** Newest first. Works in any window; call it on mount, then filter locally with fuzzyRank. */
     list(): Promise<Analysis[]>
-    /** Creates `analyses/<name>/.analysis` (invalid name -> ok false) and opens it. */
-    create(name: string): Promise<OpenResult>
+    /** Creates `analyses/<slug>/analysis.yaml` from a typed title (a title with no letters or digits -> ok false) and opens it. */
+    create(title: string): Promise<OpenResult>
+    /** Edits the open analysis's title; its folder stays. The workspace state follows. */
+    rename(title: string): Promise<{ ok: true } | { ok: false; message: string }>
     /** Opens by `Analysis.path`. */
     open(path: string): Promise<OpenResult>
   }
@@ -214,6 +216,7 @@ export const CHANNELS = {
   // renderer -> main, request/reply (ipcRenderer.invoke / ipcMain.handle)
   analysesList: 'analyses:list',
   analysesCreate: 'analyses:create',
+  analysesRename: 'analyses:rename',
   analysesOpen: 'analyses:open',
   ptyStart: 'pty:start',
   stateGet: 'state:get',

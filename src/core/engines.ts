@@ -1,5 +1,6 @@
 // Where a SQL run goes and how to read what comes back, ported from the analysis mod's hooks/model.ts: the target
-// in `.analysis`, the Databricks CLI's JSON and psql's CSV.
+// in `analysis.yaml`, the Databricks CLI's JSON and psql's CSV.
+import { parseAnalysisFile } from './analyses.ts'
 
 export type Table = { columns: string[]; rows: string[][] }
 export type Target = { profile: string; warehouse: string; pgDatabase?: string }
@@ -9,13 +10,12 @@ export const DEFAULT_TARGET: Target = { profile: 'Cint mkt', warehouse: '455a178
 /** A Postgres run's .sql starts with this line, so the file says where it ran. */
 export const POSTGRES_MARK = '-- postgres'
 
-/** `.analysis` may hold `profile: <name>`, `warehouse: <id>` and `pg_database: <name>` lines. */
+/** `analysis.yaml` may hold `profile`, `warehouse` and `pg_database`; the rest is the title and more. */
 export function readTarget(text: string): Target {
-  const value = (key: string) => new RegExp(`^\\s*${key}\\s*:\\s*(.+?)\\s*$`, 'mi').exec(text)?.[1]
-  const pgDatabase = value('pg_database')
+  const { profile, warehouse, pgDatabase } = parseAnalysisFile(text)
   return {
-    profile: value('profile') ?? DEFAULT_TARGET.profile,
-    warehouse: value('warehouse') ?? DEFAULT_TARGET.warehouse,
+    profile: profile ?? DEFAULT_TARGET.profile,
+    warehouse: warehouse ?? DEFAULT_TARGET.warehouse,
     ...(pgDatabase ? { pgDatabase } : {}),
   }
 }

@@ -8,7 +8,8 @@ test('spawnSpec runs the wrapper through the login shell from SHELL', () => {
   const spec = spawnSpec('/notes/analyses/a', { SHELL: '/opt/homebrew/bin/fish', PATH: '/usr/bin' }, '/notes')
   assert.equal(spec.file, '/opt/homebrew/bin/fish')
   assert.deepEqual(spec.args, ['-lic', 'exec "${ASSAY_CLAUDE_BIN:-claude}" --plugin-dir /opt/assay/plugin'])
-  assert.equal(spec.cwd, '/notes/analyses/a')
+  // Claude starts in the root; the open analysis is named in ASSAY_ANALYSIS.
+  assert.equal(spec.cwd, '/notes')
   assert.equal(spec.env.ASSAY_ANALYSIS, '/notes/analyses/a')
   assert.equal(spec.env.ASSAY_ROOT, '/notes')
 })

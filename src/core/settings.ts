@@ -27,14 +27,9 @@ export function normalizeRoot(input: string, home: string): RootResult {
   return { ok: true, path: rootFor(path.length > 1 ? path.replace(/\/+$/, '') : path) }
 }
 
-const PARENTS = ['analyses', 'investigations', 'explorations']
-
-/**
- * The folder holding `analyses/`, given a path the user picked. Picking `analyses/` itself or one
- * analysis inside it (or a migrated `investigations/` or `explorations/` one) means its root.
- */
+/** The folder holding `analyses/`, given a path the user picked. Picking `analyses/` itself or one analysis inside it means its root. */
 export function rootFor(path: string): string {
-  if (PARENTS.includes(basename(path))) return dirname(path)
-  if (PARENTS.includes(basename(dirname(path)))) return dirname(dirname(path))
+  if (basename(path) === 'analyses') return dirname(path)
+  if (basename(dirname(path)) === 'analyses') return dirname(dirname(path))
   return path
 }

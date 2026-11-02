@@ -1,86 +1,113 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { createAnalysis, listAnalyses, validName } from './analyses.ts'
+import { createAnalysis, listAnalyses, openAnalysis, parseAnalysisFile, renameAnalysis, setTitle, slugFor } from './analyses.ts'
 import type { FsPort } from './analyses.ts'
 
-/** An in-memory port: `dirs` maps a folder to its entries' mtimes; `files` holds file paths. */
-function fakePort(dirs: Record<string, number>, files: string[] = []) {
-  const written = new Map<string, string>()
-  const made: string[] = []
+/** An in-memory port: `dirs` maps a folder to its mtime; `files` maps a file path to its text. */
+function fakePort(dirs: Record<string, number>, files: Record<string, string> = {}) {
   const port: FsPort = {
     readdir: async path => {
       const prefix = `${path}/`
-      const names = [...Object.keys(dirs), ...files, ...written.keys()]
-        .filter(each => each.startsWith(prefix))
-        .map(each => each.slice(prefix.length).split('/')[0] ?? '')
+      const names = [...Object.keys(dirs), ...Object.keys(files)].filter(each => each.startsWith(prefix)).map(each => each.slice(prefix.length).split('/')[0] ?? '')
       if (names.length === 0 && !(path in dirs)) throw new Error('ENOENT')
       return [...new Set(names)]
     },
     stat: async path => {
       if (path in dirs) return { isDirectory: true, mtimeMs: dirs[path] ?? 0 }
-      if (files.includes(path) || written.has(path)) return { isDirectory: false, mtimeMs: 1 }
+      if (path in files) return { isDirectory: false, mtimeMs: 1 }
       return undefined
     },
-    exists: async path => path in dirs || files.includes(path) || written.has(path),
+    exists: async path => path in dirs || path in files,
     mkdir: async path => {
-      made.push(path)
       dirs[path] = 1
     },
+    readFile: async path => {
+      const text = files[path]
+      if (text === undefined) throw new Error('ENOENT')
+      return text
+    },
     writeFile: async (path, text) => {
-      written.set(path, text)
+      files[path] = text
     },
   }
-  return { port, written, made }
+  return { port, files, dirs }
 }
 
-test('validName follows the mod: letters, digits, dot, underscore, dash; not starting with punctuation', () => {
-  for (const ok of ['a', 'Survey-2', 'x.y_z', '9lives']) assert.equal(validName(ok), true, ok)
-  for (const bad of ['', '.hidden', '-a', '_a', 'a b', 'a/b', '../x', 'é']) assert.equal(validName(bad), false, bad)
+test('analysis.yaml: typed title, created and target keys; unknown keys and comments are ignored by the reader', () => {
+  const text = '# mine\ntitle: Churn in Q3\ncreated: 2026-11-02\nprofile: Cint mkt          # optional\nwarehouse: "abc123"\npg_database: panel\nextra: 1\n'
+  assert.deepEqual(parseAnalysisFile(text), { title: 'Churn in Q3', created: '2026-11-02', profile: 'Cint mkt', warehouse: 'abc123', pgDatabase: 'panel' })
+  assert.deepEqual(parseAnalysisFile(''), {})
+  assert.equal(parseAnalysisFile("title: 'It''s: odd'\n").title, "It's: odd")
+  assert.equal(parseAnalysisFile('Title: Upper\n').title, 'Upper')
 })
 
-test('listAnalyses: analyses/ folders newest first, hidden and plain files skipped', async () => {
+test('a title edit rewrites the title line only: other keys, unknown keys and comments stay', () => {
+  const text = '# mine\ntitle: Old\ncreated: 2026-11-02\nnotes: [a, b] # kept\n'
+  assert.equal(setTitle(text, 'New: with colon'), '# mine\ntitle: "New: with colon"\ncreated: 2026-11-02\nnotes: [a, b] # kept\n')
+  assert.equal(setTitle('created: 2026-11-02\n', 'Fresh'), 'title: Fresh\ncreated: 2026-11-02\n')
+  // Round trip: what setTitle writes, parseAnalysisFile reads back.
+  for (const title of ['Plain', 'a: b', 'has # hash', '  padded ', 'say "hi"', 'true', '42', "it's"]) {
+    assert.equal(parseAnalysisFile(setTitle('title: x\n', title)).title, title.trim(), title)
+  }
+})
+
+test('slugFor: the note slug rule, numbered from -2 on a clash', () => {
+  assert.equal(slugFor('Churn in Q3', []), 'churn-in-q3')
+  assert.equal(slugFor('Churn in Q3', ['churn-in-q3']), 'churn-in-q3-2')
+  assert.equal(slugFor('Churn in Q3', ['churn-in-q3', 'churn-in-q3-2']), 'churn-in-q3-3')
+  assert.equal(slugFor('Churn in Q3', ['other']), 'churn-in-q3')
+})
+
+test('listAnalyses: analyses/ folders holding analysis.yaml, newest first, titled; others skipped', async () => {
   const { port } = fakePort(
-    { '/r/analyses': 5, '/r/analyses/old': 10, '/r/analyses/new': 30, '/r/analyses/.git': 99 },
-    ['/r/analyses/readme.md'],
+    { '/r/analyses': 5, '/r/analyses/old': 10, '/r/analyses/new': 30, '/r/analyses/bare': 99, '/r/analyses/.git': 99, '/r/investigations/x': 50 },
+    {
+      '/r/analyses/old/analysis.yaml': 'title: Older one\n',
+      '/r/analyses/new/analysis.yaml': 'title: Newer one\n',
+      '/r/analyses/readme.md': '',
+      '/r/investigations/x/analysis.yaml': 'title: Not here\n',
+    },
   )
-  const found = await listAnalyses(port, '/r')
-  assert.deepEqual(found, [
-    { name: 'new', path: '/r/analyses/new', modifiedMs: 30 },
-    { name: 'old', path: '/r/analyses/old', modifiedMs: 10 },
+  assert.deepEqual(await listAnalyses(port, '/r/'), [
+    { name: 'new', title: 'Newer one', path: '/r/analyses/new', modifiedMs: 30 },
+    { name: 'old', title: 'Older one', path: '/r/analyses/old', modifiedMs: 10 },
   ])
 })
 
-test('listAnalyses: migrated folders count only with a .analysis marker, and keep their parent in the name', async () => {
-  const { port } = fakePort(
-    { '/r/analyses/a': 10, '/r/investigations/marked': 40, '/r/investigations/bare': 50, '/r/explorations/e': 20 },
-    ['/r/investigations/marked/.analysis', '/r/explorations/e/.analysis'],
-  )
-  const found = await listAnalyses(port, '/r/')
-  assert.deepEqual(
-    found.map(each => each.name),
-    ['investigations/marked', 'explorations/e', 'a'],
-  )
-  assert.equal(found[0]?.path, '/r/investigations/marked')
-})
-
-test('listAnalyses: equal times sort by name; missing parents give an empty list', async () => {
-  const { port } = fakePort({ '/r/analyses/b': 5, '/r/analyses/a': 5 })
-  assert.deepEqual((await listAnalyses(port, '/r')).map(each => each.name), ['a', 'b'])
+test('listAnalyses: a file without a title shows its slug; equal times sort by name; no analyses/ gives an empty list', async () => {
+  const { port } = fakePort({ '/r/analyses/b': 5, '/r/analyses/a': 5 }, { '/r/analyses/a/analysis.yaml': '', '/r/analyses/b/analysis.yaml': 'title: B\n' })
+  assert.deepEqual((await listAnalyses(port, '/r')).map(each => [each.name, each.title]), [['a', 'a'], ['b', 'B']])
   assert.deepEqual(await listAnalyses(fakePort({}).port, '/nowhere'), [])
 })
 
-test('createAnalysis makes analyses/<name>/.analysis and nothing else, returning the folder', async () => {
-  const { port, written, made } = fakePort({})
-  assert.equal(await createAnalysis(port, '/r', 'fresh'), '/r/analyses/fresh')
-  assert.deepEqual(made, ['/r/analyses/fresh'])
-  assert.deepEqual([...written.keys()], ['/r/analyses/fresh/.analysis'])
-  assert.match(written.get('/r/analyses/fresh/.analysis') ?? '', /analysis mod/)
+test('createAnalysis derives the slug from the title, writes analysis.yaml, numbers a clash', async () => {
+  const { port, files } = fakePort({})
+  const first = await createAnalysis(port, '/r', 'Churn in Q3', '2026-11-02')
+  assert.deepEqual(first, { name: 'churn-in-q3', title: 'Churn in Q3', path: '/r/analyses/churn-in-q3' })
+  assert.equal(files['/r/analyses/churn-in-q3/analysis.yaml'], 'title: Churn in Q3\ncreated: 2026-11-02\n')
+  const second = await createAnalysis(port, '/r', 'Churn in Q3!', '2026-11-03')
+  assert.equal(second.name, 'churn-in-q3-2')
+  assert.equal(files['/r/analyses/churn-in-q3-2/analysis.yaml'], 'title: "Churn in Q3!"\ncreated: 2026-11-03\n')
+  assert.equal(files['/r/analyses/churn-in-q3/analysis.yaml'], 'title: Churn in Q3\ncreated: 2026-11-02\n')
 })
 
-test('createAnalysis never overwrites an existing marker, and refuses a bad name', async () => {
-  const { port, written } = fakePort({ '/r/analyses/old': 1 }, ['/r/analyses/old/.analysis'])
-  assert.equal(await createAnalysis(port, '/r', 'old'), '/r/analyses/old')
-  assert.equal(written.size, 0)
-  await assert.rejects(createAnalysis(port, '/r', 'a b'), /name/i)
+test('createAnalysis counts a folder without analysis.yaml as taken, and refuses a title with nothing to slug', async () => {
+  const { port } = fakePort({ '/r/analyses/old': 1 })
+  assert.equal((await createAnalysis(port, '/r', 'Old', '2026-11-02')).name, 'old-2')
+  await assert.rejects(createAnalysis(port, '/r', '   ', '2026-11-02'), /title/i)
+  await assert.rejects(createAnalysis(port, '/r', '!!!', '2026-11-02'), /title/i)
+})
+
+test('openAnalysis reads the title; a folder without analysis.yaml is refused, pointing at the migration', async () => {
+  const { port } = fakePort({ '/r/analyses/a': 1, '/r/analyses/b': 1 }, { '/r/analyses/a/analysis.yaml': 'title: A title\n', '/r/analyses/b/.analysis': '' })
+  assert.deepEqual(await openAnalysis(port, '/r/analyses/a'), { name: 'a', title: 'A title', path: '/r/analyses/a' })
+  await assert.rejects(openAnalysis(port, '/r/analyses/b'), /analysis\.yaml.*migrate:root/s)
+})
+
+test('renameAnalysis changes the title and never the folder', async () => {
+  const { port, files } = fakePort({ '/r/analyses/a': 1 }, { '/r/analyses/a/analysis.yaml': 'title: Old\nprofile: P\n' })
+  assert.deepEqual(await renameAnalysis(port, '/r/analyses/a', ' Better name '), { name: 'a', title: 'Better name', path: '/r/analyses/a' })
+  assert.equal(files['/r/analyses/a/analysis.yaml'], 'title: Better name\nprofile: P\n')
+  await assert.rejects(renameAnalysis(port, '/r/analyses/a', ' '), /title/i)
 })

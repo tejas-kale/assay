@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { validName } from '../../core/analyses.ts'
 import { formatAge } from '../../core/age.ts'
 import { fuzzyRank } from '../../core/fuzzy.ts'
 import type { Analysis, OpenResult } from '../../shared/ipc.ts'
@@ -23,11 +22,12 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
     inputRef.current?.focus()
   }, [focusToken, analyses])
 
-  const ranked = fuzzyRank(analyses ?? [], query, a => a.name)
+  const ranked = fuzzyRank(analyses ?? [], query, a => `${a.title} ${a.name}`)
   const name = query.trim()
-  const canCreate = analyses !== undefined && ranked.length === 0 && validName(name)
-  // Shift+Enter creates the typed name even when fuzzy matches exist, unless it is already an analysis.
-  const canForceCreate = analyses !== undefined && validName(name) && !analyses.some(a => a.name === name)
+  const isTitle = /[A-Za-z0-9]/.test(name)
+  const canCreate = analyses !== undefined && ranked.length === 0 && isTitle
+  // Shift+Enter creates the typed title even when fuzzy matches exist, unless an analysis already has it.
+  const canForceCreate = analyses !== undefined && isTitle && !analyses.some(a => a.title === name)
   const count = canCreate ? 1 : ranked.length
   const index = Math.max(0, Math.min(selected, count - 1))
 
@@ -57,7 +57,7 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
     } else if (canCreate) {
       create()
     } else if (name !== '') {
-      setMessage('No match. A new name uses letters, digits, ".", "_" or "-".')
+      setMessage('No match. A new title needs a letter or a digit.')
     }
   }
 
@@ -67,7 +67,7 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
       <input
         ref={inputRef}
         value={query}
-        placeholder="Type to filter, or a new name to create"
+        placeholder="Type to filter, or a new title to create"
         spellCheck={false}
         onChange={e => {
           setQuery(e.target.value)
@@ -106,7 +106,8 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
       <ul ref={listRef} role="listbox" aria-label="Analyses">
         {ranked.map((a, i) => (
           <li key={a.path} role="option" aria-selected={i === index} className={i === index ? 'row sel' : 'row'}>
-            <span className="grow">{a.name}</span>
+            <span className="grow">{a.title}</span>
+            <span className="dim">{a.name}</span>
             <span className="dim">{formatAge(a.modifiedMs, Date.now())}</span>
           </li>
         ))}
@@ -117,7 +118,7 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
           </li>
         )}
         {analyses !== undefined && count === 0 && (
-          <li className="empty">{name === '' ? 'No analyses yet. Type a name to create one.' : 'No match, and that is not a valid name.'}</li>
+          <li className="empty">{name === '' ? 'No analyses yet. Type a title to create one.' : 'No match, and that is not a valid title.'}</li>
         )}
       </ul>
       {canForceCreate && <div className="hint">Shift+Enter creates "{name}" as a new analysis</div>}

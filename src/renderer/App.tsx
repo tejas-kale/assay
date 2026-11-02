@@ -5,6 +5,7 @@ import { runningPythonRun } from '../core/runs.ts'
 import type { AnalysisState, SettingsView } from '../shared/ipc.ts'
 import { GlobalHints, ShortcutsOverlay } from './components/KeyHints.tsx'
 import { Palette } from './components/Palette.tsx'
+import { RenameDialog } from './components/RenameDialog.tsx'
 import { Picker } from './components/Picker.tsx'
 import { Search } from './components/Search.tsx'
 import { Settings } from './components/Settings.tsx'
@@ -30,6 +31,7 @@ export function App() {
   const [reveal, setReveal] = useState<Reveal>()
   const [settingsOpen, setSettingsOpen] = useState<{ returnTo: PaneName | undefined }>()
   const [settings, setSettings] = useState<SettingsView>()
+  const [isRenaming, setRenaming] = useState(false)
   const [hints, setHints] = useState(false)
   const [shortcuts, setShortcuts] = useState(0)
   const [pickerFocus, setPickerFocus] = useState(0)
@@ -181,6 +183,13 @@ export function App() {
           setDataCommand({ id, n: ++counter.current })
           focusPane('data')
           return true
+        case 'analysis.rename':
+          if (viewRef.current.type !== 'workspace') {
+            showToast('Open an analysis first.')
+            return false
+          }
+          setRenaming(true)
+          return true
         case 'code.edit':
           // The pane switches to Code and focuses the editor itself once it has the run's text.
           setDataCommand({ id, n: ++counter.current })
@@ -275,6 +284,15 @@ export function App() {
               if (returnTo) focusPane(returnTo)
               else setPickerFocus(n => n + 1)
             }
+          }}
+        />
+      )}
+      {isRenaming && view.type === 'workspace' && (
+        <RenameDialog
+          title={view.state.analysis.title}
+          onDone={() => {
+            setRenaming(false)
+            focusPane('terminal')
           }}
         />
       )}

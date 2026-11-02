@@ -153,11 +153,12 @@ test('CSV round-trips quotes, commas and newlines', async () => {
   expect(parsePsqlOutput(1, '', 'psql:queries/001_x.sql:1: ERROR:  relation "x" does not exist\n')).toEqual({ error: 'ERROR:  relation "x" does not exist' })
 })
 
-test('the target comes from .analysis, with defaults', async () => {
+test('the target comes from analysis.yaml, with defaults', async () => {
   expect(readTarget('')).toEqual({ profile: 'Cint mkt', warehouse: '455a178462311474' })
-  expect(readTarget('profile: DEFAULT\nwarehouse: abc\n')).toEqual({
+  expect(readTarget('title: Churn\nprofile: DEFAULT\nwarehouse: abc # why\npg_database: panel\n')).toEqual({
     profile: 'DEFAULT',
     warehouse: 'abc',
+    pgDatabase: 'panel',
   })
 })
 

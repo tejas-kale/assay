@@ -3,7 +3,7 @@
 import { ipcMain } from 'electron'
 import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron'
 
-import { createAnalysis, listAnalyses } from '../core/analyses.ts'
+import { createAnalysis, listAnalyses, openAnalysis, renameAnalysis } from '../core/analyses.ts'
 import { addFact, deleteFact, editFact } from '../core/facts.ts'
 import type { LabelOf } from '../core/facts.ts'
 import { isIndex, parseRunRequest } from '../core/requests.ts'
@@ -85,26 +85,43 @@ export function registerIpc() {
   })
   handle(CHANNELS.settingsChooseRoot, ctx => chooseRootPath(ctx.win))
 
-  handle(CHANNELS.analysesCreate, async (ctx, name): Promise<OpenResult> => {
-    if (typeof name !== 'string' || name.length > 200) return { ok: false, message: 'Invalid name' }
+  handle(CHANNELS.analysesCreate, async (ctx, title): Promise<OpenResult> => {
+    if (typeof title !== 'string' || title.length > 200) return { ok: false, message: 'Invalid title' }
     const root = await analysisRoot()
     if (!root) return { ok: false, message: NO_ROOT }
     try {
-      const path = await createAnalysis(fsPort, root, name)
-      return attachAnalysis(ctx, { name, path })
+      const today = new Date().toLocaleDateString('sv')
+      return attachAnalysis(ctx, await createAnalysis(fsPort, root, title, today))
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err) }
     }
   })
 
-  // Only a folder that listAnalyses returns for the root is accepted.
+  // Only a folder that listAnalyses returns for the root is accepted; one without analysis.yaml is refused with a pointer to the migration.
   handle(CHANNELS.analysesOpen, async (ctx, path): Promise<OpenResult> => {
     if (typeof path !== 'string') return { ok: false, message: 'Invalid path' }
     const root = await analysisRoot()
     if (!root) return { ok: false, message: NO_ROOT }
-    const found = (await listAnalyses(fsPort, root)).find(a => a.path === path)
-    if (!found) return { ok: false, message: 'Not an analysis under the root folder' }
-    return attachAnalysis(ctx, { name: found.name, path: found.path })
+    const prefix = `${root.replace(/\/+$/, '')}/analyses/`
+    const slug = path.slice(prefix.length)
+    if (!path.startsWith(prefix) || slug === '' || slug.includes('/') || slug.startsWith('.')) return { ok: false, message: 'Not an analysis under the root folder' }
+    try {
+      return attachAnalysis(ctx, await openAnalysis(fsPort, path))
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  handle(CHANNELS.analysesRename, async (ctx, title) => {
+    if (!ctx.analysis || typeof title !== 'string' || title.length > 200) return { ok: false, message: 'Invalid title' }
+    try {
+      ctx.analysis = { ...(await renameAnalysis(fsPort, ctx.analysis.path, title)) }
+      ctx.win.setTitle(`${ctx.analysis.title} — Assay`)
+      void pushState(ctx)
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) }
+    }
   })
 
   handle(CHANNELS.ptyStart, (ctx, cols, rows) => {

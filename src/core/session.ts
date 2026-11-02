@@ -6,7 +6,8 @@ export const PLUGIN_DIR = '/opt/assay/plugin'
 /**
  * How to start the wrapper. A GUI app has a thin PATH, so it runs through the user's login,
  * interactive shell, which finds `claude` as a terminal would. Claude loads Assay's plugin; the
- * server finds the analysis in ASSAY_ANALYSIS and the shared folder (Settings) in ASSAY_ROOT.
+ * server finds the analysis in ASSAY_ANALYSIS and the shared folder (Settings) in ASSAY_ROOT. Claude starts in the
+ * root, so it can read what is shared; the prompt hook names the open analysis.
  */
 export function spawnSpec(folder: string, env: Record<string, string | undefined>, root: string): SpawnSpec {
   const clean: Record<string, string> = {}
@@ -16,7 +17,7 @@ export function spawnSpec(folder: string, env: Record<string, string | undefined
   return {
     file: env.SHELL || '/bin/zsh',
     args: ['-lic', `exec "\${ASSAY_CLAUDE_BIN:-claude}" --plugin-dir ${PLUGIN_DIR}`],
-    cwd: folder,
+    cwd: root,
     env: { ...clean, ASSAY_APP: '1', ASSAY_ROOT: root, ASSAY_ANALYSIS: folder, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
   }
 }

@@ -21,6 +21,7 @@ export type CommandId =
   | 'pin.toggle'
   | 'kernel.restart'
   | 'replay.open'
+  | 'analysis.rename'
   | 'shortcuts.show'
 
 /** A Cmd shortcut, by physical key `code` (for example `Digit1`) so layouts do not matter. Cmd is always implied. */
@@ -56,6 +57,7 @@ export const COMMANDS: readonly Command[] = [
   { id: 'pin.toggle', title: 'Pin current run' },
   { id: 'kernel.restart', title: 'Restart kernel' },
   { id: 'replay.open', title: 'Replay' },
+  { id: 'analysis.rename', title: 'Rename analysis' },
 ]
 
 /** The parts of Electron's `Input` that matter here. */

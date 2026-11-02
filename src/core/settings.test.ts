@@ -28,8 +28,8 @@ test('normalizeRoot refuses empty and relative paths, and ~user', () => {
 test('picking analyses/ or one analysis inside it means the folder above', () => {
   assert.equal(rootFor('/n/analyses'), '/n')
   assert.equal(rootFor('/n/analyses/feedback-x'), '/n')
-  assert.equal(rootFor('/n/investigations/old'), '/n')
-  assert.equal(rootFor('/n/explorations'), '/n')
+  // The old parents are gone from the app: the migration moves their folders into analyses/.
+  assert.equal(rootFor('/n/investigations/old'), '/n/investigations/old')
   assert.equal(rootFor('/n'), '/n')
   assert.deepEqual(normalizeRoot('~/notes-src/analyses/x/', '/home/me'), { ok: true, path: '/home/me/notes-src' })
 })

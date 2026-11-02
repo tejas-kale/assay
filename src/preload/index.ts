@@ -20,7 +20,8 @@ const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> => ipcRender
 const api: AppApi = {
   analyses: {
     list: () => invoke(CHANNELS.analysesList),
-    create: name => invoke(CHANNELS.analysesCreate, name),
+    create: title => invoke(CHANNELS.analysesCreate, title),
+    rename: title => invoke(CHANNELS.analysesRename, title),
     open: path => invoke(CHANNELS.analysesOpen, path),
   },
   pty: {

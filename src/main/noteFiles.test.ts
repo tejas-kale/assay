@@ -58,8 +58,8 @@ test('delete removes the file only when it still holds the expected text', async
 test('loadState lists note files, and sees a change made in place', async () => {
   const dir = await folder()
   await createNoteFile(dir, 'A')
-  const first = await loadState({ name: 'x', path: dir })
+  const first = await loadState({ name: 'x', title: 'X', path: dir })
   assert.equal(first.noteFiles[0]?.title, 'A')
   await writeFile(join(dir, 'notes', '001-a.md'), '# Renamed [[b]]\n')
-  assert.deepEqual((await loadState({ name: 'x', path: dir })).noteFiles[0]?.links, ['b'])
+  assert.deepEqual((await loadState({ name: 'x', title: 'X', path: dir })).noteFiles[0]?.links, ['b'])
 })

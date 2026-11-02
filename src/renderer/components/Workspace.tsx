@@ -82,7 +82,7 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
             </button>
           ))}
           <span className="grow" />
-          <span className="dim title">{state.analysis.name}</span>
+          <span className="dim title">{state.analysis.title}</span>
         </div>
         {hints && (
           <PaneHint>

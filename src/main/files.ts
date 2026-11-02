@@ -50,6 +50,7 @@ export const fsPort: FsPort = {
   mkdir: async path => {
     await mkdir(path, { recursive: true })
   },
+  readFile: path => readFile(path, 'utf8'),
   writeFile: (path, text) => writeFile(path, text, 'utf8'),
 }
 
@@ -90,7 +91,7 @@ async function writeAtomic(path: string, text: string): Promise<void> {
   }
 }
 
-export async function loadState(analysis: { name: string; path: string }): Promise<AnalysisState> {
+export async function loadState(analysis: { name: string; title: string; path: string }): Promise<AnalysisState> {
   const [notes, threads, queries, status, noteFiles, trust] = await Promise.all([
     readText(join(analysis.path, NOTES)),
     readText(join(analysis.path, THREADS)),
