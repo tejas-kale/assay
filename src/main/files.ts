@@ -13,6 +13,8 @@ import { parseCsv, parseRunHeader, parseRunResult, parseRunStatus, parseRuns } f
 import type { Reply } from '../core/requests.ts'
 import type { ResultStatus, Run, RunHeader } from '../core/runs.ts'
 import { parseThreads } from '../core/threads.ts'
+import { latestReview, parseTrustReview } from '../core/trust.ts'
+import type { TrustReview } from '../core/trust.ts'
 import type { WatchPort } from '../core/watch.ts'
 import type { AnalysisState, EditResult, NoteFileResult, PlotResult, RequestResult, RunRequest, RunView } from '../shared/ipc.ts'
 
@@ -85,11 +87,12 @@ async function writeAtomic(path: string, text: string): Promise<void> {
 }
 
 export async function loadState(analysis: { name: string; path: string }): Promise<AnalysisState> {
-  const [notes, threads, queries, status] = await Promise.all([
+  const [notes, threads, queries, status, trust] = await Promise.all([
     readText(join(analysis.path, NOTES)),
     readText(join(analysis.path, THREADS)),
     readQueryNames(analysis.path),
     readText(join(analysis.path, RUN_STATUS)).catch(() => ''),
+    readLatestTrust(analysis.path),
   ])
   return {
     analysis,
@@ -97,7 +100,21 @@ export async function loadState(analysis: { name: string; path: string }): Promi
     threads: parseThreads(threads),
     runs: await withResults(analysis.path, await withHeaders(analysis.path, parseRuns(queries))),
     runStatus: parseRunStatus(status),
+    ...(trust && { trust }),
   }
+}
+
+/** The latest review in `.assay/trust/`; a missing folder, a half-written file or a bad one is skipped. */
+async function readLatestTrust(folder: string): Promise<TrustReview | undefined> {
+  const dir = join(folder, TRUST_DIR)
+  let names: string[]
+  try {
+    names = (await readdir(dir)).filter(n => n.endsWith('.json') && !n.startsWith('.'))
+  } catch {
+    return undefined
+  }
+  const reviews = await Promise.all(names.map(async n => parseTrustReview(await readText(join(dir, n)).catch(() => ''))))
+  return latestReview(reviews.filter((r): r is TrustReview => r !== undefined))
 }
 
 // Runs are immutable, so a parsed header is kept by path and never read again.
@@ -164,6 +181,8 @@ export async function readRuns(folder: string): Promise<Run[]> {
 export const QUERIES = 'queries'
 /** Written by the mod when the app started it. */
 export const RUN_STATUS = '.assay/runs.json'
+/** Written by the mod when the app started a trust review: one `<name>.json` per review. */
+export const TRUST_DIR = '.assay/trust'
 const ASSAY = '.assay'
 const REQUESTS = 'requests'
 const REPLIES = 'replies'

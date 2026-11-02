@@ -31,6 +31,7 @@ test('every handoff shortcut maps to its command, by code', () => {
     [{ code: 'KeyT', meta: true, shift: true }, 'tab.threads'],
     [{ code: 'KeyN', meta: true, shift: true }, 'tab.notes'],
     [{ code: 'KeyF', meta: true, shift: true }, 'tab.files'],
+    [{ code: 'KeyR', meta: true, shift: true }, 'tab.trust'],
   ]
   for (const [over, id] of table) assert.equal(commandForInput(input(over)), id, id)
 })

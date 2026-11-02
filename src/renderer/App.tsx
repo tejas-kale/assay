@@ -40,6 +40,16 @@ export function App() {
   settingsRef.current = settings
   const viewRef = useRef(view)
   viewRef.current = view
+  // The newest review start the data pane has switched to; undefined until the first state, whose review is only the baseline.
+  const trustStart = useRef<number | null | undefined>(undefined)
+  const reviewStart = view.type === 'workspace' ? (view.state.trust?.startedAt ?? null) : undefined
+  useEffect(() => {
+    if (reviewStart === undefined) return
+    const known = trustStart.current
+    trustStart.current = reviewStart
+    // A new review shows the Trust tab, but the keyboard stays where the user is typing (Claude).
+    if (known !== undefined && reviewStart !== null && reviewStart !== known) setDataTab('trust')
+  }, [reviewStart])
 
   const loadState = useCallback(() => {
     window.app.state.get().then(
@@ -95,6 +105,7 @@ export function App() {
         case 'tab.plots':
         case 'tab.code':
         case 'tab.history':
+        case 'tab.trust':
           setDataTab(id.slice(4) as DataTabName)
           focusPane('data')
           return true

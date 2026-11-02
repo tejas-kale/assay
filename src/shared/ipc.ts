@@ -13,8 +13,9 @@ import type { CloseState } from '../core/session.ts'
 import type { Reply, RunRequest } from '../core/requests.ts'
 import type { Engine, KernelState, Run, RunResult, RunStatus, Table } from '../core/runs.ts'
 import type { ClosedThread, Threads } from '../core/threads.ts'
+import type { TrustReview } from '../core/trust.ts'
 
-export type { Analysis, ClosedThread, CloseState, CommandId, Engine, Fact, FileEntry, KernelState, Reply, Run, RunRequest, RunResult, RunStatus, Table, Threads }
+export type { Analysis, ClosedThread, CloseState, CommandId, Engine, Fact, FileEntry, KernelState, Reply, Run, RunRequest, RunResult, RunStatus, Table, Threads, TrustReview }
 
 /** Call to stop listening. */
 export type Unsubscribe = () => void
@@ -35,6 +36,8 @@ export type AnalysisState = {
   runs: Run[]
   /** Which run is running and which failed, from the mod. */
   runStatus: RunStatus
+  /** The latest trust review from `.assay/trust/`, for the Trust tab. */
+  trust?: TrustReview
 }
 
 /**

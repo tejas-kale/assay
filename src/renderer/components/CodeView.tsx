@@ -79,9 +79,11 @@ type CodeViewProps = {
   /** Show the exact file text instead of the formatted SQL. */
   original: boolean
   onToggleOriginal: () => void
+  /** Not a focus target: the host tab keeps the keys (the Trust tab scrolls). */
+  passive?: boolean
 }
 
-export function CodeView({ code, language, focusKey, original, onToggleOriginal }: CodeViewProps) {
+export function CodeView({ code, language, focusKey, original, onToggleOriginal, passive }: CodeViewProps) {
   const host = useRef<HTMLDivElement>(null)
   const hadFocus = useRef(false)
   const shown = useMemo(() => (language === 'sql' && !original ? formatSql(code) : code), [code, language, original])
@@ -102,15 +104,15 @@ export function CodeView({ code, language, focusKey, original, onToggleOriginal 
         ],
       }),
     })
-    view.contentDOM.setAttribute('data-focus-target', '')
+    if (!passive) view.contentDOM.setAttribute('data-focus-target', '')
     // A rebuild (o, a new run) keeps focus where it was.
-    if (hadFocus.current || host.current.closest('[data-pane]')?.contains(document.activeElement)) view.focus()
+    if (!passive && (hadFocus.current || host.current.closest('[data-pane]')?.contains(document.activeElement))) view.focus()
     hadFocus.current = false
     return () => {
       hadFocus.current = view.hasFocus
       view.destroy()
     }
-  }, [shown, language, focusKey])
+  }, [shown, language, focusKey, passive])
 
   return (
     <div

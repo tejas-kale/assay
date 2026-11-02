@@ -10,10 +10,11 @@ import { chosenRuns, confirmText, initReplay, replayKey } from '../../core/repla
 import type { ReplayState } from '../../core/replay.ts'
 import { codeBody, runLabel } from '../../core/runs.ts'
 import type { RunHeader } from '../../core/runs.ts'
-import type { Run, RunRequest, RunStatus, RunView } from '../../shared/ipc.ts'
+import type { Run, RunRequest, RunStatus, RunView, TrustReview } from '../../shared/ipc.ts'
 import { CodeEditor, CodeView, formatSql } from './CodeView.tsx'
 import type { EditorHandle } from './CodeView.tsx'
 import { isPaneKey } from './common.tsx'
+import { TrustTab } from './TrustTab.tsx'
 import type { DataTabName } from './common.tsx'
 
 export const DATA_TABS: { id: DataTabName; title: string }[] = [
@@ -21,6 +22,7 @@ export const DATA_TABS: { id: DataTabName; title: string }[] = [
   { id: 'plots', title: 'Plots' },
   { id: 'code', title: 'Code' },
   { id: 'history', title: 'History' },
+  { id: 'trust', title: 'Trust' },
 ]
 
 /** A command the app sends to the pane: `n` makes a repeat of the same command a new request. */
@@ -33,6 +35,7 @@ type Props = {
   tab: DataTabName
   runs: Run[]
   status: RunStatus
+  trust?: TrustReview | undefined
   onTab: (tab: DataTabName) => void
   command: DataCommand | undefined
   onToast: (text: string) => void
@@ -67,7 +70,7 @@ const focusDataPane = () =>
  * Python runs add table switching and a stdout view to Data, the Plots tab, the kernel restart
  * prompt and the Replay view.
  */
-export function DataPane({ tab, runs, status, onTab, command, onToast }: Props) {
+export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: Props) {
   const [held, setHeld] = useState<number>()
   const [original, setOriginal] = useState(false)
   const [edit, setEdit] = useState<Edit>()
@@ -126,13 +129,14 @@ export function DataPane({ tab, runs, status, onTab, command, onToast }: Props) 
     plots: current?.plots ?? [],
     failed: current ? status.failed[current.number] !== undefined : false,
     runCount: runs.length,
+    ...(trust && { trust: `${trust.startedAt}:${trust.state}:${trust.steps.length}:${trust.sample?.rows.length ?? 0}` }),
   }
   const before = useRef(seen)
   useEffect(() => {
     setMarkers(m => markTabs(m, before.current, seen, tab))
     before.current = seen
     // `seen` is rebuilt every render; these are the values it reads.
-  }, [tab, current?.number, current?.code, current?.data, current?.status, tableCount, current?.plots.join('\n'), seen.failed, runs.length])
+  }, [tab, current?.number, current?.code, current?.data, current?.status, tableCount, current?.plots.join('\n'), seen.failed, runs.length, seen.trust])
 
   // Sending: the reply (or its absence) is reported once per request.
   const pending = useRef(new Map<string, Pending>())
@@ -285,6 +289,7 @@ export function DataPane({ tab, runs, status, onTab, command, onToast }: Props) 
 
   let body
   if (replay) body = <ReplayView state={replay.state} onKey={onReplayKey} />
+  else if (tab === 'trust') body = <TrustTab review={trust} />
   else if (tab === 'history') body = <History runs={runs} status={status} current={current} onChoose={choose} onPin={togglePin} />
   else if (!current) body = <Placeholder text="No runs yet. Claude's queries appear here." />
   else {
