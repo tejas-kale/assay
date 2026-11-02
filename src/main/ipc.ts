@@ -8,9 +8,10 @@ import { addFact, deleteFact, editFact } from '../core/facts.ts'
 import { addThread, closeOpen, deleteClosed, deleteOpen, editOpen, moveOpen } from '../core/threads.ts'
 import type { ClosedThread } from '../core/threads.ts'
 import { CHANNELS } from '../shared/ipc.ts'
-import type { EditResult, NoteFileResult, OpenResult } from '../shared/ipc.ts'
+import type { EditResult, NoteFileResult, OpenResult, SetRootResult, SettingsView } from '../shared/ipc.ts'
+import { analysisRoot, chooseRootPath, saveRoot } from './settings.ts'
 import { NOTES, THREADS, editFile, fsPort, loadState, readNoteFile, readQueryNames } from './files.ts'
-import { attachAnalysis, contextFor, createWindow, pushState, requestClose, startPty } from './windows.ts'
+import { attachAnalysis, broadcast, contextFor, createWindow, pushState, requestClose, startPty } from './windows.ts'
 import type { WindowCtx } from './windows.ts'
 
 const MAX_WRITE = 1 << 20
@@ -64,11 +65,27 @@ const asClosed = (v: unknown): ClosedThread | undefined => {
   return isText(outcome) ? { thread, outcome } : undefined
 }
 
-export function registerIpc(root: string) {
-  handle(CHANNELS.analysesList, () => listAnalyses(fsPort, root))
+const NO_ROOT = 'Set the analysis folder in Settings first.'
+
+export function registerIpc() {
+  handle(CHANNELS.analysesList, async () => {
+    const root = await analysisRoot()
+    return root ? listAnalyses(fsPort, root) : []
+  })
+
+  handle(CHANNELS.settingsGet, async (): Promise<SettingsView> => ({ root: await analysisRoot() }))
+  handle(CHANNELS.settingsSetRoot, async (_ctx, input): Promise<SetRootResult> => {
+    if (!isText(input)) return { ok: false, message: 'Invalid path' }
+    const result = await saveRoot(input)
+    if (result.ok) broadcast(CHANNELS.settingsChanged, { root: result.root } satisfies SettingsView)
+    return result
+  })
+  handle(CHANNELS.settingsChooseRoot, ctx => chooseRootPath(ctx.win))
 
   handle(CHANNELS.analysesCreate, async (ctx, name): Promise<OpenResult> => {
     if (typeof name !== 'string' || name.length > 200) return { ok: false, message: 'Invalid name' }
+    const root = await analysisRoot()
+    if (!root) return { ok: false, message: NO_ROOT }
     try {
       const path = await createAnalysis(fsPort, root, name)
       return attachAnalysis(ctx, { name, path })
@@ -80,6 +97,8 @@ export function registerIpc(root: string) {
   // Only a folder that listAnalyses returns for the root is accepted.
   handle(CHANNELS.analysesOpen, async (ctx, path): Promise<OpenResult> => {
     if (typeof path !== 'string') return { ok: false, message: 'Invalid path' }
+    const root = await analysisRoot()
+    if (!root) return { ok: false, message: NO_ROOT }
     const found = (await listAnalyses(fsPort, root)).find(a => a.path === path)
     if (!found) return { ok: false, message: 'Not an analysis under the root folder' }
     return attachAnalysis(ctx, { name: found.name, path: found.path })

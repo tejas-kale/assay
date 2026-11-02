@@ -12,6 +12,7 @@ export type CommandId =
   | 'tab.notes'
   | 'tab.threads'
   | 'window.close'
+  | 'settings.open'
   | 'pin.toggle'
   | 'kernel.restart'
   | 'replay.open'
@@ -31,10 +32,11 @@ export const COMMANDS: readonly Command[] = [
   { id: 'focus.terminal', title: 'Focus terminal', accelerator: { code: 'Digit1' } },
   { id: 'focus.notes', title: 'Focus notes and threads', accelerator: { code: 'Digit2' } },
   { id: 'focus.data', title: 'Focus data pane', accelerator: { code: 'Digit3' } },
-  { id: 'palette.open', title: 'Command palette', accelerator: { code: 'KeyK' } },
+  { id: 'palette.open', title: 'Command palette', accelerator: { code: 'KeyP' } },
   { id: 'code.run', title: 'Run current code', accelerator: { code: 'Enter' } },
   { id: 'window.new', title: 'New window', accelerator: { code: 'KeyN' } },
   { id: 'window.close', title: 'Close window', accelerator: { code: 'KeyW' } },
+  { id: 'settings.open', title: 'Settings', accelerator: { code: 'Comma' } },
   { id: 'tab.data', title: 'Show Data tab', accelerator: { code: 'KeyD', shift: true } },
   { id: 'tab.plots', title: 'Show Plots tab', accelerator: { code: 'KeyP', shift: true } },
   { id: 'tab.code', title: 'Show Code tab', accelerator: { code: 'KeyC', shift: true } },
@@ -55,4 +57,14 @@ export function commandForInput(input: KeyInput): CommandId | undefined {
   return COMMANDS.find(
     c => c.accelerator && c.accelerator.code === input.code && (c.accelerator.shift ?? false) === input.shift,
   )?.id
+}
+
+const KEY_SYMBOLS: Record<string, string> = { Enter: '↩', Comma: ',' }
+
+/** A command's shortcut as the Mac writes it, such as `⇧⌘P`; empty when it has none. */
+export function shortcutLabel(id: CommandId): string {
+  const a = COMMANDS.find(c => c.id === id)?.accelerator
+  if (!a) return ''
+  const key = a.code.replace(/^Key|^Digit/, '')
+  return `${a.shift ? '⇧' : ''}⌘${KEY_SYMBOLS[key] ?? key}`
 }

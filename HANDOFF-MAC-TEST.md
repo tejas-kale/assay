@@ -68,7 +68,7 @@ Record each result in `docs/slice-1-test-results.md` as you go, and commit that 
   them exactly, do not hide them.
 
 **Gate 4: keyboard (README item 2).**
-- Each of Cmd+1, Cmd+2, Cmd+3, Cmd+K, Cmd+N and Cmd+W, and the Cmd+Shift tab keys, pressed while Claude is at its prompt: it acts, and no
+- Each of Cmd+1, Cmd+2, Cmd+3, Cmd+P, Cmd+N and Cmd+W, and the Cmd+Shift tab keys, pressed while Claude is at its prompt: it acts, and no
   stray character reaches Claude. Each is its own result.
 - Ctrl-C, Esc, arrows and Tab still reach Claude. Holding Cmd+N opens one window. Unconfirmed: whether `preventDefault` in
   `before-input-event` also stops menu accelerators from firing.
@@ -77,7 +77,7 @@ Record each result in `docs/slice-1-test-results.md` as you go, and commit that 
 - Ask Claude in the app's terminal to add a note and park a thread. Both show in the tabs within a second or so, with no reload.
 - Run `a`, `e`, `d` then `y` on a fact. Run `a`, `e`, `c`, `d` then `y`, `J`, `K` on threads. After each one, read the file on disk with your
   own tools and confirm it matches the mod's format. A fact typed with `[trusted q 1]` must not come out `trusted`.
-- Keyboard-only: `j`, `k`, `/`, Enter, Escape. The Cmd+K palette runs a command and returns focus to the pane it came from.
+- Keyboard-only: `j`, `k`, `/`, Enter, Escape. The Cmd+P palette runs a command and returns focus to the pane it came from.
 - In the picker, Shift+Enter creates a new name that fuzzy-matches an existing one. Opening an analysis that is already open focuses its window.
 
 **Gate 6: closing (README item 4). Run this last, in `zz-app-smoke`.**
@@ -90,7 +90,7 @@ Record each result in `docs/slice-1-test-results.md` as you go, and commit that 
   running, the window waits forever: record that as a failure and ask the user how they want it handled.
 
 **Gate 7: starting from an analysis (README item 5).** The wrapper finds `notes-src/.venv`, the forwarder says `owner` and the mod activates.
-Run this with the default `ANALYSIS_ROOT`, and ask the user before opening any real analysis.
+Run this with the analysis folder set to the real notes-src, and ask the user before opening any real analysis.
 
 ## Known, not failures
 

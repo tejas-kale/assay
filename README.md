@@ -11,14 +11,14 @@ Slice 1 of `HANDOFF.md`; the spec is `docs/slice-1.md`.
 
 ## Environment
 
-- `ANALYSIS_ROOT`: folder holding `analyses/` (default `~/Code/notes-src`)
+- The analysis folder, which holds `analyses/`, is set in Settings (Cmd+,). There is no default: the app asks on first run.
 - `ANALYSIS_CLAUDE_BIN`: the wrapper to run (default `claude`, found through your login shell)
 
 ## Verify first (do by hand, in this order)
 
 1. ghostty-web with fullscreen mode: open an analysis, run a long Claude session. Look for correct drawing,
    mouse, text selection with Cmd+C, scrolling, and a clean redraw when you drag the window size.
-2. Cmd shortcuts: press Cmd+1/2/3, Cmd+K, Cmd+N in the terminal while Claude is waiting. Look for focus moving
+2. Cmd shortcuts: press Cmd+1/2/3, Cmd+P, Cmd+N in the terminal while Claude is waiting. Look for focus moving
    with no stray characters in Claude's prompt, and Claude's own keys (Ctrl-C, Esc, arrows, Tab) still working.
 3. node-pty: after `npm run dev`, the terminal shows Claude's prompt. If it shows "Could not start the session",
    run `npx electron-rebuild -f -w node-pty` and read the text.

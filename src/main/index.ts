@@ -1,16 +1,7 @@
 import { Menu, app, session as electronSession } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
-
 import { registerIpc } from './ipc.ts'
 import { allContexts, createWindow, isLive, requestClose, setOnClosed, setOnKeepWaiting } from './windows.ts'
-
-function analysisRoot(): string {
-  const configured = process.env['ANALYSIS_ROOT']
-  if (!configured) return join(homedir(), 'Code', 'notes-src')
-  return configured === '~' || configured.startsWith('~/') ? join(homedir(), configured.slice(1)) : configured
-}
 
 // Only standard roles. Shortcuts of the app's own commands (Cmd+W, Cmd+N, ...) live in core/keymap.ts
 // and are caught in before-input-event; a duplicate accelerator here would fire twice.
@@ -75,6 +66,6 @@ void app.whenReady().then(() => {
   electronSession.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => callback(allowed(permission)))
   electronSession.defaultSession.setPermissionCheckHandler((_wc, permission) => allowed(permission))
   Menu.setApplicationMenu(buildMenu())
-  registerIpc(analysisRoot())
+  registerIpc()
   createWindow()
 })

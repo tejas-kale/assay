@@ -118,7 +118,7 @@ needs no answer to Verify first item 6, and costs two `stat` calls per tick.
   pty exit. A second close during `closing` shows a native dialog offering "Keep waiting" (default) or "Force quit". Cmd+Q does
   this for each window, and the app quits when the last session has exited.
 - A pty that exits by itself: the renderer shows "Session ended (exit N)". Cmd+W closes the window at once.
-- Root folder: `ANALYSIS_ROOT` or `~/Code/notes-src`.
+- Root folder: set in Settings (Cmd+,, or the palette) and saved to `settings.json` in Electron's user data folder. It must be an existing folder. There is no default and no environment override: with none set, the window shows Settings and cannot dismiss it.
 - Writes to `notes.md` and `threads.md`: read fresh, apply the core function, write to a temp file in the same folder, rename.
   `StaleEdit` is returned to the renderer as "Changed on disk, reloaded" and the state is re-sent, not overwritten.
 - A note file linked from `notes.md`: read only on request. Resolve its path against the analysis folder.
@@ -139,7 +139,8 @@ needs no answer to Verify first item 6, and costs two `stat` calls per tick.
   move an open thread.
 - Picker: a fuzzy input, always focused; the list shows name and age, Up/Down or Ctrl-N/Ctrl-P move, Enter opens. If nothing matches and
   the text is a valid name, Enter creates it, and the row says so.
-- Palette (Cmd+K): `COMMANDS` through `fuzzyRank`, Enter runs, Escape closes and returns focus to the pane it came from.
+- Long-pressing left Cmd for 500 ms shows subtle hints: a shortcut in each pane's corner and the global shortcuts at the bottom (`core/cmdHold.ts`). Releasing it, pressing any non-modifier key or losing focus hides them. There is no permanent shortcut bar; banners and toasts float at the bottom right.
+- Palette (Cmd+P): `COMMANDS` through `fuzzyRank`, Enter runs, Escape closes and returns focus to the pane it came from.
 - State comes from main over IPC after each poll hit. The renderer holds no copy that survives a reload.
 
 ## Decisions recorded (from "Open for the build" and gaps)

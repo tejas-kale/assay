@@ -39,6 +39,9 @@ export type OpenResult =
 
 export type NoteFileResult = { ok: true; text: string } | { ok: false; message: string }
 
+export type SettingsView = { root: string | undefined }
+export type SetRootResult = { ok: true; root: string } | { ok: false; message: string }
+
 export type PtyExit = { exitCode: number; signal?: number }
 
 export type AppApi = {
@@ -106,6 +109,19 @@ export type AppApi = {
   /** Same path as the window's close button: starts the graceful close while a session runs. */
   closeWindow(): Promise<void>
 
+  settings: {
+    get(): Promise<SettingsView>
+    /** Saves the folder holding `analyses/`. It must already exist. */
+    setRoot(input: string): Promise<SetRootResult>
+    /** The native folder chooser; undefined when cancelled. Saves nothing. */
+    chooseRoot(): Promise<string | undefined>
+    /** Fired in every window after a save. */
+    onChange(cb: (settings: SettingsView) => void): Unsubscribe
+  }
+
+  /** True while left Cmd is long-pressed: show the navigation hints. */
+  onHints(cb: (visible: boolean) => void): Unsubscribe
+
   /**
    * Graceful-close state. 'closing' -> show the "Closing: waiting for the session to finish" banner
    * with the terminal still visible; 'exited' follows and main then closes the window. Main
@@ -134,6 +150,9 @@ export const CHANNELS = {
   noteFileRead: 'noteFile:read',
   windowNew: 'window:new',
   windowClose: 'window:close',
+  settingsGet: 'settings:get',
+  settingsSetRoot: 'settings:setRoot',
+  settingsChooseRoot: 'settings:chooseRoot',
   // renderer -> main, fire and forget (ipcRenderer.send / ipcMain.on)
   ptyWrite: 'pty:write',
   ptyResize: 'pty:resize',
@@ -143,6 +162,8 @@ export const CHANNELS = {
   stateChanged: 'state:changed',
   command: 'command',
   closeState: 'close:state',
+  settingsChanged: 'settings:changed',
+  hints: 'hints',
 } as const
 
 export type Channel = (typeof CHANNELS)[keyof typeof CHANNELS]

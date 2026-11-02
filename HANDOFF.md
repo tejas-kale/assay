@@ -156,7 +156,7 @@ The app must work with minimal mouse use. Cmd shortcuts are caught before the te
 Cmd+1        terminal                 Cmd+Shift+D  Data tab
 Cmd+2        notes and threads        Cmd+Shift+P  Plots tab
 Cmd+3        data pane                Cmd+Shift+C  Code tab
-Cmd+K        command palette          Cmd+Shift+H  History tab
+Cmd+P        command palette          Cmd+Shift+H  History tab
 Cmd+Enter    run current code         Cmd+N        new window
 
 In panes: j/k move, Enter open, / search

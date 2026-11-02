@@ -6,6 +6,7 @@ import type { WebContents } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { cmdHold } from '../core/cmdHold.ts'
 import { commandForInput } from '../core/keymap.ts'
 import { spawnSpec } from '../core/session.ts'
 import { pollFiles } from '../core/watch.ts'
@@ -52,6 +53,11 @@ function send(ctx: WindowCtx, channel: string, ...args: unknown[]) {
   ctx.win.webContents.send(channel, ...args)
 }
 
+/** Sends an event to every open window. */
+export function broadcast(channel: string, ...args: unknown[]) {
+  for (const ctx of contexts.values()) send(ctx, channel, ...args)
+}
+
 export function createWindow(): WindowCtx {
   const win = new BrowserWindow({
     width: 1500,
@@ -88,8 +94,18 @@ export function createWindow(): WindowCtx {
   wc.on('will-redirect', (event, url) => guard(event, url))
   wc.on('will-attach-webview', event => event.preventDefault())
 
+  const hold = cmdHold({
+    onChange: visible => send(ctx, CHANNELS.hints, visible),
+    setTimer(cb, ms) {
+      const timer = setTimeout(cb, ms)
+      return () => clearTimeout(timer)
+    },
+  })
+  win.on('blur', hold.blur)
+
   wc.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown' && input.type !== 'keyUp') return
+    hold.key(input.type, input.code)
     const id = commandForInput({
       key: input.key,
       code: input.code,
@@ -119,6 +135,7 @@ export function createWindow(): WindowCtx {
   })
   win.on('closed', () => {
     ctx.disposed = true
+    hold.blur()
     ctx.stopPoll?.()
     ctx.session?.dispose()
     contexts.delete(ctx.id)

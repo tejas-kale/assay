@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { COMMANDS } from '../core/keymap.ts'
 import type { CommandId } from '../core/keymap.ts'
-import type { AnalysisState } from '../shared/ipc.ts'
+import type { AnalysisState, SettingsView } from '../shared/ipc.ts'
+import { GlobalHints } from './components/KeyHints.tsx'
 import { Palette } from './components/Palette.tsx'
 import { Picker } from './components/Picker.tsx'
+import { Settings } from './components/Settings.tsx'
 import { Workspace } from './components/Workspace.tsx'
 import type { FocusRequest } from './components/Workspace.tsx'
 import type { DataTabName, NotesTabName, PaneName } from './components/common.tsx'
@@ -20,12 +22,19 @@ export function App() {
   const [dataTab, setDataTab] = useState<DataTabName>('data')
   const [focusRequest, setFocusRequest] = useState<FocusRequest>()
   const [palette, setPalette] = useState<{ returnTo: PaneName | undefined }>()
+  const [settingsOpen, setSettingsOpen] = useState<{ returnTo: PaneName | undefined }>()
+  const [settings, setSettings] = useState<SettingsView>()
+  const [hints, setHints] = useState(false)
   const [pickerFocus, setPickerFocus] = useState(0)
   const [toast, setToast] = useState<string>()
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const counter = useRef(0)
   const paletteRef = useRef(palette)
   paletteRef.current = palette
+  const settingsOpenRef = useRef(settingsOpen)
+  settingsOpenRef.current = settingsOpen
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
 
   const loadState = useCallback(() => {
     window.app.state.get().then(
@@ -38,6 +47,12 @@ export function App() {
     loadState()
     return window.app.state.onChange(state => setView({ type: 'workspace', state }))
   }, [loadState])
+
+  useEffect(() => {
+    void window.app.settings.get().then(setSettings)
+    const stops = [window.app.settings.onChange(setSettings), window.app.onHints(setHints)]
+    return () => stops.forEach(stop => stop())
+  }, [])
 
   const showToast = useCallback((text: string) => {
     setToast(text)
@@ -77,7 +92,15 @@ export function App() {
           setDataTab(id.slice(4) as DataTabName)
           focusPane('data')
           return true
+        case 'settings.open': {
+          const from = paletteRef.current
+          setPalette(undefined)
+          if (!settingsOpenRef.current) setSettingsOpen({ returnTo: from ? from.returnTo : paneOfActive() })
+          return true
+        }
         case 'palette.open': {
+          // Settings is on top, and without a folder it must stay there.
+          if (settingsOpenRef.current || (settingsRef.current && !settingsRef.current.root)) return true
           const open = paletteRef.current
           if (!open) {
             setPalette({ returnTo: paneOfActive() })
@@ -109,6 +132,13 @@ export function App() {
   runRef.current = run
   useEffect(() => window.app.onCommand(id => runRef.current(id)), [])
 
+  const closeSettings = () => {
+    const returnTo = settingsOpen?.returnTo
+    setSettingsOpen(undefined)
+    if (returnTo) focusPane(returnTo)
+    else setPickerFocus(n => n + 1)
+  }
+
   const closePalette = (restore: boolean) => {
     const returnTo = palette?.returnTo
     setPalette(undefined)
@@ -119,7 +149,7 @@ export function App() {
 
   return (
     <>
-      {view.type === 'picker' && <Picker focusToken={pickerFocus} onOpened={loadState} />}
+      {view.type === 'picker' && settings?.root && <Picker key={settings.root} focusToken={pickerFocus} onOpened={loadState} />}
       {view.type === 'workspace' && (
         <Workspace
           state={view.state}
@@ -135,6 +165,7 @@ export function App() {
           }}
           focusRequest={focusRequest}
           toast={toast}
+          hints={hints}
         />
       )}
       {palette && (
@@ -152,6 +183,9 @@ export function App() {
           }}
         />
       )}
+      {settingsOpen && settings && <Settings root={settings.root} onClose={closeSettings} />}
+      {!settingsOpen && settings && !settings.root && view.type === 'picker' && <Settings root={undefined} onClose={undefined} />}
+      {hints && <GlobalHints />}
       {view.type === 'picker' && toast && <div className="toast floating">{toast}</div>}
     </>
   )

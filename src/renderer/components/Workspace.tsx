@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 
 import type { AnalysisState, CloseState, PtyExit } from '../../shared/ipc.ts'
 import type { TerminalHandle } from '../terminal.ts'
+import { shortcutLabel } from '../../core/keymap.ts'
 import { Banners } from './Banners.tsx'
+import { PaneHint } from './KeyHints.tsx'
 import { DATA_TABS, DataPane } from './DataPane.tsx'
 import { NotesTab } from './NotesTab.tsx'
 import { TerminalPane } from './TerminalPane.tsx'
@@ -18,11 +20,13 @@ type Props = {
   onNotesTab: (tab: NotesTabName) => void
   onDataTab: (tab: DataTabName) => void
   focusRequest: FocusRequest | undefined
-  /** A short message from the last command, shown in the footer. */
+  /** A short message from the last command. */
   toast: string | undefined
+  /** Left Cmd is long-pressed: show each pane's shortcuts. */
+  hints: boolean
 }
 
-export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, focusRequest, toast }: Props) {
+export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, focusRequest, toast, hints }: Props) {
   const terminalRef = useRef<TerminalHandle | undefined>(undefined)
   const notesRef = useRef<HTMLElement>(null)
   const dataRef = useRef<HTMLElement>(null)
@@ -50,6 +54,7 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
     <div className="workspace">
       <section className="pane terminal-pane" data-pane="terminal" aria-label="Claude Code">
         <TerminalPane handleRef={terminalRef} />
+        {hints && <PaneHint>{shortcutLabel('focus.terminal')}</PaneHint>}
       </section>
 
       <section className="pane" data-pane="notes" ref={notesRef} tabIndex={-1} aria-label="Notes and threads">
@@ -62,6 +67,7 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
           <span className="grow" />
           <span className="dim title">{state.analysis.name}</span>
         </div>
+        {hints && <PaneHint>{shortcutLabel('focus.notes')}</PaneHint>}
         {notesTab === 'notes' ? <NotesTab key="notes" facts={state.facts} /> : <ThreadsTab key="threads" threads={state.threads} />}
       </section>
 
@@ -74,14 +80,17 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
           ))}
         </div>
         <DataPane tab={dataTab} />
+        {hints && (
+          <PaneHint>
+            {[shortcutLabel('focus.data'), ...DATA_TABS.map(t => `${t.title} ${shortcutLabel(`tab.${t.id}`)}`)].join('  ·  ')}
+          </PaneHint>
+        )}
       </section>
 
-      <footer className="footer">
-        <Banners closeState={closeState} exit={exit} />
+      <div className="float-status">
         {toast && <span className="toast">{toast}</span>}
-        <span className="grow" />
-        <span className="dim">Cmd+1 terminal  Cmd+2 notes  Cmd+3 data  Cmd+K palette</span>
-      </footer>
+        <Banners closeState={closeState} exit={exit} />
+      </div>
     </div>
   )
 }

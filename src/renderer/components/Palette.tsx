@@ -1,17 +1,8 @@
 import { useState } from 'react'
 
 import { fuzzyRank } from '../../core/fuzzy.ts'
-import { COMMANDS } from '../../core/keymap.ts'
-import type { Command, CommandId } from '../../core/keymap.ts'
-
-const KEY_NAMES: Record<string, string> = { Enter: 'Return' }
-
-function shortcut(command: Command): string {
-  const a = command.accelerator
-  if (!a) return ''
-  const key = a.code.replace(/^Key|^Digit/, '')
-  return `Cmd+${a.shift ? 'Shift+' : ''}${KEY_NAMES[key] ?? key}`
-}
+import { COMMANDS, shortcutLabel } from '../../core/keymap.ts'
+import type { CommandId } from '../../core/keymap.ts'
 
 export function Palette({ onRun, onClose }: { onRun: (id: CommandId) => void; onClose: () => void }) {
   const [query, setQuery] = useState('')
@@ -52,7 +43,7 @@ export function Palette({ onRun, onClose }: { onRun: (id: CommandId) => void; on
           {shown.map((command, i) => (
             <li key={command.id} role="option" aria-selected={i === index} className={i === index ? 'row sel' : 'row'}>
               <span className="grow">{command.title}</span>
-              <span className="dim">{shortcut(command)}</span>
+              <span className="dim">{shortcutLabel(command.id)}</span>
             </li>
           ))}
           {shown.length === 0 && <li className="empty">No command matches</li>}

@@ -51,6 +51,13 @@ const api: AppApi = {
   onCommand: cb => subscribe(CHANNELS.command, cb),
   newWindow: () => invoke(CHANNELS.windowNew),
   closeWindow: () => invoke(CHANNELS.windowClose),
+  settings: {
+    get: () => invoke(CHANNELS.settingsGet),
+    setRoot: input => invoke(CHANNELS.settingsSetRoot, input),
+    chooseRoot: () => invoke(CHANNELS.settingsChooseRoot),
+    onChange: cb => subscribe(CHANNELS.settingsChanged, cb),
+  },
+  onHints: cb => subscribe(CHANNELS.hints, cb),
   onCloseState: cb => subscribe(CHANNELS.closeState, cb),
 }
 

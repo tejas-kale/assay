@@ -24,19 +24,21 @@ button, input { font: inherit; color: inherit; }
 .empty { color: var(--dim); padding: 12px; }
 .hint { color: var(--dim); padding: 6px 12px; font-size: 12px; }
 
-/* Workspace grid: terminal left; notes top right, data pane bottom right; footer under all. */
+/* Workspace grid: terminal left; notes top right, data pane bottom right. */
 .workspace {
   display: grid;
   height: 100%;
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   gap: 6px;
   padding: 6px;
 }
 .terminal-pane { grid-row: 1 / 3; position: relative; }
-.footer { grid-column: 1 / 3; display: flex; gap: 12px; align-items: center; min-height: 26px; padding: 0 6px; }
+.float-status { position: fixed; right: 14px; bottom: 14px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: none; }
+.float-status > * { background: var(--panel); padding: 3px 10px; border-radius: 3px; }
 
 .pane {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -81,6 +83,18 @@ input:focus { border-color: var(--accent); }
 .banner.ended { background: #2a2f38; color: var(--text); }
 .toast { color: var(--warn); }
 .toast.floating { position: fixed; left: 12px; bottom: 12px; }
+
+/* Navigation hints, shown only while left Cmd is long-pressed. */
+@keyframes hint-in { from { opacity: 0; } }
+.key-hint, .key-hints { pointer-events: none; color: var(--text); background: rgba(20, 22, 26, 0.72); border: 1px solid var(--line); border-radius: 4px; font-size: 11px; white-space: pre; animation: hint-in 120ms ease-out; opacity: 0.85; z-index: 5; }
+.key-hint { position: absolute; top: 5px; right: 6px; padding: 1px 7px; }
+.key-hints { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 14px; padding: 3px 10px; }
+.key-hints b { font-weight: 600; }
+
+.settings h1 { font-size: 14px; font-weight: 600; margin: 2px 0 10px; }
+.settings label { display: block; color: var(--dim); margin-bottom: 4px; }
+.settings-row { display: flex; gap: 6px; }
+.settings-row button { background: var(--bg); border: 1px solid var(--line); border-radius: 3px; padding: 0 12px; cursor: pointer; }
 
 .picker { max-width: 640px; margin: 12vh auto 0; padding: 0 16px; }
 .picker h1 { font-size: 16px; font-weight: 600; margin: 0 0 10px; }

@@ -1,6 +1,6 @@
 import type { CloseState, PtyExit } from '../../shared/ipc.ts'
 
-/** The close and ended banners. They sit in the footer, so showing one never resizes the terminal. */
+/** The close and ended banners. They float over the right column, so showing one never resizes the terminal. */
 export function Banners({ closeState, exit }: { closeState: CloseState; exit: PtyExit | undefined }) {
   if (closeState === 'closing') {
     return (

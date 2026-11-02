@@ -122,7 +122,7 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
       </ul>
       {canForceCreate && <div className="hint">Shift+Enter creates "{name}" as a new analysis</div>}
       {message && <div className="status warn">{message}</div>}
-      <div className="hint">Up/Down or Ctrl-N/Ctrl-P move  Enter opens  Cmd+K palette  Cmd+N new window</div>
+      <div className="hint">Up/Down or Ctrl-N/Ctrl-P move  Enter opens</div>
     </div>
   )
 }
