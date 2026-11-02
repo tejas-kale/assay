@@ -280,6 +280,17 @@ Decide these while building, and record each here:
   through `runQuery` with `-- author: user` and `-- from: NNN` header lines, and answers in `.assay/replies/<id>.json`.
   A user's run is never `trusted`. Editing starts from the SQL on screen (formatted unless `o`), header lines removed.
 
+- **Slice 3** (`docs/slice-3.md`, 2026-11-02): the mod runs a long-lived `serve` process per session
+  (`$.process.spawn`, events on stdout) that owns an `ipykernel`, and a short `run` client per run (`$.process.run`).
+  `$.process.spawn` writes stdin only once, so runs cannot go over the serve process's stdin. A Python run's output
+  streams by rewriting its `.json` every 0.5 s. `q(N)` returns pandas. Limits per run: 20 tables, 20 plots, 100 000
+  rows per table, 1 MB stdout. Interrupt is Cmd+.; Claude's `python` tool times out after 10 minutes. Replay runs get
+  new numbers marked `# replay: NNN`, in a new kernel, and stop at the first failure. The kernel starts when the
+  session starts in or adopts an analysis. The runner `analysis_kernel.py` is run by path from notes-src.
+- **Molten notebook (user, 2026-11-02):** marimo was already replaced by a Molten `notebook.md` (config `dfa8910`).
+  "Remove marimo" in slice 3 now means: the mod and Assay stop knowing about `notebook.md` (no `run_notebook`, rules,
+  Notebook tab, template or Stop hook). Molten stays as the user's private tool; `analysis_notebook.py` is kept.
+
 ## Not in v1
 
 - Signing with a real identity, notarising, auto-update; platforms other than the Mac. (A local ad-hoc-signed
