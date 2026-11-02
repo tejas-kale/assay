@@ -73,8 +73,9 @@ notes/NNN-<slug>.md
 
 - `parseNoteFileName(name) -> { number, slug } | undefined`, `nextNoteNumber(names)`, `slugify(title)` (lower case,
   runs of other characters to `-`, trimmed, at most 60 characters; empty gives `note`), `noteFileName(number, slug)`.
-- `parseNoteFile(name, text) -> NoteFile`: `{ name, number, slug, title, links: string[], citations: number[] }`
-  (links and citations in order of first appearance, outside fenced code blocks).
+- `parseNoteFile(name, text, stat) -> NoteFile`: `{ name, number, slug, title, links: string[], citations: number[],
+  mtimeMs, size }` (links and citations in order of first appearance, outside fenced code blocks; `mtimeMs` and `size`
+  let the reader re-read only when its file changed).
 - `noteSegments(text)`: the body split into plain text, `link` (target) and `citation` (number) segments, for the reader.
 - `resolveLink(target, notes) -> NoteFile | undefined` and `backlinks(note, notes) -> NoteFile[]` (by number order).
 
@@ -102,7 +103,8 @@ notes/NNN-<slug>.md
   (held, as choosing it in History does) and focuses the data pane. `Linked from` at the bottom lists backlinks, also
   reachable with `Tab`. `j`/`k` scroll; `e` edits; `Esc` back to the list.
 - **Editor:** CodeMirror 6 with Markdown highlighting and Vim mode, as the Code tab's editor. `Cmd+S` saves; a stale
-  save says `Changed on disk, reloaded` and reloads the file into the reader. `Esc` in Vim normal mode leaves; with
+  save copies the unsaved text to the clipboard, says `Changed on disk, reloaded. Your edit is on the clipboard.` and
+  reloads the file into the reader. `Esc` in Vim normal mode leaves; with
   unsaved changes it asks `Discard changes? y / n`.
 - The facts' existing `[Title](<path>)` link rows keep their behaviour.
 - Facts that cite a run (`q 12`) keep their label; nothing new there.
