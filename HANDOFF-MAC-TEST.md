@@ -1,6 +1,6 @@
-# Handoff: test slice 1 of the analysis app on the Mac
+# Handoff: test slice 1 of Assay on the Mac
 
-You are Claude Code running on the user's Mac, in `~/Code/analysis-app`. Your job is to get slice 1 to run, test it, fix
+You are Claude Code running on the user's Mac, in `~/Code/assay`. Your job is to get slice 1 to run, test it, fix
 what stops it from working, and report honestly. Do not build anything new.
 
 ## State
@@ -94,7 +94,7 @@ Run this with the analysis folder set to the real notes-src, and ask the user be
 
 ## Known, not failures
 
-- The mod's pane still shows inside the terminal, because `ANALYSIS_APP` is not passed through yet.
+- The mod's pane still shows inside the terminal, because `ASSAY_APP` is not passed through yet.
 - The Data, Plots, Code and History tabs are placeholders.
 - `pin.toggle`, `kernel.restart` and `replay.open` report that they arrive in a later slice.
 - A renderer reload leaves the terminal blank, because main keeps no scrollback. The app menu has no reload. Record it only if it happens in

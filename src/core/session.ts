@@ -11,9 +11,9 @@ export function spawnSpec(folder: string, env: Record<string, string | undefined
   }
   return {
     file: env.SHELL || '/bin/zsh',
-    args: ['-lic', 'exec "${ANALYSIS_CLAUDE_BIN:-claude}"'],
+    args: ['-lic', 'exec "${ASSAY_CLAUDE_BIN:-claude}"'],
     cwd: folder,
-    env: { ...clean, ANALYSIS_APP: '1', TERM: 'xterm-256color', COLORTERM: 'truecolor' },
+    env: { ...clean, ASSAY_APP: '1', TERM: 'xterm-256color', COLORTERM: 'truecolor' },
   }
 }
 

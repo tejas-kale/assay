@@ -92,8 +92,8 @@ with `fuzzyRank`.
 **`core/session.ts`**:
 
 - `spawnSpec(folder, env)` returns `{ file, args, cwd, env }`. It runs the wrapper through the user's login, interactive
-  shell, since a GUI app has a thin PATH: `file = env.SHELL ?? '/bin/zsh'`, `args = ['-lic', 'exec "${ANALYSIS_CLAUDE_BIN:-claude}"']`.
-  It sets `ANALYSIS_APP=1`, `TERM=xterm-256color`, `COLORTERM=truecolor`, and removes `ELECTRON_RUN_AS_NODE`.
+  shell, since a GUI app has a thin PATH: `file = env.SHELL ?? '/bin/zsh'`, `args = ['-lic', 'exec "${ASSAY_CLAUDE_BIN:-claude}"']`.
+  It sets `ASSAY_APP=1`, `TERM=xterm-256color`, `COLORTERM=truecolor`, and removes `ELECTRON_RUN_AS_NODE`.
 - `closeFlow(port)` with port `{ write(data), kill(signal), onExit(cb), setTimer(cb, ms) }` is the graceful close. Handoff item
   "Closing a window" says the wrapper must finish `agent_git_import` and release the forwarder, and must not be killed.
   It writes `\x03`, then `\x03` again after 300 ms: Claude Code's two-press exit. **It then writes nothing further**, because
@@ -155,5 +155,5 @@ Request files, `session.json`, the kernel, the Data, Code and History contents, 
 
 ## Config-repo change this slice needs
 
-Pass `-e ANALYSIS_APP` in `claude/bin/claude`, and have the mod hide its pane when it is `1`. Until that lands the app still works,
+Pass `-e ASSAY_APP` in `claude/bin/claude`, and have the mod hide its pane when it is `1`. Until that lands the app still works,
 with the mod's pane showing inside the terminal. See `docs/config-repo-slice-1.md`.

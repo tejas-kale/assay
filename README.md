@@ -1,4 +1,4 @@
-# analysis-app
+# Assay
 
 Electron desktop app over the analysis mod's folders: Claude Code in a terminal, plus Notes and Threads.
 Slice 1 of `HANDOFF.md`; the spec is `docs/slice-1.md`.
@@ -12,7 +12,7 @@ Slice 1 of `HANDOFF.md`; the spec is `docs/slice-1.md`.
 ## Environment
 
 - The analysis folder, which holds `analyses/`, is set in Settings (Cmd+,). There is no default: the app asks on first run.
-- `ANALYSIS_CLAUDE_BIN`: the wrapper to run (default `claude`, found through your login shell)
+- `ASSAY_CLAUDE_BIN`: the wrapper to run (default `claude`, found through your login shell)
 
 ## Verify first (do by hand, in this order)
 

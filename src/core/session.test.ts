@@ -7,14 +7,14 @@ import type { CloseState } from './session.ts'
 test('spawnSpec runs the wrapper through the login shell from SHELL', () => {
   const spec = spawnSpec('/notes/analyses/a', { SHELL: '/opt/homebrew/bin/fish', PATH: '/usr/bin' })
   assert.equal(spec.file, '/opt/homebrew/bin/fish')
-  assert.deepEqual(spec.args, ['-lic', 'exec "${ANALYSIS_CLAUDE_BIN:-claude}"'])
+  assert.deepEqual(spec.args, ['-lic', 'exec "${ASSAY_CLAUDE_BIN:-claude}"'])
   assert.equal(spec.cwd, '/notes/analyses/a')
 })
 
 test('spawnSpec falls back to zsh and sets the terminal and app variables', () => {
   const spec = spawnSpec('/f', { PATH: '/usr/bin', HOME: '/Users/me' })
   assert.equal(spec.file, '/bin/zsh')
-  assert.equal(spec.env.ANALYSIS_APP, '1')
+  assert.equal(spec.env.ASSAY_APP, '1')
   assert.equal(spec.env.TERM, 'xterm-256color')
   assert.equal(spec.env.COLORTERM, 'truecolor')
   assert.equal(spec.env.HOME, '/Users/me')

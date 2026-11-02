@@ -1,4 +1,4 @@
-# Handoff: the analysis app
+# Handoff: Assay
 
 Plan agreed in a grilling session on 2026-11-01. Nothing is built. This file was written in the user's config repo
 (`~/Code/config`) and moves to this app's own repo, so "the config repo" below means `~/Code/config`.
@@ -202,12 +202,12 @@ App (Mac)                                  Container
    `python` tool and the app both talk to it. `ipykernel` and `jupyter_client` join `notes-src/pyproject.toml`.
 3. **Actions only the mod can do** (SQL re-runs, approvals, label changes): the app writes a request file and the mod polls for
    it, since no way to reach the mod over a port was seen.
-4. **Discovery:** the mod writes `.analysis-app/session.json` (port, token, kernel status), kept out of git. If
+4. **Discovery:** the mod writes `.assay/session.json` (port, token, kernel status), kept out of git. If
    `ANALYSIS_FORWARD` is `taken` or `off`, the kernel panel says so, and the rest of the app still works.
 
 ### Config-repo changes
 
-- `claude/bin/claude`: pass `-e ANALYSIS_APP`, which the app sets to `1`. The mod reads it to hide the pane.
+- `claude/bin/claude`: pass `-e ASSAY_APP`, which the app sets to `1`. The mod reads it to hide the pane.
 - Mod: the `python` tool, the runner, the Bash guard, the `computed` label, the request polling, the session file, the run
   notice in the per-prompt rules, and a rule to write notes under `notes/`.
 
