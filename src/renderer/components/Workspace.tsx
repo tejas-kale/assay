@@ -6,6 +6,7 @@ import { shortcutLabel } from '../../core/keymap.ts'
 import { Banners } from './Banners.tsx'
 import { PaneHint } from './KeyHints.tsx'
 import { DATA_TABS, DataPane } from './DataPane.tsx'
+import type { DataCommand } from './DataPane.tsx'
 import { FilesTab } from './FilesTab.tsx'
 import { NotesTab } from './NotesTab.tsx'
 import { TerminalPane } from './TerminalPane.tsx'
@@ -21,13 +22,16 @@ type Props = {
   onNotesTab: (tab: NotesTabName) => void
   onDataTab: (tab: DataTabName) => void
   focusRequest: FocusRequest | undefined
+  /** The last pin, edit or run command, for the data pane to carry out. */
+  dataCommand: DataCommand | undefined
+  onToast: (text: string) => void
   /** A short message from the last command. */
   toast: string | undefined
   /** Left Cmd is long-pressed: show each pane's shortcuts. */
   hints: boolean
 }
 
-export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, focusRequest, toast, hints }: Props) {
+export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, focusRequest, dataCommand, onToast, toast, hints }: Props) {
   const terminalRef = useRef<TerminalHandle | undefined>(undefined)
   const notesRef = useRef<HTMLElement>(null)
   const dataRef = useRef<HTMLElement>(null)
@@ -83,14 +87,7 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
       </section>
 
       <section className="pane" data-pane="data" ref={dataRef} tabIndex={-1} aria-label="Data pane">
-        <div className="tabs" role="tablist">
-          {DATA_TABS.map(t => (
-            <button key={t.id} role="tab" tabIndex={-1} aria-selected={dataTab === t.id} onClick={() => onDataTab(t.id)}>
-              {t.title}
-            </button>
-          ))}
-        </div>
-        <DataPane tab={dataTab} runs={state.runs} status={state.runStatus} onTab={onDataTab} />
+        <DataPane tab={dataTab} runs={state.runs} status={state.runStatus} onTab={onDataTab} command={dataCommand} onToast={onToast} />
         {hints && (
           <PaneHint>
             {[shortcutLabel('focus.data'), ...DATA_TABS.map(t => `${t.title} ${shortcutLabel(`tab.${t.id}`)}`)].join('  ·  ')}

@@ -8,6 +8,7 @@ import { Palette } from './components/Palette.tsx'
 import { Picker } from './components/Picker.tsx'
 import { Settings } from './components/Settings.tsx'
 import { Workspace } from './components/Workspace.tsx'
+import type { DataCommand } from './components/DataPane.tsx'
 import type { FocusRequest } from './components/Workspace.tsx'
 import type { DataTabName, NotesTabName, PaneName } from './components/common.tsx'
 
@@ -21,6 +22,7 @@ export function App() {
   const [notesTab, setNotesTab] = useState<NotesTabName>('threads')
   const [dataTab, setDataTab] = useState<DataTabName>('data')
   const [focusRequest, setFocusRequest] = useState<FocusRequest>()
+  const [dataCommand, setDataCommand] = useState<DataCommand>()
   const [palette, setPalette] = useState<{ returnTo: PaneName | undefined }>()
   const [settingsOpen, setSettingsOpen] = useState<{ returnTo: PaneName | undefined }>()
   const [settings, setSettings] = useState<SettingsView>()
@@ -120,8 +122,13 @@ export function App() {
           return true
         }
         case 'code.run':
-          showToast('Run current code arrives in slice 2')
+        case 'pin.toggle':
+          setDataCommand({ id, n: ++counter.current })
           return false
+        case 'code.edit':
+          // The pane switches to Code and focuses the editor itself once it has the run's text.
+          setDataCommand({ id, n: ++counter.current })
+          return true
         case 'window.new':
           void window.app.newWindow()
           return false
@@ -171,6 +178,8 @@ export function App() {
             focusPane('data')
           }}
           focusRequest={focusRequest}
+          dataCommand={dataCommand}
+          onToast={showToast}
           toast={toast}
           hints={hints}
         />

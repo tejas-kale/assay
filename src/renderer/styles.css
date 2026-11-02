@@ -67,6 +67,10 @@ button, input { font: inherit; color: inherit; }
 .chip-trusted { color: var(--good); border-color: var(--good); }
 .chip-queried { color: var(--info); border-color: var(--info); }
 .chip-unverified { color: var(--warn); border-color: var(--warn); }
+.chip-running { color: var(--accent); border-color: var(--accent); }
+.chip-you { color: var(--text); }
+.editing-flag { color: var(--accent); }
+.tabs .mark { display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--accent); vertical-align: middle; }
 
 .inline-input { padding: 3px 12px; }
 .inline-input label { display: flex; flex-direction: column; gap: 2px; }

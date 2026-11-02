@@ -1,6 +1,6 @@
-// Read-only code with highlighting, in CodeMirror 6 (the editor the Code tab grows into for edits).
+// Code with highlighting, in CodeMirror 6: read-only for reading, with Vim mode for edits.
 // SQL is shown formatted; the file on disk keeps Claude's exact text, and `o` shows that instead.
-import { defaultKeymap } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { sql, StandardSQL } from '@codemirror/lang-sql'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { EditorState } from '@codemirror/state'
@@ -21,7 +21,9 @@ import {
   cursorPageUp,
 } from '@codemirror/commands'
 import { tags } from '@lezer/highlight'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { getCM, vim } from '@replit/codemirror-vim'
+import type { Ref } from 'react'
+import { useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import { format } from 'sql-formatter'
 
 const highlight = HighlightStyle.define([
@@ -69,10 +71,18 @@ export function formatSql(text: string): string {
   }
 }
 
-export function CodeView({ code, language, focusKey }: { code: string; language: 'sql' | 'python' | undefined; focusKey: string }) {
+type CodeViewProps = {
+  code: string
+  language: 'sql' | 'python' | undefined
+  focusKey: string
+  /** Show the exact file text instead of the formatted SQL. */
+  original: boolean
+  onToggleOriginal: () => void
+}
+
+export function CodeView({ code, language, focusKey, original, onToggleOriginal }: CodeViewProps) {
   const host = useRef<HTMLDivElement>(null)
   const hadFocus = useRef(false)
-  const [original, setOriginal] = useState(false)
   const shown = useMemo(() => (language === 'sql' && !original ? formatSql(code) : code), [code, language, original])
 
   useEffect(() => {
@@ -108,10 +118,71 @@ export function CodeView({ code, language, focusKey }: { code: string; language:
       onKeyDown={e => {
         if (e.key === 'o' && !e.metaKey && !e.ctrlKey && !e.altKey && language === 'sql') {
           e.preventDefault()
-          setOriginal(v => !v)
+          onToggleOriginal()
         }
       }}
       title={language === 'sql' ? (original ? 'Original text (o: formatted)' : 'Formatted (o: original text)') : undefined}
     />
   )
+}
+
+export type EditorHandle = {
+  text(): string
+  /** True in Vim normal mode with no key half-typed, no search or `:` prompt open. */
+  atRest(): boolean
+}
+
+/** The editable Code view: Vim mode, starting in normal mode. Rebuilt only when `initial` or the run changes. */
+export function CodeEditor(props: {
+  initial: string
+  onChange: (text: string) => void
+  handleRef: Ref<EditorHandle>
+}) {
+  const host = useRef<HTMLDivElement>(null)
+  const viewRef = useRef<EditorView>(undefined)
+  const onChange = useRef(props.onChange)
+  onChange.current = props.onChange
+
+  useImperativeHandle(props.handleRef, () => ({
+    text: () => viewRef.current?.state.doc.toString() ?? props.initial,
+    atRest: () => {
+      const view = viewRef.current
+      const state = view ? getCM(view)?.state.vim : undefined
+      if (!view || !state || state.insertMode || state.visualMode) return false
+      return state.inputState.keyBuffer.length === 0 && view.hasFocus
+    },
+  }))
+
+  useEffect(() => {
+    if (!host.current) return
+    const view = new EditorView({
+      parent: host.current,
+      state: EditorState.create({
+        doc: props.initial,
+        extensions: [
+          // Vim first, so its keys win over the default keymap.
+          vim(),
+          history(),
+          keymap.of([...defaultKeymap, ...historyKeymap]),
+          sql({ dialect: StandardSQL, upperCaseKeywords: true }),
+          syntaxHighlighting(highlight),
+          EditorView.lineWrapping,
+          EditorView.updateListener.of(update => {
+            if (update.docChanged) onChange.current(update.state.doc.toString())
+          }),
+          theme,
+        ],
+      }),
+    })
+    viewRef.current = view
+    view.contentDOM.setAttribute('data-focus-target', '')
+    view.focus()
+    return () => {
+      viewRef.current = undefined
+      view.destroy()
+    }
+    // Only the starting text: later keystrokes must not rebuild the editor.
+  }, [props.initial])
+
+  return <div className="run-body code-view editing" ref={host} />
 }
