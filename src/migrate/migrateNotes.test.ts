@@ -83,6 +83,18 @@ test('--apply writes root notes, lists them under notes.written, then removes no
   })
 })
 
+test('an org-mode #+title: prefix on a link line or fact is left out of the title and slug, the body stays as written', async () => {
+  const root = join(await mkdtemp(join(tmpdir(), 'assay-migrate-notes-')), 'notes-src')
+  const link = '[#+title: Engage discounted counters: matured, completes and returns](</Users/x/llm-wiki/notes/20261023T100351--engage-discounted-counters.org>)'
+  await put(root, 'analyses/alpha/analysis.yaml', 'title: Alpha\n')
+  await put(root, 'analyses/alpha/notes.md', `${link}\n#+TITLE:Upper case fact\n[#+title: ](<x.org>)\n`, at(10, 0, 0))
+  await migrate(root, '--apply')
+  const notes = await tree(root, 'notes')
+  expect(Object.keys(notes).map(name => name.replace(/^notes\/\d{8}T\d{6}-/, '')).sort()).toEqual(['engage-discounted-counters-matured-completes-and-returns.md', 'title.md', 'upper-case-fact.md'])
+  const engage = Object.entries(notes).find(([name]) => name.includes('engage'))?.[1]
+  expect(engage).toBe(`# Engage discounted counters: matured, completes and returns\n\n${link}\n`)
+})
+
 test('a rerun changes nothing', async () => {
   const root = await scratchRoot()
   await migrate(root, '--apply')

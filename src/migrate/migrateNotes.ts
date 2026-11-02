@@ -53,11 +53,15 @@ export const nodeFsPort: FsPort = {
 const FILE_NAME = /^(\d{3,})-([a-z0-9][a-z0-9-]*)\.md$/
 const NOTE_TAG = /^(.*?)\s*\[(?:(trusted|queried|computed|unverified)(?: q (\d+))?|q (\d+))\]$/
 const FILE_NOTE = /^\[(.*)\]\(<(.+)>\)$/
+const ORG_TITLE = /^#\+title:\s*/i
+
+/** An org-mode `#+title:` prefix is not part of the title; text that is only the prefix stays whole. */
+const stripOrgTitle = (text: string) => text.replace(ORG_TITLE, '').trim() || text
 
 /** A `notes.md` line: its text without the label, and the run it cited. A link line keeps itself as the body. */
 export function parseFactLine(line: string): { title: string; body: (slug: string) => string } {
   const link = FILE_NOTE.exec(line)
-  if (link) return { title: link[1] ?? '', body: () => line }
+  if (link) return { title: stripOrgTitle(link[1] ?? ''), body: () => line }
   const match = NOTE_TAG.exec(line)
   let text = line
   let query: number | undefined
@@ -72,7 +76,7 @@ export function parseFactLine(line: string): { title: string; body: (slug: strin
   }
   if (text.trim() === '') text = line
   const body = (slug: string) => (query === undefined ? text : `${text} [${slug} q ${query}]`)
-  return { title: text, body }
+  return { title: stripOrgTitle(text), body }
 }
 
 /** `fn` applied to every line of `text` outside fenced code. */
