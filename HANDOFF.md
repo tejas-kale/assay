@@ -316,6 +316,9 @@ As of 2026-11-02 (after slice 2b).
   as a request file the mod polls (config repo `c3ac6af`). Smoke-tested with a stub Claude and a simulated mod reply;
   the mod side is covered by its own tests but has not run against a live session.
 
+- **Fixes after slice 2b:** Shift+Enter sends a newline to Claude (ESC CR); Files opens Neovim as a new tab in the
+  front Ghostty window over AppleScript (falls back to a new instance); a window's title is `<analysis> — Assay`.
+
 ### Left
 
 - **Slice 2b, untested live:** a real Claude session picking up a request (mod poller), the request-to-run latency
