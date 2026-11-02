@@ -288,7 +288,7 @@ Decide these while building, and record each here:
 
 ## Status
 
-As of 2026-11-02. Nothing below is committed unless `git log` says so.
+As of 2026-11-02 (after slice 2b).
 
 ### Done and run on the Mac
 
@@ -310,13 +310,18 @@ As of 2026-11-02. Nothing below is committed unless `git log` says so.
 - **Install:** `scripts/postinstall.mjs` repairs Electron's unpack on Node 26; `npm run install-app` builds `Assay.app`
   (electron-builder, ad-hoc signed) into `/Applications`.
 
+- **Slice 2b** (`docs/slice-2b.md`): trust labels (`trusted`, `queried`, `unverified`, `running`) with `you` and `from NNN`
+  in History and the run header; `p` and the palette pin the current run; dots on Data, Code and History for unseen
+  content; `i` or Cmd+E edits SQL in CodeMirror with Vim mode; Cmd+Enter sends the edit, or re-runs the current run,
+  as a request file the mod polls (config repo `c3ac6af`). Smoke-tested with a stub Claude and a simulated mod reply;
+  the mod side is covered by its own tests but has not run against a live session.
+
 ### Left
 
-- **Slice 2:** trust labels on runs, a key that pins the current run, a marker on tabs with new content, editing in
-  CodeMirror with Vim mode (`i` or Cmd+E), Cmd+Enter runs it as a new run, and SQL re-run/edit through a request file
-  the mod polls. Wire the palette's Pin and Run current code (now placeholders).
+- **Slice 2b, untested live:** a real Claude session picking up a request (mod poller), the request-to-run latency
+  (Verify first item 8), and Postgres re-runs.
 - **Slice 3** and **slice 4** as written under Build slices.
-- **Open for the build** above is still open.
+- **Open for the build** above is still open (none of it was needed for slice 2b).
 - Untested by Claude: a live Claude session in the app (the user has used it), physical Cmd keys, Cmd+W/Cmd+Q closing.
 
 ### How this app was tested on the Mac without a person
