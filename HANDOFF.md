@@ -295,6 +295,14 @@ Decide these while building, and record each here:
   helpers installed editable from the mod's mount. It runs the mod's tools in every analysis in every repo; a project
   `.venv` with `ipykernel` overrides the kernel only. The runner is run from the mod's mount, not copied into
   notes-src. See `docs/slice-3b.md`.
+- **Slice 4** (`docs/slice-4.md`, 2026-11-02): note files show no trust label; each cited run's label shows beside
+  its citation. Claude creates a note file with a new `new_note` tool (claims the number, checks the slug) and edits
+  notes with `Edit`; the app creates notes itself. Links resolve by slug; note files are not listed in `notes.md`.
+- **Trust review leaves the pane (user, 2026-11-02):** with `ASSAY_APP=1` the mod never opens its pane. The review
+  is the data pane's Trust tab, fed by `.assay/trust/<name>.json`, which the mod rewrites after each streamed check
+  step (`analysis_trust check --stream`). Approval is the mod's `$.ui.ask` ("Trust <name>?", Trust / Reject) in and
+  out of the app; only the exact "Trust" approves, and the pane's `y`/`r` card goes. Nothing to commit ends as
+  "Already trusted: no changes".
 
 ## Not in v1
 
