@@ -20,7 +20,7 @@
 // a terminal keeps the theme it was created with and everything else still works.
 import * as ghostty from 'ghostty-web'
 
-import { inputOverride, leavesTerminal } from '../core/terminalKeys.ts'
+import { inputOverride, leavesTerminal, wheelLines, wheelReport } from '../core/terminalKeys.ts'
 import { MONO_FONT, THEMES, cellRecolor, minimumContrast } from '../core/theme.ts'
 import type { CellColors, ThemeMode } from '../core/theme.ts'
 import { currentMode, onModeChange } from './appearance.ts'
@@ -61,11 +61,13 @@ type RawTerminal = {
   focus?: () => void
   loadAddon?: (addon: unknown) => void
   attachCustomKeyEventHandler?: (handler: (event: KeyboardEvent) => boolean) => void
+  attachCustomWheelEventHandler?: (handler: (event: WheelEvent) => boolean) => void
   renderer?: RawRenderer
-  wasmTerm?: unknown
+  wasmTerm?: RawWasmTerm
   viewportY?: number
   dispose(): void
 }
+type RawWasmTerm = { hasMouseTracking?: () => boolean; getMode?: (mode: number, isAnsi?: boolean) => boolean }
 type CellMetrics = { width: number; height: number; baseline: number }
 type RawRenderer = {
   metrics?: CellMetrics
@@ -163,6 +165,26 @@ export async function createTerminal(el: HTMLElement): Promise<TerminalHandle> {
     const data = inputOverride(event)
     if (data === undefined) return false
     for (const cb of dataListeners) cb(data)
+    return true
+  })
+
+  // With mouse tracking on (Claude's full-screen view), the library turns the wheel into arrow keys;
+  // send wheel reports instead so Claude scrolls its transcript. `true` means handled.
+  let wheelCarry = 0
+  term.attachCustomWheelEventHandler?.(event => {
+    const wasm = term.wasmTerm
+    if (!wasm?.hasMouseTracking?.()) return false
+    const [lines, carry] = wheelLines(event.deltaY, wheelCarry)
+    wheelCarry = carry
+    if (lines !== 0) {
+      const cell = term.renderer?.metrics ?? cellMetrics()
+      const canvas = el.querySelector('canvas')
+      const box = (canvas ?? el).getBoundingClientRect()
+      const col = Math.max(1, Math.min(term.cols ?? 80, Math.floor((event.clientX - box.left) / cell.width) + 1))
+      const row = Math.max(1, Math.min(term.rows ?? 24, Math.floor((event.clientY - box.top) / cell.height) + 1))
+      const data = wheelReport(lines, col, row, wasm.getMode?.(1006, false) ?? true)
+      for (const cb of dataListeners) cb(data)
+    }
     return true
   })
 

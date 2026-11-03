@@ -15,3 +15,31 @@ export const inputOverride = (e: KeyLike): string | undefined =>
  * Cmd with Backspace or an arrow stays with the terminal for line editing.
  */
 export const leavesTerminal = (e: KeyLike): boolean => e.metaKey && !e.ctrlKey && e.key.length === 1
+
+/** Wheel scrolling as a pixel delta per line, the same divisor the terminal library uses. */
+export const WHEEL_PIXELS_PER_LINE = 33
+const WHEEL_MAX_LINES = 5
+
+/**
+ * Lines to scroll for a wheel event, carrying the remainder so a trackpad's small deltas add up.
+ * Returns `[lines, remainder]`; lines is negative for up.
+ */
+export function wheelLines(deltaY: number, carried: number): [number, number] {
+  const total = carried + deltaY / WHEEL_PIXELS_PER_LINE
+  const whole = Math.trunc(total)
+  const lines = Math.max(-WHEEL_MAX_LINES, Math.min(WHEEL_MAX_LINES, whole))
+  return [lines, total - whole]
+}
+
+/**
+ * Mouse wheel reports for a program that turned mouse tracking on (Claude Code does in its full-screen
+ * view). The library sends arrow keys instead, which Claude reads as history navigation. `col` and
+ * `row` are 1-based. SGR (mode 1006) when the program asked for it, else the legacy X10 bytes.
+ */
+export function wheelReport(lines: number, col: number, row: number, sgr: boolean): string {
+  const button = lines < 0 ? 64 : 65
+  const one = sgr
+    ? `\x1b[<${button};${col};${row}M`
+    : `\x1b[M${String.fromCharCode(32 + button, 32 + Math.min(col, 223), 32 + Math.min(row, 223))}`
+  return one.repeat(Math.abs(lines))
+}
