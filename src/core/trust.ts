@@ -125,6 +125,29 @@ export function stateLine(review: TrustReview, now: number): { text: string; ton
   return { text: review.message ?? review.state, tone: stateTone(review.state) }
 }
 
+/**
+ * A settled review whose name is no longer among the proposals: an earlier one (trusted, rejected or failed),
+ * so the Trust tab says so instead of showing it as the one to act on. False until the list is known.
+ */
+export function earlierReview(review: TrustReview | undefined, proposals: readonly { name: string }[] | undefined): boolean {
+  if (!review || !proposals || isActive(review.state)) return false
+  return !proposals.some(p => p.name === review.name)
+}
+
+/** What became of a settled review, in words. */
+export function outcomeWord(state: TrustState): string {
+  const words: Record<TrustState, string> = {
+    checking: 'checking',
+    asking: 'waiting for an answer',
+    approved: 'trusted',
+    unchanged: 'already trusted, unchanged',
+    rejected: 'rejected',
+    failed: 'failed its checks',
+    error: 'stopped with an error',
+  }
+  return words[state]
+}
+
 /** Whether the Trust tab offers Trust and Reject for this review: only once every check passed. */
 export const canAnswer = (review: TrustReview | undefined): boolean => review?.state === 'asking'
 

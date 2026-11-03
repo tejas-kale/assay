@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { canAnswer, canCheck, TRUST_STATES, diffLines, isActive, latestReview, parseTrustReview, stateLine, stateTone, stepDetail, stepTitle, trustSeenKey } from './trust.ts'
+import { canAnswer, canCheck, earlierReview, outcomeWord, TRUST_STATES, diffLines, isActive, latestReview, parseTrustReview, stateLine, stateTone, stepDetail, stepTitle, trustSeenKey } from './trust.ts'
 
 const base = {
   name: 'c',
@@ -118,4 +118,28 @@ test('Trust and Reject are offered only while asking; Check only when no review 
     assert.equal(canAnswer({ ...r, state }), state === 'asking')
     assert.equal(canCheck({ ...r, state }), state !== 'checking' && state !== 'asking')
   }
+})
+
+test('earlierReview: a settled review of a name no longer proposed is an earlier one', () => {
+  const review = parseTrustReview(JSON.stringify(base))
+  assert.ok(review)
+  const at = (state: (typeof TRUST_STATES)[number], name = 'old') => ({ ...review, name, state })
+  const proposals = [{ name: 'new_one' }]
+  assert.equal(earlierReview(at('approved'), proposals), true)
+  assert.equal(earlierReview(at('rejected'), proposals), true)
+  assert.equal(earlierReview(at('approved', 'new_one'), proposals), false)
+  // Running or waiting for an answer: always the current review.
+  assert.equal(earlierReview(at('checking'), proposals), false)
+  assert.equal(earlierReview(at('asking'), proposals), false)
+  // The list has not come back yet: nothing to compare with.
+  assert.equal(earlierReview(at('approved'), undefined), false)
+  assert.equal(earlierReview(undefined, proposals), false)
+})
+
+test('outcomeWord says what became of a settled review', () => {
+  assert.equal(outcomeWord('approved'), 'trusted')
+  assert.equal(outcomeWord('unchanged'), 'already trusted, unchanged')
+  assert.equal(outcomeWord('rejected'), 'rejected')
+  assert.equal(outcomeWord('failed'), 'failed its checks')
+  assert.equal(outcomeWord('error'), 'stopped with an error')
 })

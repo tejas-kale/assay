@@ -6,6 +6,7 @@ export type CommandId =
   | 'search.open'
   | 'code.run'
   | 'code.edit'
+  | 'code.new'
   | 'run.interrupt'
   | 'window.new'
   | 'tab.data'
@@ -41,6 +42,7 @@ export const COMMANDS: readonly Command[] = [
   { id: 'search.open', title: 'Search everything', accelerator: { code: 'KeyF' } },
   { id: 'code.run', title: 'Run current code', accelerator: { code: 'Enter' } },
   { id: 'code.edit', title: 'Edit current code', accelerator: { code: 'KeyE' } },
+  { id: 'code.new', title: 'New SQL query' },
   { id: 'run.interrupt', title: 'Interrupt run', accelerator: { code: 'Period' } },
   { id: 'window.new', title: 'New window', accelerator: { code: 'KeyN' } },
   { id: 'window.close', title: 'Close window', accelerator: { code: 'KeyW' } },
@@ -108,14 +110,14 @@ export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
   },
   {
     pane: 'Code',
-    keys: [['h j k l  w b', 'move'], ['g / G', 'top / bottom'], [', / .', 'earlier / later run'], ['o', 'original / formatted'], ['d', 'its Data'], ['i', 'edit'], ['⌘E', 'edit from anywhere'], ['p', 'pin / follow latest'], ['⌘↩', 're-run as a new run']],
+    keys: [['h j k l  w b', 'move'], ['g / G', 'top / bottom'], [', / .', 'earlier / later run'], ['o', 'original / formatted'], ['d', 'its Data'], ['i', 'edit'], ['n', 'new SQL query'], ['⌘E', 'edit from anywhere'], ['p', 'pin / follow latest'], ['⌘↩', 're-run as a new run']],
   },
-  { pane: 'Code editing', keys: [['Esc', 'leave (in Vim normal mode)'], ['⌘↩', 'run as a new run']] },
+  { pane: 'Code editing', keys: [['Esc', 'leave (in Vim normal mode)'], ['⌘↩', 'run as a new run (a new query opens in Data)']] },
   {
     pane: 'History',
     keys: [['j / k', 'move'], ['Enter', 'show that run'], ['p', 'pin / follow latest'], ['newest run', 'follow Claude again']],
   },
-  { pane: 'Trust', keys: [['J / K', 'choose a proposal'], ['c', 'check it'], ['t / r', 'trust / reject, once every check passed'], ['l', 'list the proposals again'], ['j / k', 'scroll'], ['g / G', 'top / bottom']] },
+  { pane: 'Trust', keys: [['J / K  ↑ / ↓', 'choose a proposal'], ['c / Enter', 'check it'], ['t / r', 'trust / reject, once every check passed'], ['l', 'list the proposals again'], ['j / k', 'scroll'], ['g / G', 'top / bottom']] },
   {
     pane: 'Files',
     keys: [['j / k', 'move'], ['/', 'search'], ['Enter', 'open: text in Neovim, Mermaid chart in the browser, image preview'], ['Tab', 'preview in a pop-up'], ['r', 'refresh'], ['⌘2 again', 'switch to Threads']],

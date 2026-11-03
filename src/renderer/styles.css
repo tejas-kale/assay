@@ -201,6 +201,8 @@ table.grid th.cur-col { color: var(--accent); }
 .trust-proposals { padding: 0 12px 8px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
 .trust-proposal { display: flex; align-items: center; gap: 10px; padding: 1px 4px; }
 .trust-proposal.selected { background: var(--sel); }
+.trust-keys { padding: 4px 4px 0; font-size: 11px; }
+.trust-earlier { white-space: normal; }
 .trust-proposal button, .trust-answer button { background: var(--bg); border: 1px solid var(--line); border-radius: 3px; padding: 0 10px; cursor: pointer; }
 .trust-proposal button { margin-left: auto; }
 .trust-proposal button:disabled, .trust-answer button:disabled { opacity: 0.5; cursor: default; }

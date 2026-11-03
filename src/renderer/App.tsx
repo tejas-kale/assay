@@ -191,6 +191,7 @@ export function App() {
           setRenaming(true)
           return true
         case 'code.edit':
+        case 'code.new':
           // The pane switches to Code and focuses the editor itself once it has the run's text.
           setDataCommand({ id, n: ++counter.current })
           return true

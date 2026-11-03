@@ -65,7 +65,7 @@ test('COMMANDS lists every action once, with titles', () => {
   const ids = COMMANDS.map(c => c.id)
   assert.equal(new Set(ids).size, ids.length)
   for (const id of [
-    'focus.terminal', 'focus.notes', 'focus.data', 'palette.open', 'code.run', 'code.edit', 'window.new',
+    'focus.terminal', 'focus.notes', 'focus.data', 'palette.open', 'code.run', 'code.edit', 'code.new', 'window.new',
     'tab.data', 'tab.plots', 'tab.code', 'tab.history', 'tab.notes', 'tab.threads', 'tab.files',
     'window.close', 'settings.open', 'pin.toggle', 'kernel.restart', 'replay.open', 'run.interrupt', 'shortcuts.show',
   ]) assert.ok(ids.includes(id as never), id)
@@ -77,8 +77,8 @@ test('no two commands share an accelerator', () => {
   assert.equal(new Set(keys).size, keys.length)
 })
 
-test('restart kernel and replay are palette-only commands', () => {
-  for (const id of ['kernel.restart', 'replay.open']) {
+test('restart kernel, replay and new SQL query are palette-only commands', () => {
+  for (const id of ['kernel.restart', 'replay.open', 'code.new']) {
     const command = COMMANDS.find(c => c.id === id)
     assert.ok(command, id)
     assert.equal(command.accelerator, undefined)

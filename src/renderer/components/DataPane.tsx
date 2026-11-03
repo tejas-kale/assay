@@ -28,7 +28,7 @@ export const DATA_TABS: { id: DataTabName; title: string }[] = [
 
 /** A command the app sends to the pane: `n` makes a repeat of the same command a new request. */
 export type DataCommand = { n: number } & (
-  | { id: Extract<CommandId, 'pin.toggle' | 'code.edit' | 'code.run' | 'run.interrupt' | 'kernel.restart' | 'replay.open'> }
+  | { id: Extract<CommandId, 'pin.toggle' | 'code.edit' | 'code.new' | 'code.run' | 'run.interrupt' | 'kernel.restart' | 'replay.open'> }
   /** Hold run `number`, as choosing it in History does (a followed citation in a note). */
   | { id: 'run.show'; number: number }
 )
@@ -52,8 +52,11 @@ const headerOf = (run: Run): RunHeader => ({
   ...(run.trusted !== undefined && { trusted: run.trusted }),
 })
 
-/** What a run is open for editing: where it came from, and the text it started with. */
-type Edit = { id: number; from: Run; start: string }
+/** What is open for editing: the run it came from (none for a new query), its language and the text it started with. */
+type Edit = { id: number; from: Run | undefined; language: 'sql' | 'python'; start: string }
+
+/** The slug a new query's run gets; the server makes it safe for a file name. */
+const NEW_QUERY_SLUG = 'query'
 
 /** The user's reply is not expected after this long: the mod only polls while Claude's session is alive. */
 const PICKUP_MS = 10_000
@@ -68,7 +71,7 @@ const focusDataPane = () =>
 /**
  * Data, Plots, Code and History over `queries/`. All show one current run: Claude's latest, unless a run
  * is held (chosen in History, or pinned with `p`). Data links to the run's code and Code links back
- * to its data. Code can edit the run, and Cmd+Enter sends the code to the mod as a new run.
+ * to its data. Code can edit the run, or open a new SQL query (`n`), and Cmd+Enter sends the code to the mod as a new run.
  * Python runs add table switching and a stdout view to Data, the Plots tab, the kernel restart
  * prompt and the Replay view.
  */
@@ -213,6 +216,18 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
     )
   }
 
+  /** A new query has no run behind it: it runs on the engine of the latest SQL run, and opens in Data. */
+  const sendNew = (code: string) => {
+    if (code.trim() === '') return onToast('Nothing to run: the SQL is empty')
+    const engine = runs.findLast(r => r.language === 'sql')?.engine ?? 'databricks'
+    sendRequest({ kind: 'sql', sql: code, engine, slug: NEW_QUERY_SLUG }, () => {
+      setEdit(undefined)
+      setHeld(undefined)
+      onTab('data')
+      focusDataPane()
+    })
+  }
+
   const startEdit = () => {
     // Already editing: only bring the open editor forward, keeping its text.
     if (edit) return onTab('code')
@@ -223,13 +238,24 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
     const body = codeBody(view.code, current.language)
     const start = current.language === 'sql' && !original ? formatSql(body) : body
     editText.current = start
-    setEdit({ id: ++editCount.current, from: current, start })
+    setEdit({ id: ++editCount.current, from: current, language: current.language, start })
+    onTab('code')
+  }
+
+  const startNew = () => {
+    if (edit) {
+      onTab('code')
+      return onToast(edit.from ? `Run ${edit.from.label} is open for editing: run it with ⌘↩ or leave it with Esc first.` : 'The new query is open.')
+    }
+    editText.current = ''
+    setEdit({ id: ++editCount.current, from: undefined, language: 'sql', start: '' })
     onTab('code')
   }
 
   const editor = useRef<EditorHandle>(null)
   const runIt = () => {
-    if (edit) return send(edit.from, editor.current?.text() ?? editText.current)
+    if (edit && !edit.from) return sendNew(editor.current?.text() ?? editText.current)
+    if (edit?.from) return send(edit.from, editor.current?.text() ?? editText.current)
     if (!current || view?.code === undefined || current.language === undefined) return onToast('No code to run')
     send(current, codeBody(view.code, current.language))
   }
@@ -275,14 +301,15 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
       focusDataPane()
     } else onToast(`No run ${String(number).padStart(3, '0')}`)
   }
-  const handlers = useRef({ togglePin, startEdit, runIt, openReplay, showRun })
-  handlers.current = { togglePin, startEdit, runIt, openReplay, showRun }
+  const handlers = useRef({ togglePin, startEdit, startNew, runIt, openReplay, showRun })
+  handlers.current = { togglePin, startEdit, startNew, runIt, openReplay, showRun }
   // A command sent before this pane existed (from the picker) is not for it.
   const firstCommand = useRef(command?.n)
   useEffect(() => {
     if (!command || command.n === firstCommand.current) return
     if (command.id === 'pin.toggle') handlers.current.togglePin()
     else if (command.id === 'code.edit') handlers.current.startEdit()
+    else if (command.id === 'code.new') handlers.current.startNew()
     else if (command.id === 'code.run') handlers.current.runIt()
     else if (command.id === 'run.interrupt') sendRequest({ kind: 'interrupt' })
     else if (command.id === 'kernel.restart') setConfirmRestart(true)
@@ -316,12 +343,38 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
     <Prompt text="Restart the kernel? Its variables are lost. y / n" onKey={answerRestart} />
   )
 
+  const codeTab = (header: ReactNode) => (
+    <CodeTab
+      header={header}
+      view={view}
+      run={current}
+      onData={() => onTab('data')}
+      onPin={togglePin}
+      onStep={stepRun}
+      onEdit={startEdit}
+      onNew={startNew}
+      original={original}
+      onToggleOriginal={() => setOriginal(v => !v)}
+      edit={edit}
+      editText={editText}
+      editorRef={editor}
+      onLeave={() => setEdit(undefined)}
+    />
+  )
+
   let body
   if (replay) body = <ReplayView state={replay.state} onKey={onReplayKey} />
   else if (tab === 'trust') body = <TrustTab review={trust} onToast={onToast} />
   else if (tab === 'history') body = <History runs={runs} status={status} current={current} onChoose={choose} onPin={togglePin} />
-  else if (!current) body = <Placeholder text="No runs yet. Claude's queries appear here." />
-  else {
+  else if (tab === 'code' && edit && !edit.from) body = codeTab(<NewQueryHeader engine={runs.findLast(r => r.language === 'sql')?.engine ?? 'databricks'} />)
+  else if (!current) {
+    body =
+      tab === 'code' ? (
+        <Placeholder text="No runs yet. n: new SQL query." onKey={key => key === 'n' && startNew()} />
+      ) : (
+        <Placeholder text="No runs yet. Claude's queries appear here." />
+      )
+  } else {
     const note =
       tab === 'data' && isPython && !textView && tableCount > 0 ? (
         <span className="dim">
@@ -335,10 +388,10 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
     const header = (
       <>
         <RunHeader
-          run={edit && tab === 'code' ? edit.from : current}
+          run={edit?.from && tab === 'code' ? edit.from : current}
           status={status}
           pinned={!following}
-          editing={edit !== undefined && tab === 'code'}
+          editing={edit?.from !== undefined && tab === 'code'}
           onFollow={() => setHeld(undefined)}
           onStep={edit && tab === 'code' ? undefined : stepRun}
         >
@@ -349,7 +402,10 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
             </span>
           )}
           {tab === 'code' ? (
-            <LinkButton onClick={() => onTab('data')} label="Data" shortcut={shortcutLabel('tab.data')} />
+            <>
+              {!edit && <LinkButton onClick={startNew} label="New SQL" shortcut="n" />}
+              <LinkButton onClick={() => onTab('data')} label="Data" shortcut={shortcutLabel('tab.data')} />
+            </>
           ) : (
             <LinkButton onClick={() => onTab('code')} label="Code" shortcut={shortcutLabel('tab.code')} />
           )}
@@ -387,21 +443,7 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
           onStep={stepRun}
         />
       ) : (
-        <CodeTab
-          header={header}
-          view={view}
-          run={current}
-          onData={() => onTab('data')}
-          onPin={togglePin}
-          onStep={stepRun}
-          onEdit={startEdit}
-          original={original}
-          onToggleOriginal={() => setOriginal(v => !v)}
-          edit={edit}
-          editText={editText}
-          editorRef={editor}
-          onLeave={() => setEdit(undefined)}
-        />
+        codeTab(header)
       )
   }
   return (
@@ -434,11 +476,30 @@ function useRunView(run: Run | undefined, runs: Run[], table: number): RunView |
   return view?.run.number === run?.number ? view : undefined
 }
 
-const Placeholder = ({ text }: { text: string }) => (
-  <div className="list placeholder" tabIndex={-1} data-focus-target>
+const Placeholder = ({ text, onKey }: { text: string; onKey?: (key: string) => void }) => (
+  <div
+    className="list placeholder"
+    tabIndex={-1}
+    data-focus-target
+    onKeyDown={e => {
+      if (onKey && isPaneKey(e)) onKey(e.key)
+    }}
+  >
     <div className="empty">{text}</div>
   </div>
 )
+
+/** The Code tab's header while a new query is open: no run yet, only where it will run. */
+function NewQueryHeader({ engine }: { engine: string }) {
+  return (
+    <div className="run-header">
+      <b>new</b>
+      <span className="grow run-slug">SQL query</span>
+      <span className="dim">{engine}</span>
+      <span className="editing-flag">⌘↩ run · Esc leave</span>
+    </div>
+  )
+}
 
 function LinkButton({ onClick, label, shortcut }: { onClick: () => void; label: string; shortcut: string }) {
   return (
@@ -840,11 +901,13 @@ function EditorHost(props: { language: 'sql' | 'python'; editText: { current: st
 function CodeTab(props: {
   header: ReactNode
   view: RunView | undefined
-  run: Run
+  /** Undefined only while a new query is open with no runs yet. */
+  run: Run | undefined
   onData: () => void
   onPin: () => void
   onStep: (delta: 1 | -1) => void
   onEdit: () => void
+  onNew: () => void
   original: boolean
   onToggleOriginal: () => void
   edit: Edit | undefined
@@ -885,6 +948,7 @@ function CodeTab(props: {
         else if (e.key === 'p') props.onPin()
         else if (e.key === ',' || e.key === '.') props.onStep(e.key === '.' ? 1 : -1)
         else if (e.key === 'i') props.onEdit()
+        else if (e.key === 'n') props.onNew()
         else return
         e.preventDefault()
       }}
@@ -892,8 +956,8 @@ function CodeTab(props: {
       {header}
       {confirm && <div className="status warn">Discard edits? y / n</div>}
       {edit ? (
-        <EditorHost key={edit.id} language={edit.from.language ?? 'sql'} editText={editText} handleRef={props.editorRef} />
-      ) : !view ? null : view.error ? (
+        <EditorHost key={edit.id} language={edit.language} editText={editText} handleRef={props.editorRef} />
+      ) : !view || !run ? null : view.error ? (
         <div className="status warn">{view.error}</div>
       ) : view.code === undefined ? (
         <div className="empty" tabIndex={-1} data-focus-target>

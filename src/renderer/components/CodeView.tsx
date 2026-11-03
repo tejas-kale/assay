@@ -87,6 +87,8 @@ type CodeViewProps = {
   onToggleOriginal: () => void
   /** Not a focus target: the host tab keeps the keys (the Trust tab scrolls). */
   passive?: boolean
+  /** Not even a click focuses it (the Trust tab, whose keys must keep working). */
+  unfocusable?: boolean
   /** Take the focus when built (a pop-up). */
   autoFocus?: boolean
   /** Select the first case-insensitive match of this text and scroll it into the middle (a search hit). */
@@ -101,7 +103,7 @@ export function languageOfPath(path: string): CodeLanguage | undefined {
   return ext === 'sql' ? 'sql' : ext === 'py' ? 'python' : ext === 'md' ? 'markdown' : undefined
 }
 
-export function CodeView({ code, language, focusKey, original, onToggleOriginal, passive, autoFocus, find }: CodeViewProps) {
+export function CodeView({ code, language, focusKey, original, onToggleOriginal, passive, unfocusable, autoFocus, find }: CodeViewProps) {
   const host = useRef<HTMLDivElement>(null)
   const hadFocus = useRef(false)
   const shown = useMemo(() => (language === 'sql' && !original ? formatSql(code) : code), [code, language, original])
@@ -114,6 +116,8 @@ export function CodeView({ code, language, focusKey, original, onToggleOriginal,
         doc: shown,
         extensions: [
           EditorState.readOnly.of(true),
+          // Unfocusable: a click leaves the keys with the host tab.
+          EditorView.editable.of(!unfocusable),
           keymap.of([...readingKeys, ...defaultKeymap]),
           language === 'sql' ? sql({ dialect: StandardSQL, upperCaseKeywords: true }) : language === 'python' ? python() : language === 'markdown' ? markdown() : [],
           syntaxHighlighting(highlight),
@@ -135,7 +139,7 @@ export function CodeView({ code, language, focusKey, original, onToggleOriginal,
       hadFocus.current = view.hasFocus
       view.destroy()
     }
-  }, [shown, language, focusKey, passive, find, autoFocus])
+  }, [shown, language, focusKey, passive, unfocusable, find, autoFocus])
 
   return (
     <div

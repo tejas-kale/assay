@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 
 import type { Proposal, Reply, TrustAnswer } from '../../core/requests.ts'
-import { canAnswer, canCheck, diffLines, stateLine, stepDetail, stepTitle } from '../../core/trust.ts'
+import { canAnswer, canCheck, diffLines, earlierReview, outcomeWord, stateLine, stepDetail, stepTitle } from '../../core/trust.ts'
 import type { TrustReview } from '../../core/trust.ts'
 import { CodeView } from './CodeView.tsx'
 import { isPaneKey } from './common.tsx'
@@ -66,9 +66,12 @@ export function TrustTab({ review, onToast }: Props) {
     else if (e.key === 'k') body?.scrollBy({ top: -LINE })
     else if (e.key === 'g') body?.scrollTo({ top: 0 })
     else if (e.key === 'G') body?.scrollTo({ top: body.scrollHeight })
-    else if (e.key === 'J') setSelected(i => Math.min((proposals?.length ?? 1) - 1, i + 1))
-    else if (e.key === 'K') setSelected(i => Math.max(0, i - 1))
-    else if (e.key === 'c' && chosen && canCheck(review) && !isSending) check(chosen.name)
+    else if (e.key === 'J' || e.key === 'ArrowDown') setSelected(i => Math.min((proposals?.length ?? 1) - 1, i + 1))
+    else if (e.key === 'K' || e.key === 'ArrowUp') setSelected(i => Math.max(0, i - 1))
+    else if ((e.key === 'c' || e.key === 'Enter') && chosen) {
+      if (!canCheck(review)) onToast(`Wait for the review of ${review?.name ?? 'the other proposal'} to finish.`)
+      else if (!isSending) check(chosen.name)
+    }
     else if (e.key === 't' && canAnswer(review) && !isSending) answer('trust')
     else if (e.key === 'r' && canAnswer(review) && !isSending) answer('reject')
     else if (e.key === 'l') list()
@@ -85,19 +88,29 @@ export function TrustTab({ review, onToast }: Props) {
           <span>{p.name}</span>
           <span className="dim">{p.folder}/</span>
           <button disabled={!canCheck(review) || isSending} onClick={() => check(p.name)}>
-            Check
+            {p === chosen ? 'Check (c)' : 'Check'}
           </button>
         </div>
       ))}
+      {proposals !== undefined && proposals.length > 0 && (
+        <div className="dim trust-keys">{proposals.length > 1 ? 'J / K choose · ' : ''}c or Enter check the highlighted one</div>
+      )}
     </div>
   )
 
-  if (!review) {
+  if (!review || earlierReview(review, proposals)) {
     return (
       <div className="run" tabIndex={-1} data-focus-target onKeyDown={onKeyDown}>
         <div className="run-body trust-body" ref={ref}>
           {proposalList}
-          <div className="empty">No review yet. Check a proposal to start one.</div>
+          {review ? (
+            <div className="empty trust-earlier">
+              Earlier review: {review.name} was {outcomeWord(review.state)} on {new Date(review.endedAt ?? review.startedAt).toLocaleString()}. It is not
+              one of the proposals above.{proposals?.length ? ' Check one to start a new review.' : ''}
+            </div>
+          ) : (
+            <div className="empty">No review yet. Check a proposal to start one.</div>
+          )}
         </div>
       </div>
     )
@@ -116,7 +129,7 @@ export function TrustTab({ review, onToast }: Props) {
         {review.description && <div className="trust-desc">{review.description}</div>}
         {review.code !== undefined && (
           <div className="trust-code">
-            <CodeView code={review.code} language={review.language === 'yaml' ? undefined : review.language} focusKey={review.name} original onToggleOriginal={() => undefined} passive />
+            <CodeView code={review.code} language={review.language === 'yaml' ? undefined : review.language} focusKey={review.name} original onToggleOriginal={() => undefined} passive unfocusable />
           </div>
         )}
         {review.steps.map((step, i) => (
