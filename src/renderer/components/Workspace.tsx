@@ -79,7 +79,7 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
         <div className="tabs" role="tablist">
           {(['threads', 'notes', 'files'] as const).map(id => (
             <button key={id} role="tab" tabIndex={-1} aria-selected={notesTab === id} onClick={() => onNotesTab(id)}>
-              {id === 'notes' ? notesTabLabel(noteGroups(state.rootNotes, state.noteLists)) : id === 'threads' ? 'Threads' : 'Files'}
+              {id === 'notes' ? notesTabLabel(noteGroups(state.rootNotes, state.noteLists)) : id === 'threads' ? (state.threads.open.length > 0 ? `Threads (${state.threads.open.length})` : 'Threads') : 'Files'}
             </button>
           ))}
           <span className="grow" />

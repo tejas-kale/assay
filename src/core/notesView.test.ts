@@ -15,7 +15,7 @@ test('groups are newest first, skip IDs with no file, and keep a note in one gro
 
 test('the tab label carries the count', () => {
   assert.equal(notesTabLabel({ written: [], found: [] }), 'Notes')
-  assert.equal(notesTabLabel(noteGroups(all, { written: ['20261001T090000'], found: ['20261102T181500'] })), 'Notes 2')
+  assert.equal(notesTabLabel(noteGroups(all, { written: ['20261001T090000'], found: ['20261102T181500'] })), 'Notes (2)')
 })
 
 test('a link shows the title; an unknown ID has none', () => {

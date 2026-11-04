@@ -87,7 +87,7 @@ export function shortcutLabel(id: CommandId): string {
 export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
   {
     pane: 'Threads',
-    keys: [['⌘2 again', 'switch to Notes'], ['j / k', 'move'], ['/', 'search'], ['Tab', 'full text in a pop-up'], ['a', 'add'], ['e', 'edit'], ['c', 'close'], ['d', 'delete'], ['J / K', 'reorder']],
+    keys: [['⌘2 again', 'switch to Notes'], ['j / k', 'move'], ['/', 'search'], ['Tab', 'full text in a pop-up'], ['a', 'add'], ['e', 'edit'], ['c', 'close'], ['d', 'delete'], ['J / K', 'reorder'], ['z', 'show / hide closed threads']],
   },
   {
     pane: 'Notes',

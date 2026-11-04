@@ -18,7 +18,7 @@ export function noteGroups(all: readonly RootNote[], lists: NoteLists): NoteGrou
 /** The tab label: `Notes` with the number of notes the analysis wrote or found. */
 export function notesTabLabel(groups: NoteGroups): string {
   const count = groups.written.length + groups.found.length
-  return count > 0 ? `Notes ${count}` : 'Notes'
+  return count > 0 ? `Notes (${count})` : 'Notes'
 }
 
 /** The title a `[[ID]]` link shows; undefined when no note has that ID. */

@@ -17,9 +17,13 @@ type Mode =
   | { type: 'confirmDelete'; item: Item }
 
 export function ThreadsTab({ threads, reveal, onRevealed }: { threads: Threads; reveal?: Reveal | undefined; onRevealed: () => void }) {
+  /** Closed threads stay folded until `z` shows them; a search hit on one unfolds them. */
+  const [showClosed, setShowClosed] = useState(false)
+  const revealsClosed = reveal?.target.kind === 'thread' && reveal.target.closed
+  const unfolded = showClosed || revealsClosed
   const items: Item[] = [
     ...threads.open.map((text, index): Item => ({ kind: 'open', index, text })),
-    ...threads.closed.map((closed, index): Item => ({
+    ...(unfolded ? threads.closed : []).map((closed, index): Item => ({
       kind: 'closed',
       index,
       closed,
@@ -45,7 +49,8 @@ export function ThreadsTab({ threads, reveal, onRevealed }: { threads: Threads; 
     reveal,
     items,
     (item, target) => target.kind === 'thread' && target.closed === (item.kind === 'closed') && target.index === item.index,
-    index => {
+    (index, item) => {
+      if (item.kind === 'closed') setShowClosed(true)
       setMode({ type: 'list' })
       setNav({ selected: index, search: undefined })
     },
@@ -74,6 +79,13 @@ export function ThreadsTab({ threads, reveal, onRevealed }: { threads: Threads; 
         case 'a':
           e.preventDefault()
           setMode({ type: 'add' })
+          return
+        case 'z':
+          e.preventDefault()
+          if (threads.closed.length === 0) return
+          // Folding with a closed thread selected moves the selection to the last open one.
+          if (showClosed && selected?.kind === 'closed') setNav(s => ({ ...s, selected: Math.max(0, threads.open.length - 1) }))
+          setShowClosed(v => !v)
           return
         case 'e':
           e.preventDefault()
@@ -111,7 +123,7 @@ export function ThreadsTab({ threads, reveal, onRevealed }: { threads: Threads; 
       lastKind = item.kind
       rows.push(
         <li key={`h-${item.kind}`} className="section" role="presentation">
-          {item.kind === 'open' ? 'Open' : 'Closed'}
+          {item.kind === 'open' ? 'Open' : `Closed ${threads.closed.length} · z hide`}
         </li>,
       )
     }
@@ -143,9 +155,14 @@ export function ThreadsTab({ threads, reveal, onRevealed }: { threads: Threads; 
   return (
     <div className="list" tabIndex={-1} ref={rootRef} data-focus-target onKeyDown={onKeyDown}>
       <SearchLine search={nav.search} />
-      {items.length === 0 && mode.type !== 'add' && <div className="empty">No threads yet. Press a to add one.</div>}
+      {threads.open.length + threads.closed.length === 0 && mode.type !== 'add' && <div className="empty">No threads yet. Press a to add one.</div>}
       <ul role="listbox" aria-label="Threads">
         {rows}
+        {!unfolded && threads.closed.length > 0 && (
+          <li key="h-closed" className="section" role="presentation">
+            Closed {threads.closed.length} · z show
+          </li>
+        )}
       </ul>
       {mode.type === 'add' && (
         <InlineInput
