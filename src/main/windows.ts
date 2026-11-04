@@ -10,7 +10,7 @@ import { cmdHold } from '../core/cmdHold.ts'
 import { commandForInput } from '../core/keymap.ts'
 import { ANALYSIS_FILE } from '../core/analyses.ts'
 import type { AnalysisRef } from '../core/analyses.ts'
-import { spawnSpec } from '../core/session.ts'
+import { KILL_AFTER_MS, spawnSpec } from '../core/session.ts'
 import { THEMES } from '../core/theme.ts'
 import { pollFiles, pollSignature } from '../core/watch.ts'
 import { CHANNELS } from '../shared/ipc.ts'
@@ -201,13 +201,18 @@ async function confirmForce(ctx: WindowCtx, session: PtySession) {
     const { response } = await dialog.showMessageBox(ctx.win, {
       type: 'warning',
       message: 'Still waiting for the session to finish',
-      detail: 'The wrapper is importing the session. Force quit sends SIGHUP and may skip that step.',
+      detail: 'The wrapper is importing the session, or Claude Code did not exit. Force quit ends it (SIGHUP, then SIGKILL) and may skip the import.',
       buttons: ['Keep waiting', 'Force quit'],
       defaultId: 0,
       cancelId: 0,
     })
-    if (response === 1 && session.flow.state() === 'closing') session.flow.forceKill()
-    else if (response === 0) onKeepWaiting?.()
+    if (response === 1 && session.flow.state() === 'closing') {
+      session.flow.forceKill()
+      // Force quit must close the window even if the process never reports its exit.
+      setTimeout(() => {
+        if (session.flow.state() !== 'exited') closeNow(ctx)
+      }, KILL_AFTER_MS + 1000)
+    } else if (response === 0) onKeepWaiting?.()
   } finally {
     ctx.dialogOpen = false
   }

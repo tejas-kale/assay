@@ -35,14 +35,20 @@ export type CloseState = 'running' | 'closing' | 'exited'
 
 export type CloseFlowPort = {
   write(data: string): void
-  kill(signal: 'SIGHUP'): void
+  kill(signal: 'SIGHUP' | 'SIGKILL'): void
   onExit(cb: () => void): void
   setTimer(cb: () => void, ms: number): void
 }
 
+const ESC = '\x1b'
 const CTRL_C = '\x03'
+// Esc first leaves a sub-view (the agents view, a menu), where Ctrl-C does not exit. The pause keeps
+// the Esc from being read as Alt with the Ctrl-C that follows.
+const FIRST_PRESS_MS = 150
 // Claude Code exits on two Ctrl-C presses close together.
-const SECOND_PRESS_MS = 300
+const SECOND_PRESS_MS = FIRST_PRESS_MS + 300
+/** A session that ignores SIGHUP gets SIGKILL this long after it. */
+export const KILL_AFTER_MS = 2000
 
 /**
  * The graceful close. The wrapper must finish its git import after Claude exits, so after the
@@ -68,13 +74,21 @@ export function closeFlow(port: CloseFlowPort) {
     start() {
       if (state !== 'running') return
       set('closing')
-      port.write(CTRL_C)
+      port.write(ESC)
+      port.setTimer(() => {
+        if (state === 'closing') port.write(CTRL_C)
+      }, FIRST_PRESS_MS)
       port.setTimer(() => {
         if (state === 'closing') port.write(CTRL_C)
       }, SECOND_PRESS_MS)
     },
+    /** SIGHUP, then SIGKILL if the session is still there after KILL_AFTER_MS. */
     forceKill() {
-      if (state !== 'exited') port.kill('SIGHUP')
+      if (state === 'exited') return
+      port.kill('SIGHUP')
+      port.setTimer(() => {
+        if (state !== 'exited') port.kill('SIGKILL')
+      }, KILL_AFTER_MS)
     },
   }
 }

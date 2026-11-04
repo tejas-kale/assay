@@ -56,27 +56,28 @@ function fakeFlow() {
   return { flow, writes, kills, timers, states, exit: () => exit() }
 }
 
-test('closeFlow starts running; start writes Ctrl-C, then once more after 300 ms, then nothing', () => {
+test('closeFlow starts running; start writes Esc, then Ctrl-C twice, 300 ms apart, then nothing', () => {
   const t = fakeFlow()
   assert.equal(t.flow.state(), 'running')
   t.flow.start()
   assert.equal(t.flow.state(), 'closing')
-  assert.deepEqual(t.writes, ['\x03'])
-  assert.deepEqual(t.timers.map(x => x.ms), [300])
+  assert.deepEqual(t.writes, ['\x1b'])
+  assert.deepEqual(t.timers.map(x => x.ms), [150, 450])
   t.timers[0]?.cb()
-  assert.deepEqual(t.writes, ['\x03', '\x03'])
-  assert.equal(t.timers.length, 1)
+  t.timers[1]?.cb()
+  assert.deepEqual(t.writes, ['\x1b', '\x03', '\x03'])
+  assert.equal(t.timers.length, 2)
   assert.deepEqual(t.kills, [])
 })
 
 test('a second start while closing writes nothing more', () => {
   const t = fakeFlow()
   t.flow.start()
-  t.timers[0]?.cb()
+  for (const timer of t.timers) timer.cb()
   t.flow.start()
   t.flow.start()
-  assert.deepEqual(t.writes, ['\x03', '\x03'])
-  assert.equal(t.timers.length, 1)
+  assert.deepEqual(t.writes, ['\x1b', '\x03', '\x03'])
+  assert.equal(t.timers.length, 2)
 })
 
 test('exit from running or closing moves to exited, and a pending second Ctrl-C is not written', () => {
@@ -87,11 +88,11 @@ test('exit from running or closing moves to exited, and a pending second Ctrl-C 
   const b = fakeFlow()
   b.flow.start()
   b.exit()
-  b.timers[0]?.cb()
+  for (const timer of b.timers) timer.cb()
   assert.equal(b.flow.state(), 'exited')
-  assert.deepEqual(b.writes, ['\x03'])
+  assert.deepEqual(b.writes, ['\x1b'])
   b.flow.start()
-  assert.deepEqual(b.writes, ['\x03'])
+  assert.deepEqual(b.writes, ['\x1b'])
   assert.deepEqual(b.states, ['closing', 'exited'])
 })
 
@@ -101,6 +102,16 @@ test('forceKill sends SIGHUP while the session lives, and never after exit', () 
   t.flow.forceKill()
   assert.deepEqual(t.kills, ['SIGHUP'])
   t.exit()
+  for (const timer of t.timers) timer.cb()
   t.flow.forceKill()
   assert.deepEqual(t.kills, ['SIGHUP'])
+})
+
+test('forceKill follows with SIGKILL when SIGHUP did not end the session', () => {
+  const t = fakeFlow()
+  t.flow.start()
+  t.flow.forceKill()
+  assert.equal(t.timers.at(-1)?.ms, 2000)
+  t.timers.at(-1)?.cb()
+  assert.deepEqual(t.kills, ['SIGHUP', 'SIGKILL'])
 })
