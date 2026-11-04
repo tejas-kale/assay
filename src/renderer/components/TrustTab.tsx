@@ -92,9 +92,6 @@ export function TrustTab({ review, onToast }: Props) {
           </button>
         </div>
       ))}
-      {proposals !== undefined && proposals.length > 0 && (
-        <div className="dim trust-keys">{proposals.length > 1 ? 'J / K choose · ' : ''}c or Enter check the highlighted one</div>
-      )}
     </div>
   )
 
