@@ -114,7 +114,8 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
   }
   /** `,` and `.`: the run before or after the current one. The newest run follows Claude again, as in History. */
   const stepRun = (delta: 1 | -1) => {
-    if (edit || !current) return
+    // An edit open in Code keeps its own run, so stepping elsewhere leaves it alone; only the editor itself holds the keys.
+    if ((edit && tab === 'code') || !current) return
     const next = runs[runs.findIndex(r => r.number === current.number) + delta]
     if (!next) return onToast(delta < 0 ? 'This is the first run.' : 'This is the latest run.')
     stepped.current = true
@@ -128,10 +129,15 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
     stepped.current = false
     if (document.activeElement === document.body || document.activeElement === null) focusDataPane()
   }, [view])
-  // Vim owns the keys while editing, and a pin would change what the edit is about.
+  // Vim owns the keys while editing; an edit open in Code keeps its own run, so pinning elsewhere is fine.
   const togglePin = () => {
-    if (!edit) setHeld(following ? current?.number : undefined)
+    if (!(edit && tab === 'code')) setHeld(following ? current?.number : undefined)
   }
+
+  // Leaving Code with an edit nobody typed into closes it: an empty new query left open hid New SQL and blocked stepping.
+  useEffect(() => {
+    if (tab !== 'code' && edit && editText.current === edit.start) setEdit(undefined)
+  }, [tab])
 
   // Leaving an edit unmounts the focused editor: give the pane its keys back, unless focus moved elsewhere.
   const wasEditing = useRef(false)
