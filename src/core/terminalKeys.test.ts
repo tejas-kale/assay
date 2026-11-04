@@ -11,6 +11,13 @@ test('Shift+Enter becomes ESC CR', () => {
   assert.equal(inputOverride(key('Enter', { shiftKey: true })), '\x1b\r')
 })
 
+test('Ctrl+V sends the control byte so Claude reads an image from the clipboard', () => {
+  assert.equal(inputOverride(key('v', { ctrlKey: true })), '\x16')
+  assert.equal(inputOverride(key('V', { ctrlKey: true, shiftKey: true })), undefined)
+  assert.equal(inputOverride(key('v', { metaKey: true })), undefined)
+  assert.equal(inputOverride(key('v', { ctrlKey: true, altKey: true })), undefined)
+})
+
 test('plain Enter and other chords are left alone', () => {
   assert.equal(inputOverride(key('Enter')), undefined)
   assert.equal(inputOverride(key('Enter', { shiftKey: true, ctrlKey: true })), undefined)

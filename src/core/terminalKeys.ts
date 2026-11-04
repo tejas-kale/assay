@@ -5,9 +5,18 @@ type KeyLike = { key: string; shiftKey: boolean; ctrlKey: boolean; altKey: boole
 /** Claude Code reads ESC then CR (what Option+Enter sends) as a newline, where a bare CR sends the prompt. */
 export const NEWLINE_INPUT = '\x1b\r'
 
-/** What to send instead of the key's usual input, or `undefined` to leave the key alone. Only Shift+Enter is rewritten. */
-export const inputOverride = (e: KeyLike): string | undefined =>
-  e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey ? NEWLINE_INPUT : undefined
+/**
+ * Ctrl+V as a terminal sends it. Claude Code reads an image from the clipboard on this byte. The terminal
+ * library takes Ctrl+V as a browser paste and sends nothing, so the byte is sent from here.
+ */
+export const CTRL_V_INPUT = '\x16'
+
+/** What to send instead of the key's usual input, or `undefined` to leave the key alone. Shift+Enter and Ctrl+V are rewritten. */
+export function inputOverride(e: KeyLike): string | undefined {
+  if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) return NEWLINE_INPUT
+  if (e.key === 'v' && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) return CTRL_V_INPUT
+  return undefined
+}
 
 /**
  * Whether the terminal must let the key go so the app menu can run it (Cmd+Q, Cmd+H, Cmd+, ...).
