@@ -12,6 +12,8 @@ import { ANALYSIS_FILE } from '../core/analyses.ts'
 import type { AnalysisRef } from '../core/analyses.ts'
 import { KILL_AFTER_MS, spawnSpec } from '../core/session.ts'
 import { THEMES } from '../core/theme.ts'
+import { failedMessage, justAnswered, justFailed } from '../core/trust.ts'
+import type { TrustReview } from '../core/trust.ts'
 import { pollFiles, pollSignature } from '../core/watch.ts'
 import { CHANNELS } from '../shared/ipc.ts'
 import type { OpenResult, PtyExit } from '../shared/ipc.ts'
@@ -35,6 +37,10 @@ export type WindowCtx = {
   allowClose: boolean
   dialogOpen: boolean
   disposed: boolean
+  /** The latest review the window was sent (null: none yet), to see a check end. Undefined before the first look. */
+  trust?: TrustReview | null
+  /** The startedAt of the review already told to Claude, so a late poll cannot say it twice. */
+  trustAnnounced?: number
 }
 
 const here = fileURLToPath(new URL('.', import.meta.url))
@@ -223,10 +229,26 @@ export async function pushState(ctx: WindowCtx) {
   if (!ctx.analysis) return
   try {
     const state = await loadState(ctx.analysis)
+    announceTrust(ctx, state.trust)
     send(ctx, CHANNELS.stateChanged, state)
   } catch (err) {
     console.error('Could not read analysis state', err)
   }
+}
+
+/**
+ * Tells Claude's session how a Trust tab review ended, as if the user typed it: `trusted` or `rejected` once they
+ * answer, the failed steps when a check fails, so neither needs typing by hand.
+ */
+function announceTrust(ctx: WindowCtx, review: TrustReview | undefined) {
+  const before = ctx.trust
+  ctx.trust = review ?? null
+  if (!review || ctx.trustAnnounced === review.startedAt) return
+  const answer = justAnswered(before ?? undefined, review)
+  const text = answer ? `${answer}\r` : justFailed(before, review) ? failedMessage(review) : undefined
+  if (text === undefined) return
+  ctx.trustAnnounced = review.startedAt
+  if (ctx.session?.flow.state() === 'running') ctx.session.write(text)
 }
 
 /** Makes this window the workspace for `analysis`, or focuses the window that already holds it. */

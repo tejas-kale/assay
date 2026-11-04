@@ -85,6 +85,48 @@ export function latestReview(reviews: readonly TrustReview[]): TrustReview | und
   return best
 }
 
+/**
+ * What the user just answered on `before`, if `after` is that moment: the same review, moved from asking to
+ * approved or unchanged (already trusted), or to rejected. The app then tells Claude's session, so the user need
+ * not type it.
+ */
+export function justAnswered(before: TrustReview | undefined, after: TrustReview | undefined): 'trusted' | 'rejected' | undefined {
+  if (!before || !after || before.startedAt !== after.startedAt || before.name !== after.name) return undefined
+  if (before.state !== 'asking') return undefined
+  if (after.state === 'approved' || after.state === 'unchanged') return 'trusted'
+  if (after.state === 'rejected') return 'rejected'
+  return undefined
+}
+
+/**
+ * Whether `after` is a check that just failed or broke: it ended `failed` or `error` and the window last saw it
+ * still running, or saw an earlier review. `before` is null when the window saw no review, undefined before its
+ * first look (then nothing is news: the failure may be old).
+ */
+export function justFailed(before: TrustReview | null | undefined, after: TrustReview | undefined): boolean {
+  if (before === undefined || !after || (after.state !== 'failed' && after.state !== 'error')) return false
+  return before === null || before.startedAt !== after.startedAt || isActive(before.state)
+}
+
+const MAX_FAILURE = 700
+const oneLine = (text: string) => text.replace(/[\x00-\x1f\x7f]+/g, ' ').replace(/\s+/g, ' ').trim()
+
+/**
+ * What the app types into Claude's session when a check failed: the failed steps in one line, where the whole
+ * review is, and what to do. One line, so it cannot submit early; Claude reads the file for the full trace.
+ */
+export function failedMessage(review: TrustReview): string {
+  const failed = review.steps.filter(step => !step.ok).map(step => `${stepTitle(step)}: ${stepDetail(step)}`)
+  const what = failed.length ? failed.join('; ') : (review.message ?? review.state)
+  let detail = oneLine(what)
+  if (detail.length > MAX_FAILURE) detail = `${detail.slice(0, MAX_FAILURE)}…`
+  const verb = review.state === 'error' ? 'broke' : 'failed'
+  return (
+    `The Trust tab check of ${review.name} ${verb}: ${detail}. The full review, with each step's output and diff, ` +
+    `is in .assay/trust/${review.name}.json. Fix the draft, then tell me to press Check again.\r`
+  )
+}
+
 /** `test case 2`, `transpile`. Only a test step shows its name. */
 export function stepTitle(step: TrustStep): string {
   return step.step === 'test' && step.name ? `${step.step} ${step.name}` : step.step

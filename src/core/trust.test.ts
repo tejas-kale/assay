@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { canAnswer, canCheck, earlierReview, outcomeWord, TRUST_STATES, diffLines, isActive, latestReview, parseTrustReview, stateLine, stateTone, stepDetail, stepTitle, trustSeenKey } from './trust.ts'
+import { canAnswer, canCheck, earlierReview, outcomeWord, TRUST_STATES, diffLines, isActive, latestReview, parseTrustReview, stateLine, stateTone, stepDetail, stepTitle, trustSeenKey, justAnswered, justFailed, failedMessage } from './trust.ts'
 
 const base = {
   name: 'c',
@@ -142,4 +142,49 @@ test('outcomeWord says what became of a settled review', () => {
   assert.equal(outcomeWord('rejected'), 'rejected')
   assert.equal(outcomeWord('failed'), 'failed its checks')
   assert.equal(outcomeWord('error'), 'stopped with an error')
+})
+
+test('justAnswered: the same review moved from asking to trusted or rejected', () => {
+  const asking = parseTrustReview(JSON.stringify({ ...base, state: 'asking' }))
+  const at = (state: string, startedAt = 100) => parseTrustReview(JSON.stringify({ ...base, state, startedAt }))
+  assert.equal(justAnswered(asking, at('approved')), 'trusted')
+  assert.equal(justAnswered(asking, at('unchanged')), 'trusted')
+  assert.equal(justAnswered(asking, at('rejected')), 'rejected')
+  assert.equal(justAnswered(asking, at('error')), undefined)
+  assert.equal(justAnswered(asking, at('asking')), undefined)
+  // A review first seen already answered (window opened later) or another review: not an answer just given.
+  assert.equal(justAnswered(undefined, at('approved')), undefined)
+  assert.equal(justAnswered(at('checking'), at('rejected')), undefined)
+  assert.equal(justAnswered(asking, at('approved', 200)), undefined)
+  assert.equal(justAnswered(asking, undefined), undefined)
+})
+
+test('justFailed: a check that ended failed or error since the window last looked', () => {
+  const at = (state: string, startedAt = 100) => parseTrustReview(JSON.stringify({ ...base, state, startedAt }))
+  assert.equal(justFailed(at('checking'), at('failed')), true)
+  assert.equal(justFailed(at('checking'), at('error')), true)
+  assert.equal(justFailed(null, at('failed')), true)
+  assert.equal(justFailed(at('approved', 50), at('failed')), true)
+  assert.equal(justFailed(at('checking'), at('asking')), false)
+  // Before the first look, or the same failure seen again: old news.
+  assert.equal(justFailed(undefined, at('failed')), false)
+  assert.equal(justFailed(at('failed'), at('failed')), false)
+})
+
+test('failedMessage: the failed steps on one line, the review file, one Enter at the end', () => {
+  const review = parseTrustReview(JSON.stringify({
+    ...base,
+    state: 'failed',
+    steps: [
+      { step: 'transpile', ok: true, text: 'PASSED' },
+      { step: 'test', name: 'case 2', ok: false, text: 'FAILED expected 3 rows\ngot 2', diff: '- a\n+ b' },
+    ],
+  }))!
+  const text = failedMessage(review)
+  assert.match(text, /^The Trust tab check of c failed: test case 2: expected 3 rows got 2\. /)
+  assert.match(text, /\.assay\/trust\/c\.json/)
+  assert.equal(text.indexOf('\r'), text.length - 1)
+  assert.doesNotMatch(text.slice(0, -1), /[\n\r]/)
+  const broke = failedMessage({ ...review, state: 'error', steps: [], message: 'x'.repeat(2000) })
+  assert.match(broke, /^The Trust tab check of c broke: x+…\. /)
 })
