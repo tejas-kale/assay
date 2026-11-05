@@ -5,7 +5,7 @@ import { markTabs } from '../../core/dataTabs.ts'
 import type { Seen } from '../../core/dataTabs.ts'
 import { shortcutLabel } from '../../core/keymap.ts'
 import type { CommandId } from '../../core/keymap.ts'
-import { canRerun } from '../../core/requests.ts'
+import { canRerun, SELECTION_SLUG, selectedSql } from '../../core/requests.ts'
 import { chosenRuns, confirmText, initReplay, replayKey } from '../../core/replay.ts'
 import type { ReplayState } from '../../core/replay.ts'
 import { codeBody, runLabel } from '../../core/runs.ts'
@@ -13,7 +13,7 @@ import type { RunHeader } from '../../core/runs.ts'
 import { trustSeenKey } from '../../core/trust.ts'
 import type { Run, RunRequest, RunStatus, RunView, TrustReview } from '../../shared/ipc.ts'
 import { CodeEditor, CodeView, formatSql } from './CodeView.tsx'
-import type { EditorHandle } from './CodeView.tsx'
+import type { EditorHandle, SelectionHandle } from './CodeView.tsx'
 import { isPaneKey } from './common.tsx'
 import { TrustTab, trustRequests } from './TrustTab.tsx'
 import type { DataTabName } from './common.tsx'
@@ -259,7 +259,39 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
   }
 
   const editor = useRef<EditorHandle>(null)
+  const codeSelection = useRef<SelectionHandle>(null)
+  const trustSelection = useRef<SelectionHandle>(null)
+
+  /**
+   * Cmd+Enter on selected SQL in Code (reading or editing) or in Trust: a new run of just that text, shown in Data.
+   * An open edit stays open. True when a selection was there to handle.
+   */
+  const runSelection = (): boolean => {
+    const where =
+      tab === 'trust'
+        ? { text: trustSelection.current?.selection() ?? '', language: trust?.language, from: undefined }
+        : tab === 'code' && edit
+          ? { text: editor.current?.selection() ?? '', language: edit.language, from: edit.from }
+          : tab === 'code'
+            ? { text: codeSelection.current?.selection() ?? '', language: current?.language, from: current }
+            : undefined
+    const chosen = where && selectedSql(where.text, where.language)
+    if (!where || !chosen) return false
+    if ('error' in chosen) {
+      onToast(chosen.error)
+      return true
+    }
+    const engine = where.from?.engine ?? runs.findLast(r => r.language === 'sql')?.engine ?? 'databricks'
+    sendRequest({ kind: 'sql', sql: chosen.sql, engine, slug: SELECTION_SLUG, ...(where.from && { from: where.from.number }) }, () => {
+      setHeld(undefined)
+      onTab('data')
+      focusDataPane()
+    })
+    return true
+  }
+
   const runIt = () => {
+    if (runSelection()) return
     if (edit && !edit.from) return sendNew(editor.current?.text() ?? editText.current)
     if (edit?.from) return send(edit.from, editor.current?.text() ?? editText.current)
     if (!current || view?.code === undefined || current.language === undefined) return onToast('No code to run')
@@ -364,13 +396,14 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
       edit={edit}
       editText={editText}
       editorRef={editor}
+      selectionRef={codeSelection}
       onLeave={() => setEdit(undefined)}
     />
   )
 
   let body
   if (replay) body = <ReplayView state={replay.state} onKey={onReplayKey} />
-  else if (tab === 'trust') body = <TrustTab review={trust} onToast={onToast} />
+  else if (tab === 'trust') body = <TrustTab review={trust} onToast={onToast} selectionRef={trustSelection} />
   else if (tab === 'history') body = <History runs={runs} status={status} current={current} onChoose={choose} onPin={togglePin} />
   else if (tab === 'code' && edit && !edit.from) body = codeTab(<NewQueryHeader engine={runs.findLast(r => r.language === 'sql')?.engine ?? 'databricks'} />)
   else if (!current) {
@@ -919,6 +952,7 @@ function CodeTab(props: {
   edit: Edit | undefined
   editText: { current: string }
   editorRef: RefObject<EditorHandle | null>
+  selectionRef: RefObject<SelectionHandle | null>
   onLeave: () => void
 }) {
   const { header, view, run, edit, editText } = props
@@ -976,6 +1010,7 @@ function CodeTab(props: {
           focusKey={String(run.number)}
           original={props.original}
           onToggleOriginal={props.onToggleOriginal}
+          handleRef={props.selectionRef}
         />
       )}
     </div>
