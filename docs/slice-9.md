@@ -39,6 +39,20 @@ daily_spend AS (
   together identify one row.
 - `-- join: <1:1|1:many|many:1|many:many> on <key>[, <key>...]`: the line directly above each `JOIN`. Left side
   first: `1:many` means one row on the left matches many on the right.
+- The final `SELECT` takes a `-- grain:` line too, directly above it.
+- `-- grain: none` declares a result of exactly one row (a total with no `GROUP BY`).
+
+## Existing trusted calculations and the dictionary
+
+- **Trusted SQL calculations already trusted:** no bulk migration. They run as vetted, without comments. A
+  calculation is brought up to the rules only when it is next changed: its new proposal must pass the lint at Check.
+  Until then, Steps (9c) draws its lineage without labels and skips its ✓/✗ checks.
+- **Dictionary definitions** (SQL that `render_definition` generates): the renderer writes the grain line itself.
+  - metric or filter with `by`: `-- grain: <by columns>`.
+  - metric or filter without `by`: `-- grain: none`.
+  - derived: no grain line, because `by` only picks the columns shown and the YAML records no table key. Steps skips
+    the grain check for it.
+  - They are single-table statements with no CTE or JOIN, so the lint never runs on them.
 
 ## Slice 9a: rules
 
@@ -52,7 +66,7 @@ daily_spend AS (
 
 ### Rejections (the query does not run)
 
-1. A CTE without a `-- grain:` line, or a grain column that is not one of its output columns.
+1. A CTE or the final `SELECT` without a `-- grain:` line, or a grain column that is not one of its output columns.
 2. A `JOIN` without a `-- join:` line (`CROSS JOIN` included; the comment is then `-- join: many:many on none`).
 3. A CTE name shorter than 4 characters, or matching `^(step|cte|tmp|temp|t|q|sub)_?\d*$`. Names say what the CTE
    holds (`orders_per_customer`), not what it does.
