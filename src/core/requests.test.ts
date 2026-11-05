@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { canRerun, interruptRequest, newRequestId, parseReply, parseRunRequest, pythonRequest, replayRequest, requestText, restartRequest, sqlRequest } from './requests.ts'
+import { canRerun, interruptRequest, selectedSql, newRequestId, parseReply, parseRunRequest, pythonRequest, replayRequest, requestText, restartRequest, sqlRequest } from './requests.ts'
 
 test('newRequestId is 13 digits of time, a dash and 6 random [a-z0-9], so names sort by time', () => {
   const id = newRequestId(1_700_000_000_123, () => 0)
@@ -111,4 +111,12 @@ test('the trust requests are checked and written; a reply may carry the proposal
       { name: 'm.p.t', kind: 'dictionary', folder: 'lib/dictionaries' },
     ],
   })
+})
+
+test('selectedSql runs selected SQL, refuses other languages and leaves an empty selection alone', () => {
+  assert.deepEqual(selectedSql('  select 1\n', 'sql'), { sql: 'select 1' })
+  assert.equal(selectedSql('', 'sql'), undefined)
+  assert.equal(selectedSql(' \n ', 'python'), undefined)
+  assert.deepEqual(selectedSql('print(1)', 'python'), { error: 'Only SQL can be run from a selection.' })
+  assert.deepEqual(selectedSql('a: 1', undefined), { error: 'Only SQL can be run from a selection.' })
 })

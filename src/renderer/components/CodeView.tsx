@@ -93,6 +93,21 @@ type CodeViewProps = {
   autoFocus?: boolean
   /** Select the first case-insensitive match of this text and scroll it into the middle (a search hit). */
   find?: string | undefined
+  /** Reads the selected text, for Cmd+Enter on a selection. */
+  handleRef?: Ref<SelectionHandle>
+}
+
+/** The text selected in a code view: the editor's selection, else a mouse selection inside it (an unfocusable view). */
+export type SelectionHandle = { selection(): string }
+
+function selectedText(view: EditorView | undefined, host: HTMLElement | null): string {
+  if (view) {
+    const { from, to } = view.state.selection.main
+    if (from !== to) return view.state.sliceDoc(from, to)
+  }
+  const native = window.getSelection()
+  if (!host || !native || native.isCollapsed || native.rangeCount === 0) return ''
+  return host.contains(native.getRangeAt(0).commonAncestorContainer) ? native.toString() : ''
 }
 
 export type CodeLanguage = 'sql' | 'python' | 'markdown'
@@ -103,9 +118,11 @@ export function languageOfPath(path: string): CodeLanguage | undefined {
   return ext === 'sql' ? 'sql' : ext === 'py' ? 'python' : ext === 'md' ? 'markdown' : undefined
 }
 
-export function CodeView({ code, language, focusKey, original, onToggleOriginal, passive, unfocusable, autoFocus, find }: CodeViewProps) {
+export function CodeView({ code, language, focusKey, original, onToggleOriginal, passive, unfocusable, autoFocus, find, handleRef }: CodeViewProps) {
   const host = useRef<HTMLDivElement>(null)
+  const viewRef = useRef<EditorView>(undefined)
   const hadFocus = useRef(false)
+  useImperativeHandle(handleRef, () => ({ selection: () => selectedText(viewRef.current, host.current) }))
   const shown = useMemo(() => (language === 'sql' && !original ? formatSql(code) : code), [code, language, original])
 
   useEffect(() => {
@@ -130,6 +147,7 @@ export function CodeView({ code, language, focusKey, original, onToggleOriginal,
     if (find && at >= 0) {
       view.dispatch({ selection: { anchor: at, head: at + find.length }, effects: EditorView.scrollIntoView(at, { y: 'center' }) })
     }
+    viewRef.current = view
     if (autoFocus) view.focus()
     if (!passive) view.contentDOM.setAttribute('data-focus-target', '')
     // A rebuild (o, a new run) keeps focus where it was.
@@ -137,6 +155,7 @@ export function CodeView({ code, language, focusKey, original, onToggleOriginal,
     hadFocus.current = false
     return () => {
       hadFocus.current = view.hasFocus
+      viewRef.current = undefined
       view.destroy()
     }
   }, [shown, language, focusKey, passive, unfocusable, find, autoFocus])
@@ -156,7 +175,7 @@ export function CodeView({ code, language, focusKey, original, onToggleOriginal,
   )
 }
 
-export type EditorHandle = {
+export type EditorHandle = SelectionHandle & {
   text(): string
   /** True in Vim normal mode with no key half-typed, no search or `:` prompt open. */
   atRest(): boolean
@@ -176,6 +195,7 @@ export function CodeEditor(props: {
 
   useImperativeHandle(props.handleRef, () => ({
     text: () => viewRef.current?.state.doc.toString() ?? props.initial,
+    selection: () => selectedText(viewRef.current, null),
     atRest: () => {
       const view = viewRef.current
       const state = view ? getCM(view)?.state.vim : undefined

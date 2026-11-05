@@ -2,12 +2,13 @@
 // A review whose checks all passed shows Trust and Reject. The server (Assay's MCP server in Claude's session)
 // runs the checks and the commit; this tab only sends `trust-list`, `trust-check` and `trust-answer` requests.
 import { useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent } from 'react'
+import type { KeyboardEvent, RefObject } from 'react'
 
 import type { Proposal, Reply, TrustAnswer } from '../../core/requests.ts'
 import { canAnswer, canCheck, diffLines, earlierReview, outcomeWord, stateLine, stepDetail, stepTitle } from '../../core/trust.ts'
 import type { TrustReview } from '../../core/trust.ts'
 import { CodeView } from './CodeView.tsx'
+import type { SelectionHandle } from './CodeView.tsx'
 import { isPaneKey } from './common.tsx'
 
 const LINE = 40
@@ -15,9 +16,14 @@ const LINE = 40
 /** The ids of the requests this tab sent: the data pane leaves their replies to it. */
 export const trustRequests = new Set<string>()
 
-type Props = { review: TrustReview | undefined; onToast: (text: string) => void }
+type Props = {
+  review: TrustReview | undefined
+  onToast: (text: string) => void
+  /** The proposal's code, for Cmd+Enter on selected SQL. */
+  selectionRef?: RefObject<SelectionHandle | null>
+}
 
-export function TrustTab({ review, onToast }: Props) {
+export function TrustTab({ review, onToast, selectionRef }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const checking = review?.state === 'checking'
   const [now, setNow] = useState(Date.now())
@@ -126,7 +132,7 @@ export function TrustTab({ review, onToast }: Props) {
         {review.description && <div className="trust-desc">{review.description}</div>}
         {review.code !== undefined && (
           <div className="trust-code">
-            <CodeView code={review.code} language={review.language === 'yaml' ? undefined : review.language} focusKey={review.name} original onToggleOriginal={() => undefined} passive unfocusable />
+            <CodeView code={review.code} language={review.language === 'yaml' ? undefined : review.language} focusKey={review.name} original onToggleOriginal={() => undefined} passive unfocusable handleRef={selectionRef} />
           </div>
         )}
         {review.steps.map((step, i) => (

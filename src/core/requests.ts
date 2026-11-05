@@ -206,3 +206,16 @@ export function parseRequestFile(text: string): ServerRequest | { error: string 
   }
   return { error: `Unknown request kind: ${String(kind)}.` }
 }
+
+/** The slug a run of selected SQL gets, so its files read `NNN_selection.sql`. */
+export const SELECTION_SLUG = 'selection'
+
+/**
+ * Cmd+Enter with text selected: the SQL to run as a new run, an error to show, or undefined when nothing is
+ * selected (Cmd+Enter then does what it did before). Only SQL can be run from a selection for now.
+ */
+export function selectedSql(selected: string, language: string | undefined): { sql: string } | { error: string } | undefined {
+  if (selected.trim() === '') return undefined
+  if (language !== 'sql') return { error: 'Only SQL can be run from a selection.' }
+  return { sql: selected.trim() }
+}
