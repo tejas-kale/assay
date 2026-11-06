@@ -16,7 +16,7 @@ import { CodeEditor, CodeView, formatSql } from './CodeView.tsx'
 import type { EditorHandle, SelectionHandle } from './CodeView.tsx'
 import { isPaneKey } from './common.tsx'
 import { runningLabel } from '../../core/steps.ts'
-import { StepsTab, stepsRequests } from './StepsTab.tsx'
+import { isStepsRequest, StepsTab } from './StepsTab.tsx'
 import { TrustTab, trustRequests } from './TrustTab.tsx'
 import type { DataTabName } from './common.tsx'
 
@@ -175,7 +175,7 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
   useEffect(() => {
     const stop = window.app.runs.onReply(reply => {
       // The Trust and Steps tabs read the replies to their own requests.
-      if (trustRequests.has(reply.id) || stepsRequests.has(reply.id) || 'proposals' in reply) return
+      if (trustRequests.has(reply.id) || isStepsRequest(reply.id) || 'proposals' in reply) return
       const sent = pending.current.get(reply.id)
       if (sent) clearTimeout(sent.timer)
       pending.current.delete(reply.id)

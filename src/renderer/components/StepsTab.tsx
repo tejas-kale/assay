@@ -10,6 +10,8 @@ import { codeBody } from '../../core/runs.ts'
 import type { Table } from '../../core/runs.ts'
 import { moveStep, uncheckedLines } from '../../core/steps.ts'
 import type { Step, StepsFile } from '../../core/steps.ts'
+import { accepted, asking, nextRequest, NO_REPLY, noRequests, pickupTimedOut, PICKUP_MS, refused, replied } from '../../core/stepsRequests.ts'
+import type { StepsRequests } from '../../core/stepsRequests.ts'
 import { THEMES } from '../../core/theme.ts'
 import type { ThemeMode } from '../../core/theme.ts'
 import type { Run, RunView } from '../../shared/ipc.ts'
@@ -17,14 +19,15 @@ import { currentMode, onModeChange } from '../appearance.ts'
 import { isPaneKey } from './common.tsx'
 import { MermaidDiagram } from './Mermaid.tsx'
 
-/** The ids of the requests this tab sent, with the run each asked about: the data pane leaves their replies to it. */
-export const stepsRequests = new Map<string, number>()
-/** Runs asked about in this window: a run is asked once (`r` asks again). */
-const asked = new Set<number>()
-
-/** No reply is expected after this long: the server only polls while Claude's session is alive. */
-const PICKUP_MS = 10_000
-export const NO_REPLY = "No reply: Steps needs Claude's session running."
+// What was asked and what waits for a reply is the window's, not one mount's: the tab unmounts when the user leaves it
+// and must not ask again on the next visit, and the data pane has to know which replies are ours. So it lives here, in
+// one store only `update` writes; the decisions are in core/stepsRequests.ts.
+let store: StepsRequests = noRequests
+const update = (change: (state: StepsRequests) => StepsRequests) => {
+  store = change(store)
+}
+/** Whether the request with this id is the tab's: the data pane leaves its reply to it. */
+export const isStepsRequest = (id: string) => store.pending.has(id)
 
 type Props = {
   header: ReactNode
@@ -65,14 +68,12 @@ export function StepsTab({ header, view, run, onToast, onCode, onPin, onStep }: 
 
   useEffect(() => {
     const stop = window.app.runs.onReply(reply => {
-      const number = stepsRequests.get(reply.id)
-      if (number === undefined) return
-      stepsRequests.delete(reply.id)
+      const outcome = replied(store, reply.id, reply)
+      store = outcome.state
+      if (outcome.do === 'ignore') return
       clearTimeout(timers.current.get(reply.id))
-      if ('error' in reply) {
-        asked.delete(number)
-        onToast(reply.error)
-      } else reload(number)
+      if (outcome.do === 'reload') reload(outcome.run)
+      else onToast(outcome.do.toast)
     })
     const pending = timers.current
     return () => {
@@ -82,21 +83,19 @@ export function StepsTab({ header, view, run, onToast, onCode, onPin, onStep }: 
   }, [onToast])
 
   const send = (kind: 'steps' | 'lineage', number: number) => {
-    asked.add(number)
+    update(state => asking(state, number))
     void window.app.runs.request({ kind, run: number }).then(result => {
       if (!result.ok) {
-        asked.delete(number)
+        update(state => refused(state, number))
         return onToast(result.message)
       }
-      stepsRequests.set(result.id, number)
-      // Silence is no file at all by then: a long run writes its file at once and is not silent.
+      update(state => accepted(state, result.id, number))
       timers.current.set(
         result.id,
         setTimeout(() => {
-          if (!stepsRequests.has(result.id) || seen.current.lineage || seen.current.steps) return
-          stepsRequests.delete(result.id)
-          asked.delete(number)
-          setSilent(number)
+          const timed = pickupTimedOut(store, result.id, Boolean(seen.current.lineage || seen.current.steps))
+          store = timed.state
+          if (timed.silent !== undefined) setSilent(timed.silent)
         }, PICKUP_MS),
       )
     })
@@ -104,7 +103,8 @@ export function StepsTab({ header, view, run, onToast, onCode, onPin, onStep }: 
 
   const needed = view ? stepsRequest(run, view.code, lineage, plan) : undefined
   useEffect(() => {
-    if (needed && !asked.has(run.number)) send(needed, run.number)
+    const kind = nextRequest(store, run.number, needed)
+    if (kind) send(kind, run.number)
   }, [needed, run.number])
 
   // The selected step's rows, read again when it finishes.
