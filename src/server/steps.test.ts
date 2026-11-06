@@ -80,6 +80,7 @@ test('a failing step is error with the message, the steps after it are skipped a
   expect(await ask(ws)).toEqual({ ok: true })
   const done = await read(ws)
   expect(done?.steps.map(step => step.status)).toEqual(['error', 'skipped'])
+  expect(done?.status).toBe('error')
   expect(done?.steps[0]?.error).toBeDefined()
   expect(ws.runs.filter(argv => argv[0] === 'databricks').length).toBe(1)
   await ws.done()

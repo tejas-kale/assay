@@ -468,8 +468,9 @@ export class Assay {
         else if (!row) fail('The counts query returned no row.')
         else {
           step.counts = Object.fromEntries(counted.columns.map((column, c) => [column.toLowerCase(), row[c] ?? '']))
-          const rowCount = Number(step.counts.assay_rows)
-          if (Number.isInteger(rowCount)) step.rows = rowCount
+          // An empty cell is no count, not 0 rows.
+          const rowCount = step.counts.assay_rows ?? ''
+          if (/^\d+$/.test(rowCount)) step.rows = Number(rowCount)
           step.status = 'ok'
           step.checks = stepChecks(step, step.counts)
           for (const check of step.checks) if (!check.ok) notices.push(stepNoticeLine(number, step, check))
@@ -477,7 +478,7 @@ export class Assay {
       }
       await save(file)
     }
-    file.status = 'done'
+    file.status = failed ? 'error' : 'done'
     await save(file)
     for (const line of notices) await this.appendTo(STEP_NOTICES, line)
     return undefined
