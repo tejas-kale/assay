@@ -137,7 +137,8 @@ def _assay_setup(analysis_dir, table_mime, row_cap):
                     raise LookupError("Run %03d has no table %d" % (n, k))
                 raise LookupError("Run %03d has no saved result" % n)
             path = tables[0]
-        frame = pd.read_csv(path)
+        # An empty .csv is a SQL statement that ran but returned no result set (CREATE VIEW, DROP).
+        frame = pd.DataFrame() if os.path.getsize(path) == 0 else pd.read_csv(path)
         if n not in reads:
             reads.append(n)
         return frame

@@ -129,6 +129,30 @@ test('a failed query keeps its .sql, writes no .csv and returns the error; runs.
   await ws.done()
 })
 
+test('a statement with no result set succeeds: an empty .csv, an ok reply, no failure in runs.json', async () => {
+  const ws = await fake()
+  const sql = 'CREATE OR REPLACE TEMPORARY VIEW status_probe_view AS SELECT 1 AS x'
+  ws.setRun(() => ({
+    stdout: JSON.stringify([
+      { sql, state: 'SUCCEEDED' },
+      { sql: 'SELECT 1', state: 'SUCCEEDED', columns: ['1'], rows: [['1']] },
+    ]),
+  }))
+  expect(await ws.call('sql', { sql, slug: 'probe view' })).toBe('Query 001: ok, no result set.')
+  expect(await ws.file('queries/001_probe-view.sql')).toBe(`${sql}\n`)
+  expect(await ws.file('queries/001_probe-view.csv')).toBe('')
+  expect(await ws.status()).toEqual({ running: null, failed: {} })
+  await ws.done()
+})
+
+test('a CTAS keeps its result set: its counts are the rows', async () => {
+  const ws = await fake()
+  ws.setRun(answering([['0', '0']], ['num_affected_rows', 'num_inserted_rows']))
+  expect(await ws.call('sql', { sql: 'CREATE OR REPLACE TABLE x AS SELECT 1 AS a', slug: 'ctas' })).toBe('Query 001: 1 row. Columns: num_affected_rows, num_inserted_rows\nnum_affected_rows  num_inserted_rows\n0                  0')
+  expect(await ws.file('queries/001_ctas.csv')).toBe('num_affected_rows,num_inserted_rows\n0,0\n')
+  await ws.done()
+})
+
 test('a CLI that cannot start is an error, not a crash', async () => {
   const ws = await fake()
   ws.setRun(() => ({ exitCode: 1, stderr: 'Error: cannot configure default credentials' }))

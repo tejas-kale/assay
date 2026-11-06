@@ -147,6 +147,21 @@ test('the CLI output gives columns and rows, or the error', async () => {
   expect(parseCliOutput('', '')).toEqual({ error: 'The Databricks CLI gave no output.' })
 })
 
+test('a SUCCEEDED statement with no result set is a success with no columns', async () => {
+  const select1 = { sql: 'SELECT 1', state: 'SUCCEEDED', columns: ['1'], rows: [['1']] }
+  for (const sql of ['CREATE OR REPLACE TEMPORARY VIEW v AS SELECT 1 AS x', 'DROP VIEW v', "COMMENT ON TABLE t IS 'x'"]) {
+    expect(parseCliOutput(JSON.stringify([{ sql, state: 'SUCCEEDED' }, select1]), '')).toEqual({ columns: [], rows: [] })
+    expect(parseCliOutput(JSON.stringify([{ sql, state: 'SUCCEEDED', columns: [], rows: [] }, select1]), '')).toEqual({ columns: [], rows: [] })
+  }
+})
+
+test('a FAILED, CANCELED or CLOSED statement is an error, with its message or else its state', async () => {
+  for (const state of ['FAILED', 'CANCELED', 'CLOSED']) {
+    expect(parseCliOutput(JSON.stringify([{ sql: 'x', state, error: { message: 'boom' } }]), '')).toEqual({ error: 'boom' })
+    expect(parseCliOutput(JSON.stringify([{ sql: 'x', state }]), '')).toEqual({ error: `Databricks reported the statement ${state}.` })
+  }
+})
+
 test('venvCandidates walks from the folder up to the root, nearest first', () => {
   expect(venvCandidates('/work/notes-src/analyses/alpha')).toEqual([
     '/work/notes-src/analyses/alpha/.venv/bin/python',

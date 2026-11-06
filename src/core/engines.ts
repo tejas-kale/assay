@@ -20,11 +20,12 @@ export function readTarget(text: string): Target {
   }
 }
 
-type CliResult = { columns?: string[]; rows?: string[][]; error?: { message?: string } }
+type CliResult = { state?: string; columns?: string[]; rows?: string[][]; error?: { message?: string } }
 
 /**
  * Reads `databricks experimental aitools tools query --output json` run on
  * several statements: an array of results, the analysis's query first.
+ * A SUCCEEDED statement with no result set (CREATE VIEW, DROP, COMMENT ON) is a table with no columns and no rows.
  */
 export function parseCliOutput(stdout: string, stderr: string): Table | { error: string } {
   let first: CliResult | undefined
@@ -36,6 +37,8 @@ export function parseCliOutput(stdout: string, stderr: string): Table | { error:
   }
   if (first?.error) return { error: (first.error.message ?? 'The query failed.').trim() }
   if (first?.columns) return { columns: first.columns, rows: first.rows ?? [] }
+  if (first?.state === 'SUCCEEDED') return { columns: [], rows: [] }
+  if (first?.state) return { error: `Databricks reported the statement ${first.state}.` }
   const said = stderr.trim() || stdout.trim()
   return { error: said || 'The Databricks CLI gave no output.' }
 }

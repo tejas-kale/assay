@@ -288,13 +288,15 @@ export class Assay {
     const outcome = await runner.run(`${base}.${ext}`, number).catch((error: unknown) => ({ error: message(error) }))
 
     if ('error' in outcome) this.failures.set(number, outcome.error)
-    else if ('columns' in outcome) await this.write(`${base}.csv`, toCsv(outcome.columns, outcome.rows))
+    // No columns is a statement with no result set (CREATE VIEW, DROP): an empty .csv, which a failed run never has.
+    else if ('columns' in outcome) await this.write(`${base}.csv`, outcome.columns.length === 0 ? '' : toCsv(outcome.columns, outcome.rows))
     await this.writeAppStatus(null)
     if ('reply' in outcome) return outcome.reply
     const dictionary = runner.hasTables ? await this.dictionaryFor(`${base}.sql`).catch(() => undefined) : undefined
     const withDictionary = (text: string) => (dictionary ? `${text}\n\n${dictionary}` : text)
     const named = `${runner.noun ?? 'Query'} ${label}${runner.named ?? ''}`
     if ('error' in outcome) return withDictionary(`${named} failed (saved ${this.shown(`${base}.${ext}`)}):\n${outcome.error}`)
+    if (outcome.columns.length === 0) return withDictionary(`${named}: ok, no result set.`)
 
     const total = outcome.rows.length
     const shown = outcome.rows.slice(0, REPLY_ROWS)

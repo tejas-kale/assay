@@ -253,6 +253,15 @@ def test_q_reads_a_sql_csv_and_a_python_table_and_records_the_reads(kernel: Anal
     assert kernel.run("1")["reads"] == []  # cleared after each run
 
 
+def test_q_of_a_sql_run_with_no_result_set_is_an_empty_frame(kernel: Analysis) -> None:
+    (kernel.dir / "queries" / "078_probe-view.sql").write_text("CREATE OR REPLACE TEMPORARY VIEW v AS SELECT 1 AS x\n")
+    (kernel.dir / "queries" / "078_probe-view.csv").write_text("")
+    summary = kernel.run("e = q(78)\nprint(type(e).__name__, e.shape)\n")
+    assert summary["status"] == "ok", summary
+    assert summary["stdout"] == "DataFrame (0, 0)\n"
+    assert summary["reads"] == [78]
+
+
 def test_q_with_no_saved_result_raises_lookup_error(kernel: Analysis) -> None:
     summary = kernel.run("q(77)\n")
     assert summary["status"] == "error"
