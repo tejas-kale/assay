@@ -436,7 +436,6 @@ export class Assay {
     await save(file)
 
     const mark = engine === 'postgres' ? `${POSTGRES_MARK}\n` : ''
-    const notices: string[] = []
     let failed = false
     for (const [i, planned] of plan.steps.entries()) {
       const step = file.steps[i]
@@ -472,15 +471,15 @@ export class Assay {
           const rowCount = step.counts.assay_rows ?? ''
           if (/^\d+$/.test(rowCount)) step.rows = Number(rowCount)
           step.status = 'ok'
+          // Saved as each step finishes: a server stopped mid-run keeps the notices of the steps that already failed.
           step.checks = stepChecks(step, step.counts)
-          for (const check of step.checks) if (!check.ok) notices.push(stepNoticeLine(number, step, check))
+          for (const check of step.checks) if (!check.ok) await this.appendTo(STEP_NOTICES, stepNoticeLine(number, step, check))
         }
       }
       await save(file)
     }
     file.status = failed ? 'error' : 'done'
     await save(file)
-    for (const line of notices) await this.appendTo(STEP_NOTICES, line)
     return undefined
   }
 

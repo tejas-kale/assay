@@ -342,7 +342,7 @@ becomes `_`), and `q(N, step=name)` applies the same rule. Small deviations: `st
 `plan` and `marks` on the diagram; `stepsRequest` (in `src/core/lineage.ts`) decides what the tab sends (`steps`, or
 `lineage` for a trusted run with no lineage yet); a plan that does not parse writes the lineage `{error}` and a steps
 file with `"status": "error"`; checks are written into each step as it finishes (the ✗ lines go to
-`.assay/step-notices.json` at the end of the run); every join in a step's SELECT is listed (`j` counts all of them), the
+`.assay/step-notices.json` as each step finishes, so a stopped server keeps them); every join in a step's SELECT is listed (`j` counts all of them), the
 checked ones with no `checked` field; `stepChecks` also words a passing join as `join order_lines 1:many on order_id:
 left 31 rows, 31 keys; right 40 rows, 36 keys`, with `(observed 1:1)` when it differs from the declared cardinality; and
 the dim reasons for unchecked joins come from `uncheckedLines`, apart from `stepChecks`. A joined source's name in the plan

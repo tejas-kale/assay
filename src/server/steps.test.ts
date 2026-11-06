@@ -23,7 +23,7 @@ const HEADERS = ['assay_rows', 'assay_grain_rows']
 const output = (columns: string[], rows: string[][]) => ({ stdout: JSON.stringify([{ state: 'SUCCEEDED', columns, rows }, { state: 'SUCCEEDED', columns: ['1'], rows: [['1']] }]) })
 const fileOf = (argv: readonly string[]) => argv[argv.indexOf('--file') + 1] ?? ''
 
-type Script = { plan?: object | undefined; counts?: Record<string, string[]>; failOn?: string }
+type Script = { plan?: object | undefined; counts?: Record<string, string[]>; failOn?: string; onQuery?: (file: string) => Promise<void> }
 /** Plays the helper and the warehouse; notes the steps file as each query starts. */
 function script(ws: Fake, how: Script = {}, seen: string[][] = []) {
   ws.setRun(async (argv, _options?: RunOptions) => {
@@ -33,6 +33,7 @@ function script(ws: Fake, how: Script = {}, seen: string[][] = []) {
     const file = fileOf(argv)
     const steps = parseSteps((await ws.file('queries/042.steps.json')) ?? '')
     seen.push(steps?.steps.map(step => step.status) ?? [])
+    await how.onQuery?.(file)
     if (how.failOn && file.includes(how.failOn)) return { stdout: JSON.stringify({ error: 'boom' }), exitCode: 1, stderr: 'boom' }
     if (file.endsWith('.counts.sql')) {
       const row = how.counts?.[file.split('/').pop()?.split('.')[1]?.split('_')[0] ?? ''] ?? ['5', '5']
@@ -106,6 +107,20 @@ test('a failed check is appended to step-notices.json as one line, kept across r
   expect(done?.steps[0]?.checks).toEqual([{ kind: 'grain', ok: false, text: 'grain id has 2 duplicate rows' }])
   await ask(ws)
   expect(JSON.parse((await ws.file('.assay/step-notices.json')) ?? '[]').length).toBe(2)
+  await ws.done()
+})
+
+test('a failed check is in step-notices.json before the next step runs, so a stopped server keeps it', async () => {
+  const ws = await fake(FILES)
+  let atSecond: string[] | undefined
+  script(ws, {
+    counts: { 1: ['5', '3'], 2: ['1', '1'] },
+    onQuery: async file => {
+      if (file.includes('2_final')) atSecond = JSON.parse((await ws.file('.assay/step-notices.json')) ?? '[]')
+    },
+  })
+  await ask(ws)
+  expect(atSecond).toEqual(['q042 step clean: grain id has 2 duplicate rows.'])
   await ws.done()
 })
 
