@@ -1,6 +1,8 @@
 // A query's lineage: the CTE graph `python -m analysis_sql lineage` prints and the server saves next to the run as
 // `queries/NNN.lineage.json` (docs/slice-9.md, slice 9b). Pure: parsing that file and drawing it as Mermaid text.
 import { codeBody } from './runs.ts'
+import { stepMarks } from './steps.ts'
+import type { StepsFile } from './steps.ts'
 
 export type Cardinality = '1:1' | '1:many' | 'many:1' | 'many:many'
 export type LineageNode = { id: string; kind: 'table' | 'cte' | 'final'; name: string; grain?: string[] }
@@ -105,6 +107,12 @@ export function lineageMermaid(lineage: Lineage, marks: Readonly<Record<number, 
   return lines.join('\n')
 }
 
+/** The node a click landed on: mermaid names a flowchart node's element `flowchart-<our id>-<n>`; our ids are `n0`, `n1`, ... */
+export function mermaidNodeIndex(elementId: string): number | undefined {
+  const match = /^flowchart-n(\d+)-\d+$/.exec(elementId)
+  return match?.[1] === undefined ? undefined : Number(match[1])
+}
+
 export const NOT_SQL = 'Steps reads SQL runs.'
 export const NOTHING_TO_DRAW = 'One table, no CTE: nothing to draw.'
 
@@ -113,13 +121,33 @@ export type StepsView =
   | { kind: 'message'; text: string; note?: string }
   | { kind: 'reading' }
   | { kind: 'error'; error: string }
-  | { kind: 'diagram'; lineage: Lineage; note?: string }
+  | { kind: 'diagram'; lineage: Lineage; note?: string; plan?: StepsFile; marks?: Record<number, LineageMark> }
 
-/** `code` is the run's saved file; a trusted run whose body is `-- python:` is a Python calculation, not SQL. */
-export function stepsView(run: { language?: 'sql' | 'python'; trusted?: string }, code: string | undefined, lineage: LineageFile | undefined): StepsView {
-  if (run.language === 'python' || (run.trusted !== undefined && /^-- python:/m.test(codeBody(code ?? '', 'sql')))) return { kind: 'message', text: NOT_SQL }
+type RunInfo = { language?: 'sql' | 'python'; trusted?: string }
+
+/** A Python run, or a trusted run whose body is `-- python:`: not SQL, so nothing to step through. */
+const readsNoSql = (run: RunInfo, code: string | undefined) => run.language === 'python' || (run.trusted !== undefined && /^-- python:/m.test(codeBody(code ?? '', 'sql')))
+
+/**
+ * What the Steps tab shows. `code` is the run's saved file; `plan` is `NNN.steps.json` (slice 9c), which adds each
+ * step's status and the marks that colour the diagram.
+ */
+export function stepsView(run: RunInfo, code: string | undefined, lineage: LineageFile | undefined, plan?: StepsFile): StepsView {
+  if (readsNoSql(run, code)) return { kind: 'message', text: NOT_SQL }
   if (lineage === undefined) return { kind: 'reading' }
   if ('error' in lineage) return { kind: 'error', error: lineage.error }
-  const note = lineage.note === undefined ? {} : { note: lineage.note }
-  return hasStructure(lineage) ? { kind: 'diagram', lineage, ...note } : { kind: 'message', text: NOTHING_TO_DRAW, ...note }
+  const notes = [lineage.note, plan?.note].filter((text): text is string => text !== undefined).join(' ')
+  const note = notes === '' ? {} : { note: notes }
+  if (!hasStructure(lineage)) return { kind: 'message', text: NOTHING_TO_DRAW, ...note }
+  return plan && plan.steps.length > 0 ? { kind: 'diagram', lineage, ...note, plan, marks: stepMarks(plan.steps) } : { kind: 'diagram', lineage, ...note }
+}
+
+/**
+ * The request the Steps tab should send for a run, once per run per window: `steps` when no `NNN.steps.json` exists; a
+ * trusted run is read for its lineage only (its arguments are not replayed). Nothing for a run that is not SQL.
+ */
+export function stepsRequest(run: RunInfo, code: string | undefined, lineage: LineageFile | undefined, plan: StepsFile | undefined): 'steps' | 'lineage' | undefined {
+  if (readsNoSql(run, code) || plan !== undefined) return undefined
+  if (run.trusted !== undefined) return lineage === undefined ? 'lineage' : undefined
+  return 'steps'
 }

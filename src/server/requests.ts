@@ -1,5 +1,5 @@
 // The app's requests, ported from the analysis mod (hooks/register.tsx): `.assay/requests/<id>.json` in,
-// `.assay/replies/<id>.json` out, polled every 500 ms. Interrupt, restart and the trust requests are taken at once,
+// `.assay/replies/<id>.json` out, polled every 500 ms. Interrupt, restart, lineage and the trust requests are taken at once,
 // even while a run is in progress; the rest go oldest first, one at a time.
 import { readFile } from 'node:fs/promises'
 
@@ -112,6 +112,10 @@ export class Requests {
         return this.replay(request.runs)
       case 'lineage': {
         const failed = await assay.lineage(request.run)
+        return failed ? { error: failed } : { ok: true }
+      }
+      case 'steps': {
+        const failed = await assay.runSteps(request.run)
         return failed ? { error: failed } : { ok: true }
       }
       case 'trust-list':

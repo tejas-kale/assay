@@ -15,7 +15,8 @@ import type { Run, RunRequest, RunStatus, RunView, TrustReview } from '../../sha
 import { CodeEditor, CodeView, formatSql } from './CodeView.tsx'
 import type { EditorHandle, SelectionHandle } from './CodeView.tsx'
 import { isPaneKey } from './common.tsx'
-import { StepsTab, lineageRequests } from './StepsTab.tsx'
+import { runningLabel } from '../../core/steps.ts'
+import { StepsTab, stepsRequests } from './StepsTab.tsx'
 import { TrustTab, trustRequests } from './TrustTab.tsx'
 import type { DataTabName } from './common.tsx'
 
@@ -174,7 +175,7 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
   useEffect(() => {
     const stop = window.app.runs.onReply(reply => {
       // The Trust and Steps tabs read the replies to their own requests.
-      if (trustRequests.has(reply.id) || lineageRequests.has(reply.id) || 'proposals' in reply) return
+      if (trustRequests.has(reply.id) || stepsRequests.has(reply.id) || 'proposals' in reply) return
       const sent = pending.current.get(reply.id)
       if (sent) clearTimeout(sent.timer)
       pending.current.delete(reply.id)
@@ -425,6 +426,8 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
         <span className="dim">
           plot {plot} of {plotCount}
         </span>
+      ) : tab === 'steps' && runningLabel(view?.steps) ? (
+        <span className="dim">{runningLabel(view?.steps)}</span>
       ) : null
     const header = (
       <>
@@ -1079,6 +1082,7 @@ function History(props: {
           <span className="dim">{[
               run.code && (run.language === 'python' ? 'py' : 'sql'),
               run.data && 'csv',
+              run.steps !== undefined && `${run.steps} step${run.steps === 1 ? '' : 's'}`,
               run.tables.length > 0 && `${run.tables.length} table${run.tables.length === 1 ? '' : 's'}`,
               run.plots.length > 0 && `${run.plots.length} plot${run.plots.length === 1 ? '' : 's'}`,
             ]

@@ -1,7 +1,9 @@
 // Mermaid diagrams: a ```mermaid block in a note, or a .mmd / .mermaid file in a preview.
 // mermaid is large, so it loads on first use, in its own chunk.
 import { useEffect, useState } from 'react'
+import type { MouseEvent } from 'react'
 
+import { mermaidNodeIndex } from '../../core/lineage.ts'
 import { THEMES } from '../../core/theme.ts'
 import type { ThemeMode } from '../../core/theme.ts'
 import { currentMode, onModeChange } from '../appearance.ts'
@@ -52,8 +54,12 @@ export function renderMermaid(text: string, mode: ThemeMode): Promise<Rendered> 
   return job
 }
 
-/** One diagram, redrawn when its text or the system's light / dark setting changes. A bad diagram shows its error and source. */
-export function MermaidDiagram({ text }: { text: string }) {
+/**
+ * One diagram, redrawn when its text or the system's light / dark setting changes. A bad diagram shows its error and source.
+ * `onNodeClick(i)` hears a click on a flowchart node whose id is our `n<i>`: the click handler is on the container, so
+ * mermaid's strict mode (no click bindings in the SVG) stays on.
+ */
+export function MermaidDiagram({ text, onNodeClick }: { text: string; onNodeClick?: (node: number) => void }) {
   const [mode, setMode] = useState(currentMode)
   const [out, setOut] = useState<{ for: string; value: Rendered }>()
   useEffect(() => onModeChange(setMode), [])
@@ -78,5 +84,12 @@ export function MermaidDiagram({ text }: { text: string }) {
       </div>
     )
   // mermaid's strict mode sanitises the SVG it returns.
-  return <div className="mermaid-diagram" dangerouslySetInnerHTML={{ __html: value.svg }} />
+  const onClick = onNodeClick
+    ? (e: MouseEvent) => {
+        const node = e.target instanceof Element ? e.target.closest('g.node') : null
+        const index = node ? mermaidNodeIndex(node.id) : undefined
+        if (index !== undefined) onNodeClick(index)
+      }
+    : undefined
+  return <div className="mermaid-diagram" onClick={onClick} dangerouslySetInnerHTML={{ __html: value.svg }} />
 }

@@ -279,6 +279,16 @@ test('the run notice', () => {
   expect(runNotice([{ number: 16, language: 'python', replay: 14 }], 'analyses/a')).toContain('016 python (replay of 014)')
 })
 
+test('the run notice carries the step checks that failed, with or without runs', () => {
+  const lines = ['q042 step spend: grain customer_id has 3 duplicate rows.', 'q042 step final: grain none (one row) has 7 rows.']
+  expect(runNotice([], 'analyses/a', [])).toBeUndefined()
+  expect(runNotice([], 'analyses/a', lines)).toBe(`Step checks failed since your last turn:\n- ${lines[0]}\n- ${lines[1]}`)
+  expect(runNotice([{ number: 15, language: 'sql' }], 'analyses/a', lines.slice(0, 1))).toBe(
+    'Since your last turn the user ran: 015 sql. Read analyses/a/queries/<file> when it matters.\nStep checks failed since your last turn:\n- q042 step spend: grain customer_id has 3 duplicate rows.',
+  )
+  expect(analysisRules(undefined, 'analyses/a')).toContain("or step k of a SQL run's Steps with q(N, step=k)")
+})
+
 test('the Bash guard refuses commands that run Python code, and lets pytest, pip and package commands through', () => {
   const refused = [
     'python x.py',

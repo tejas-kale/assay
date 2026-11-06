@@ -9,6 +9,7 @@ import type { AnalysisRef, FsPort } from '../core/analyses.ts'
 import { StaleEdit } from '../core/errors.ts'
 import { newRequestId, parseReply, requestText } from '../core/requests.ts'
 import { parseLineage } from '../core/lineage.ts'
+import { countSteps, parseSteps, stepFiles } from '../core/steps.ts'
 import { parseCsv, parseRunHeader, parseRunResult, parseRunStatus, parseRuns } from '../core/runs.ts'
 import type { Reply } from '../core/requests.ts'
 import type { ResultStatus, Run, RunHeader } from '../core/runs.ts'
@@ -106,7 +107,7 @@ export async function loadState(analysis: AnalysisRef): Promise<AnalysisState> {
   return {
     analysis,
     threads: parseThreads(threads),
-    runs: await withResults(analysis.path, await withHeaders(analysis.path, parseRuns(queries))),
+    runs: await withResults(analysis.path, await withHeaders(analysis.path, parseRuns(queries)), queries),
     runStatus: parseRunStatus(status),
     rootNotes,
     noteLists,
@@ -165,10 +166,18 @@ async function withHeaders(folder: string, runs: Run[]): Promise<Run[]> {
 // Keyed by the full file path, which includes the analysis folder, so analyses and windows never share entries.
 const finished = new Map<string, ResultStatus>()
 
-/** Fills each Python run's `status` from its result `.json` (rewritten every 0.5 s by rename while it runs). */
-async function withResults(folder: string, runs: Run[]): Promise<Run[]> {
+/**
+ * Fills each Python run's `status` from its result `.json` (rewritten every 0.5 s by rename while it runs), and each
+ * SQL run's `steps` from its `NNN.steps.json` (docs/slice-9.md).
+ */
+async function withResults(folder: string, runs: Run[], names: readonly string[]): Promise<Run[]> {
   return Promise.all(
     runs.map(async run => {
+      if (run.language !== 'python') {
+        const file = names.includes(`${run.label}.steps.json`) ? parseSteps(await readText(join(folder, QUERIES, `${run.label}.steps.json`)).catch(() => '')) : undefined
+        const steps = countSteps(names, run.number, file)
+        return steps > 0 ? { ...run, steps } : run
+      }
       if (!run.result) return run
       const path = join(folder, QUERIES, run.result)
       let status = finished.get(path)
@@ -185,7 +194,8 @@ async function withResults(folder: string, runs: Run[]): Promise<Run[]> {
 
 /** The runs with headers and statuses, for deriving the label a note citing a run gets. */
 export async function readRuns(folder: string): Promise<Run[]> {
-  return withResults(folder, parseRuns(await readQueryNames(folder)))
+  const names = await readQueryNames(folder)
+  return withResults(folder, parseRuns(names), names)
 }
 
 export const QUERIES = 'queries'
@@ -215,8 +225,9 @@ async function readHead(path: string, max: number): Promise<{ text: string; cut:
 }
 
 /** One run's code and saved result. The number is looked up in the folder listing, so no renderer path is used. */
-export async function readRun(folder: string, number: number, options: { table?: number } = {}): Promise<RunView | undefined> {
-  const run = parseRuns(await readQueryNames(folder)).find(r => r.number === number)
+export async function readRun(folder: string, number: number, options: { table?: number; step?: number } = {}): Promise<RunView | undefined> {
+  const names = await readQueryNames(folder)
+  const run = parseRuns(names).find(r => r.number === number)
   if (!run) return undefined
   const dir = join(folder, QUERIES)
   const view: RunView = { run }
@@ -230,8 +241,17 @@ export async function readRun(folder: string, number: number, options: { table?:
     // Written by the server next to the run when the Steps tab asked (docs/slice-9.md); not a run file.
     const lineage = parseLineage(await readText(join(dir, `${run.label}.lineage.json`)))
     if (lineage) view.lineage = lineage
+    const steps = parseSteps(await readText(join(dir, `${run.label}.steps.json`)))
+    if (steps) view.steps = steps
     if (run.code) view.code = (await readHead(join(dir, run.code), MAX_CODE_BYTES)).text
     if (run.data) view.table = await readTable(run.data)
+    if (options.step !== undefined) {
+      // The last step is the final SELECT: its rows are the run's own.
+      const planned = steps?.steps.find(each => each.k === options.step)
+      const file = stepFiles(names, number).find(each => each.k === options.step)?.csv
+      if (file) view.stepTable = await readTable(file)
+      else if (planned && planned.k === steps?.steps.length && planned.name === 'final' && view.table) view.stepTable = view.table
+    }
     if (run.result) {
       const result = parseRunResult(await readText(join(dir, run.result)))
       if (result) {

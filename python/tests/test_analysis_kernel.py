@@ -261,6 +261,26 @@ def test_q_with_no_saved_result_raises_lookup_error(kernel: Analysis) -> None:
     assert summary["reads"] == []
 
 
+def test_q_step_reads_a_steps_csv_by_number_or_name_and_final_is_the_runs_own(kernel: Analysis) -> None:
+    queries = kernel.dir / "queries"
+    (queries / "095_spend.csv").write_text("id\n1\n")
+    (queries / "095.1_orders_clean.csv").write_text("a\n10\n20\n")
+    (queries / "095.2_orders_by_day.csv").write_text("a\n5\n")
+    (queries / "095.steps.json").write_text(json.dumps({"steps": [{"name": "orders_clean"}, {"name": "orders_by_day"}, {"name": "final"}]}))
+    summary = kernel.run("a = q(95, step=1)\nb = q(95, step='orders_by_day')\nc = q(95, step=3)\nd = q(95, step='final')\nprint(len(a), len(b), list(c.id), list(d.id))\n")
+    assert summary["status"] == "ok", summary
+    assert summary["stdout"].endswith("2 1 [1] [1]\n")
+    assert summary["reads"] == [95]
+
+
+def test_q_step_that_does_not_exist_raises_lookup_error(kernel: Analysis) -> None:
+    (kernel.dir / "queries" / "096_spend.csv").write_text("id\n1\n")
+    for call, message in (("q(96, step=3)", "Run 096 has no step 3"), ("q(96, step='nope')", "Run 096 has no step nope"), ("q(97, step=1)", "Run 097 has no step 1")):
+        summary = kernel.run(call + "\n")
+        assert summary["status"] == "error" and summary["error"]["name"] == "LookupError"
+        assert summary["error"]["message"] == message
+
+
 def wait_for_status(target: Path, status: str) -> bool:
     deadline = time.monotonic() + DEADLINE
     while time.monotonic() < deadline:

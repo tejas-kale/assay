@@ -30,7 +30,7 @@ export const analysisRules = (python: string | undefined, folder: string) =>
     `When the topic shifts, ${toolName('order')} the open threads so those related to it, or raised most recently, come first.`,
     'End the reply by asking whether that answer is clear. Take up the next question only after the user confirms.',
     `Run all Python with ${toolName('python')}, never through Bash. It runs in one kernel shared with the user, which keeps its variables between runs; every run is saved in queries/ and shown in the app.`,
-    "In the kernel, q(N) loads run N's saved result (a SQL run's rows, or table k of a Python run with q(N, k)) as a pandas DataFrame, without querying again. Use it instead of re-running a query.",
+    "In the kernel, q(N) loads run N's saved result (a SQL run's rows, or table k of a Python run with q(N, k), or step k of a SQL run's Steps with q(N, step=k)) as a pandas DataFrame, without querying again. Use it instead of re-running a query.",
     `Write findings as root notes with ${toolName('note')}, one idea per note: cite every number [<slug> q N] (the run that shows it; <slug> is the analysis's folder name), and link related notes [[ID]]. Change a note with ${toolName('revise_note')} after you Read it; never Write or Edit under notes/ (the user edits notes too). Search notes/ with Grep and Read, and ${toolName('link_notes')} the ones this analysis relies on.`,
     'Keep it lean: show summaries, .head(), counts or charts. Never full frames or long prints.',
     'Plot with matplotlib: each figure is saved as a PNG that you can Read to check the chart. Altair charts are not captured.',
@@ -41,15 +41,22 @@ export const analysisRules = (python: string | undefined, folder: string) =>
 
 export type UserRun = { number: number; language: 'sql' | 'python'; from?: number; replay?: number }
 
-/** The line added to the rules when the user ran things since the last prompt; undefined when they did not. */
-export function runNotice(runs: readonly UserRun[], folder: string): string | undefined {
-  if (runs.length === 0) return undefined
-  const items = runs.map(run => {
-    const origin = run.replay ? ` (replay of ${queryLabel(run.replay)})` : run.from ? ` (from ${queryLabel(run.from)})` : ''
-    return `${queryLabel(run.number)} ${run.language}${origin}`
-  })
-  const kernel = runs.some(run => run.language === 'python') ? ' Their Python ran in your kernel, so its variables may have changed;' : ''
-  return `Since your last turn the user ran: ${items.join(', ')}.${kernel} read ${folder}/queries/<file> when it matters.`.replace(/\. read/, '. Read')
+/**
+ * The notice added to the rules: the user's runs since the last prompt, and the step checks (docs/slice-9.md) that failed
+ * since then, one line each. Undefined when there is neither.
+ */
+export function runNotice(runs: readonly UserRun[], folder: string, stepLines: readonly string[] = []): string | undefined {
+  const lines: string[] = []
+  if (runs.length > 0) {
+    const items = runs.map(run => {
+      const origin = run.replay ? ` (replay of ${queryLabel(run.replay)})` : run.from ? ` (from ${queryLabel(run.from)})` : ''
+      return `${queryLabel(run.number)} ${run.language}${origin}`
+    })
+    const kernel = runs.some(run => run.language === 'python') ? ' Their Python ran in your kernel, so its variables may have changed;' : ''
+    lines.push(`Since your last turn the user ran: ${items.join(', ')}.${kernel} read ${folder}/queries/<file> when it matters.`.replace(/\. read/, '. Read'))
+  }
+  if (stepLines.length > 0) lines.push('Step checks failed since your last turn:', ...stepLines.map(line => `- ${line}`))
+  return lines.length > 0 ? lines.join('\n') : undefined
 }
 
 /** The line that says which analysis is open and where its files are, for a session that works from the root. */

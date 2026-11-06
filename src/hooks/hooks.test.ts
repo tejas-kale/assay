@@ -129,6 +129,16 @@ test("the run notice lists the user's runs the server recorded since the last pr
   expect((await hook('prompt', { prompt: 'go' }, env))?.additionalContext).toContain('Since your last turn the user ran: 007 sql. Read analyses/panel/queries/<file> when it matters.')
 })
 
+test('the notice carries the step check lines the server recorded, once', async () => {
+  const { analysis, env } = await scratch()
+  await writeFile(join(analysis, '.assay/step-notices.json'), JSON.stringify(['q042 step spend: grain customer_id has 3 duplicate rows.', 7]))
+  const said = (await hook('prompt', { prompt: 'go' }, env))?.additionalContext
+  expect(said).toContain('Step checks failed since your last turn:\n- q042 step spend: grain customer_id has 3 duplicate rows.')
+  expect(said).not.toContain('- 7')
+  expect(await readFile(join(analysis, '.assay/step-notices.json'), 'utf8').catch(() => undefined)).toBeUndefined()
+  expect((await hook('prompt', { prompt: 'go' }, env))?.additionalContext).not.toContain('Step checks failed')
+})
+
 test('a Write or Edit into another analysis is refused, naming the open one; the open one is allowed', async () => {
   const { root, analysis, env } = await scratch()
   const write = (tool: string, input: object) => hook('write', { hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, cwd: root }, env)

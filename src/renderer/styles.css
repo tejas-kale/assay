@@ -236,5 +236,10 @@ table.grid th.cur-col { color: var(--accent); }
 
 /* Mermaid diagrams: in a note, and as a .mmd / .mermaid file in a preview. */
 .mermaid-diagram { margin: 0 0 10px; padding: 8px; overflow-x: auto; }
+.mermaid-diagram g.node { cursor: pointer; }
+.step-detail { border-top: 1px solid var(--line); padding: 8px 12px; font-size: 12px; }
+.step-detail .grid { margin-top: 8px; }
+.check-ok { color: var(--good); }
+.check-bad { color: var(--bad); }
 .mermaid-diagram svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 .mermaid-file { flex: 1; min-height: 0; overflow: auto; }

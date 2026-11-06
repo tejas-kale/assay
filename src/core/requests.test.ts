@@ -121,6 +121,15 @@ test('selectedSql runs selected SQL, refuses other languages and leaves an empty
   assert.deepEqual(selectedSql('a: 1', undefined), { error: 'Only SQL can be run from a selection.' })
 })
 
+test('the steps request is checked, written, read by the server and queued behind other runs', () => {
+  assert.deepEqual(parseRunRequest({ kind: 'steps', run: 12, junk: 1 }), { kind: 'steps', run: 12 })
+  assert.deepEqual(parseRunRequest({ kind: 'steps', run: 0 }), { error: 'Invalid run' })
+  assert.deepEqual(JSON.parse(requestText('i', { kind: 'steps', run: 3 })), { id: 'i', kind: 'steps', run: 3 })
+  assert.deepEqual(parseRequestFile('{"kind":"steps","run":3}'), { kind: 'steps', run: 3 })
+  assert.deepEqual(parseRequestFile('{"kind":"steps"}'), { error: 'Name the run, by number.' })
+  assert.equal(isUrgent({ kind: 'steps', run: 3 }), false)
+})
+
 test('the lineage request is checked, written, read by the server and urgent', () => {
   assert.deepEqual(parseRunRequest({ kind: 'lineage', run: 12, junk: 1 }), { kind: 'lineage', run: 12 })
   assert.deepEqual(parseRunRequest({ kind: 'lineage', run: -1 }), { error: 'Invalid run' })

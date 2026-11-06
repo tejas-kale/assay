@@ -13,6 +13,7 @@ import type { NoteLists, RootNote } from '../core/rootNotes.ts'
 import type { CloseState } from '../core/session.ts'
 import type { Reply, RunRequest } from '../core/requests.ts'
 import type { LineageFile } from '../core/lineage.ts'
+import type { StepsFile } from '../core/steps.ts'
 import type { Engine, KernelState, Run, RunResult, RunStatus, Table } from '../core/runs.ts'
 import type { SearchContents } from '../core/search.ts'
 import type { ClosedThread, Threads } from '../core/threads.ts'
@@ -50,7 +51,7 @@ export type AnalysisState = {
  * One run's code and saved result, for the Code and Data tabs. A Python run also carries its parsed `.json`
  * (`result`) and one table: `table` is table `tableIndex` (1-based) of `run.tables`.
  */
-export type RunView = { run: Run; code?: string; table?: Table; tableIndex?: number; result?: RunResult; lineage?: LineageFile; error?: string }
+export type RunView = { run: Run; code?: string; table?: Table; tableIndex?: number; result?: RunResult; lineage?: LineageFile; steps?: StepsFile; stepTable?: Table; error?: string }
 
 
 /** A plot image as a data URL, or why it could not be read. */
@@ -152,7 +153,7 @@ export type AppApi = {
   searchContents(): Promise<SearchContents>
 
   /** One run's code and result by number; undefined when the run is gone. `table` picks table K (1-based) of a Python run. */
-  readRun(number: number, options?: { table?: number }): Promise<RunView | undefined>
+  readRun(number: number, options?: { table?: number; step?: number }): Promise<RunView | undefined>
   /** Plot K (1-based) of a Python run, as a data URL. */
   readPlot(number: number, k: number): Promise<PlotResult>
 

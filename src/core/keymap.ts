@@ -105,6 +105,7 @@ export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
     pane: 'Data',
     keys: [['h j k l', 'move cell'], ['J / K', 'page'], ['g / G  0 / $', 'first / last'], ['Enter', 'whole row'], ['y', 'copy cell'], [', / .', 'earlier / later run'], ['c', 'its Code'], ['p', 'pin / follow latest'], ['[ / ]', 'previous / next table'], ['s', 'stdout and error']],
   },
+  { pane: 'Steps', keys: [['j / k', 'next / previous step'], ['click a box', 'select its step'], ['r', 'run the steps again'], [', / .', 'earlier / later run'], ['c', 'its Code'], ['p', 'pin / follow latest']] },
   { pane: 'Plots', keys: [['j / k', 'next / previous plot'], [', / .', 'earlier / later run'], ['c', 'its Code'], ['p', 'pin / follow latest']] },
   {
     pane: 'Replay',

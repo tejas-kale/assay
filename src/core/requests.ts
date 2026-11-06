@@ -44,6 +44,7 @@ export type RunRequest =
   | { kind: 'replay'; runs: number[] }
   | TrustRequest
   | LineageRequest
+  | StepsRequest
 
 /** The request file's text for any kind. */
 export function requestText(id: string, request: RunRequest): string {
@@ -63,6 +64,7 @@ export function requestText(id: string, request: RunRequest): string {
     case 'trust-answer':
       return trustRequestText(id, request)
     case 'lineage':
+    case 'steps':
       return JSON.stringify({ id, ...request })
   }
 }
@@ -119,7 +121,7 @@ export const isIndex = (v: unknown): v is number => typeof v === 'number' && Num
 export function parseRunRequest(input: unknown): RunRequest | { error: string } {
   if (typeof input !== 'object' || input === null) return { error: 'Invalid request' }
   const { kind, sql, code, engine, from, slug, runs, name, answer, run } = input as Record<string, unknown>
-  if (kind === 'lineage') return isIndex(run) && run > 0 ? { kind, run } : { error: 'Invalid run' }
+  if (kind === 'lineage' || kind === 'steps') return isIndex(run) && run > 0 ? { kind, run } : { error: 'Invalid run' }
   if (kind === 'interrupt' || kind === 'restart' || kind === 'trust-list') return { kind }
   if (kind === 'trust-check' || kind === 'trust-answer') {
     if (typeof name !== 'string' || !PROPOSAL.test(name)) return { error: 'Invalid proposal' }
@@ -148,6 +150,8 @@ export function parseRunRequest(input: unknown): RunRequest | { error: string } 
 
 /** The Steps tab asks for run `run`'s lineage (docs/slice-9.md): the server writes `queries/NNN.lineage.json` and replies ok. */
 export type LineageRequest = { kind: 'lineage'; run: number }
+/** The Steps tab asks for run `run`'s steps to be run, one CTE at a time (slice 9c). Not urgent: it queues with the other runs. */
+export type StepsRequest = { kind: 'steps'; run: number }
 
 // ---------------------------------------------------------------------------
 // The trust review's requests (docs/slice-5.md): the app lists the proposals, starts a check, and answers one
@@ -174,9 +178,10 @@ export type ServerRequest =
   | { kind: 'replay'; runs: number[] }
   | TrustRequest
   | LineageRequest
+  | StepsRequest
 
-/** Interrupt, restart, the trust requests and lineage are taken at once, even while a run is in progress. */
-export const isUrgent = (request: ServerRequest) => request.kind !== 'sql' && request.kind !== 'python' && request.kind !== 'replay'
+/** Interrupt, restart, the trust requests and lineage are taken at once, even while a run is in progress; steps queue like runs. */
+export const isUrgent = (request: ServerRequest) => request.kind !== 'sql' && request.kind !== 'python' && request.kind !== 'replay' && request.kind !== 'steps'
 
 const isRunNumber = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value > 0
 
@@ -202,7 +207,7 @@ export function parseRequestFile(text: string): ServerRequest | { error: string 
     return { kind, code, ...origin, slug: slugText }
   }
   if (kind === 'interrupt' || kind === 'restart' || kind === 'trust-list') return { kind }
-  if (kind === 'lineage') return isRunNumber(run) ? { kind, run } : { error: 'Name the run, by number.' }
+  if (kind === 'lineage' || kind === 'steps') return isRunNumber(run) ? { kind, run } : { error: 'Name the run, by number.' }
   if (kind === 'replay') {
     if (!Array.isArray(runs) || runs.length === 0 || !runs.every(isRunNumber)) return { error: 'Name the runs to replay, by number.' }
     return { kind, runs }

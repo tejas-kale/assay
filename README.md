@@ -63,13 +63,15 @@ Every shortcut is in `src/core/keymap.ts`: `COMMANDS` (Cmd keys, caught in main 
   - `assay:wrap-up`: close threads, write findings as root notes, settle weak citations, link the notes read.
   - `assay:propose-trusted`: draft a trusted calculation or dictionary entry, with every file Check needs.
 - `python/`: `analysis_db`, `analysis_kernel`, `analysis_trust`, `analysis_sql` (the SQL rules on Claude's `sql`
-  calls and on SQL templates at Check, and the lineage the Steps tab draws; docs/slice-9.md), built into venv-assay by `claude-pkg venv-assay`.
+  calls and on SQL templates at Check, and the lineage and step queries the Steps tab draws and runs; docs/slice-9.md), built into venv-assay by `claude-pkg venv-assay`.
 - The app talks to the server through files: it writes `.assay/requests/<id>.json` (`sql`, `python`, `interrupt`,
-  `restart`, `replay`, `lineage`, `trust-list`, `trust-check`, `trust-answer`), the server answers in
-  `.assay/replies/`, writes `queries/NNN.lineage.json` next to a SQL run when the Steps tab asks, and
+  `restart`, `replay`, `lineage`, `steps`, `trust-list`, `trust-check`, `trust-answer`), the server answers in
+  `.assay/replies/`, writes next to a SQL run in `queries/` when the Steps tab asks (`NNN.lineage.json`;
+  `NNN.steps.json` and each step's `NNN.k_<name>.sql`, `.csv` and `.counts.sql`: steps are not runs and take no
+  number, and `q(N, step=k)` in the kernel loads step k's rows), and
   writes `.assay/runs.json` and `.assay/trust/<name>.json` for run status and the trust review. For the prompt hook
-  only, it writes `.assay/user-runs.json` (the user's runs, emptied by the hook) and `.assay/session.json` (the
-  kernel's python). No tool of Claude's can start or answer a review: only the Trust tab's buttons do.
+  only, it writes `.assay/user-runs.json` (the user's runs) and `.assay/step-notices.json` (step checks that failed),
+  both emptied by the hook, and `.assay/session.json` (the kernel's python). No tool of Claude's can start or answer a review: only the Trust tab's buttons do.
 
 ## The config repo
 

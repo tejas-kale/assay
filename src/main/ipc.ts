@@ -178,8 +178,10 @@ export function registerIpc() {
   handle(CHANNELS.searchContents, ctx => (ctx.analysis ? readSearchContents(ctx.analysis.path) : { notes: [], runs: [] }))
   handle(CHANNELS.runRead, (ctx, number, options) => {
     if (!ctx.analysis || !isIndex(number)) return undefined
-    const table = typeof options === 'object' && options !== null ? Reflect.get(options, 'table') : undefined
-    return readRun(ctx.analysis.path, number, isIndex(table) ? { table } : {})
+    const option = (key: string) => (typeof options === 'object' && options !== null ? Reflect.get(options, key) : undefined)
+    const table = option('table')
+    const step = option('step')
+    return readRun(ctx.analysis.path, number, { ...(isIndex(table) && { table }), ...(isIndex(step) && { step }) })
   })
   handle(CHANNELS.plotRead, (ctx, number, k): Promise<PlotResult> | PlotResult => {
     if (!ctx.analysis || !isIndex(number) || !isIndex(k)) return { ok: false, message: 'Invalid plot' }

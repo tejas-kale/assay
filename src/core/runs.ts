@@ -27,6 +27,8 @@ export type Run = {
   replay?: number
   trusted?: string
   engine?: Engine
+  /** How many steps a SQL run has (planned, or run); main fills it from `NNN.steps.json`. */
+  steps?: number
 }
 
 const NAME = /^(\d+)_(.+?)(?:\.t(\d+)\.csv|\.p(\d+)\.(?:png|svg)|\.(sql|py|csv|json))$/

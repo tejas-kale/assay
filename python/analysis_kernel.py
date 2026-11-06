@@ -75,7 +75,7 @@ def atomic_write(path: Path, data: bytes) -> None:
 
 PRELOAD = r'''
 def _assay_setup(analysis_dir, table_mime, row_cap):
-    import glob, os, re, sys, types
+    import glob, json, os, re, sys, types
 
     os.chdir(analysis_dir)
     while analysis_dir in sys.path:
@@ -89,15 +89,44 @@ def _assay_setup(analysis_dir, table_mime, row_cap):
         reads.clear()
         return found
 
-    def q(n, k=1):
-        """Run n's saved result as a pandas DataFrame: a SQL run's csv, or table k of a Python run."""
+    def step_csv(n, step, sql):
+        """The csv of step ``step`` (its number k or its name) of SQL run n, or None. The last step, ``final``, is the run's own."""
+        prefix = glob.escape(os.path.join(queries, "%03d." % n))
+        found = {}
+        for path in sorted(glob.glob(prefix + "*.csv")):
+            match = re.match(r"^(\d+)_(.+)\.csv$", os.path.basename(path)[len("%03d." % n):])
+            if match:
+                found[int(match.group(1))] = (match.group(2), path)
+        try:
+            names = [each.get("name") for each in json.load(open(os.path.join(queries, "%03d.steps.json" % n)))["steps"]]
+        except Exception:
+            names = []
+        if isinstance(step, str):
+            slug = re.sub(r"[^A-Za-z0-9_-]", "_", step)
+            hits = [path for name, path in found.values() if name == slug]
+            if hits:
+                return hits[0]
+            return sql if step == "final" and "final" in names else None
+        if step in found:
+            return found[step][1]
+        return sql if names and step == len(names) and names[-1] == "final" else None
+
+    def q(n, k=1, step=None):
+        """Run n's saved result as a pandas DataFrame: a SQL run's csv, or table k of a Python run.
+
+        ``step`` (a SQL run's step number or name, from the Steps tab) reads that step's result instead.
+        """
         import pandas as pd
 
         n, k = int(n), int(k)
         prefix = glob.escape(os.path.join(queries, "%03d_" % n))
         files = sorted(glob.glob(prefix + "*.csv"))
         sql = [f for f in files if not re.search(r"\.t\d+\.csv$", f)]
-        if sql:
+        if step is not None:
+            path = step_csv(n, step, sql[0] if sql else None)
+            if path is None:
+                raise LookupError("Run %03d has no step %s" % (n, step))
+        elif sql:
             if k != 1:
                 raise LookupError("Run %03d is a SQL run: it has one result" % n)
             path = sql[0]

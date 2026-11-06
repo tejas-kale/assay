@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import sqlglot
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -298,4 +299,160 @@ def test_lineage_command_prints_json_and_a_parse_error(monkeypatch: pytest.Monke
     assert json.loads(capsys.readouterr().out)["nodes"][0]["id"] == "t"
     monkeypatch.setattr(sys, "stdin", io.StringIO("SELECT FROM WHERE ("))
     assert sql_rules.main(["lineage", "databricks"]) == 1
+    assert "does not parse" in json.loads(capsys.readouterr().out)["error"]
+
+
+THREE = """
+WITH
+-- grain: order_id
+base_orders AS (SELECT order_id, customer_id FROM orders),
+-- grain: customer_id
+unrelated_totals AS (SELECT customer_id FROM payments),
+-- grain: customer_id
+customer_orders AS (SELECT customer_id FROM base_orders)
+-- grain: customer_id
+SELECT customer_id FROM customer_orders
+"""
+
+
+def plan(text: str, dialect: str = "databricks", template: bool = False) -> dict:
+    return sql_rules.steps(text, dialect, template)
+
+
+def step(found: dict, name: str) -> dict:
+    return next(s for s in found["steps"] if s["name"] == name)
+
+
+def parses(text: str, dialect: str) -> None:
+    assert sqlglot.parse_one(text, read=dialect) is not None
+
+
+@pytest.mark.parametrize("dialect", ["databricks", "postgres"])
+def test_steps_follow_the_written_order_and_each_with_holds_only_the_ctes_it_needs(dialect: str) -> None:
+    found = plan(THREE, dialect)
+    assert [(s["k"], s["name"]) for s in found["steps"]] == [(1, "base_orders"), (2, "unrelated_totals"), (3, "customer_orders"), (4, "final")]
+    nodes = found["lineage"]["nodes"]
+    assert [nodes[s["node"]]["id"] for s in found["steps"]] == ["base_orders", "unrelated_totals", "customer_orders", "final"]
+    preview = step(found, "customer_orders")["preview"]
+    assert preview.index("base_orders AS") < preview.index("customer_orders AS") and "unrelated_totals" not in preview and "payments" not in preview
+    assert preview.endswith("SELECT * FROM customer_orders LIMIT 50")
+    assert "base_orders AS" not in step(found, "unrelated_totals")["counts"]
+    for each in found["steps"]:
+        parses(each["counts"], dialect)
+        if each["preview"]:
+            parses(each["preview"], dialect)
+
+
+def test_the_final_step_has_no_preview_and_counts_the_final_select_as_one_more_cte() -> None:
+    final = step(plan(THREE), "final")
+    assert final["preview"] is None
+    assert "assay_final AS (SELECT customer_id FROM customer_orders)" in final["counts"]
+    assert "payments" not in final["counts"] and "COUNT(*) FROM assay_final)" in final["counts"]
+    assert final["grain"] == ["customer_id"]
+
+
+def test_grain_counts_distinct_tuples_and_is_absent_for_none_star_and_no_line() -> None:
+    sql = """WITH
+-- grain: a, b
+keyed AS (SELECT a, b FROM t),
+-- grain: none
+total AS (SELECT COUNT(*) AS n FROM t),
+-- grain: a
+everything AS (SELECT * FROM t),
+plain AS (SELECT a FROM t)
+SELECT 1 FROM keyed"""
+    found = plan(sql)
+    assert "SELECT DISTINCT a, b FROM keyed" in step(found, "keyed")["counts"] and "AS assay_grain_rows" in step(found, "keyed")["counts"]
+    assert step(found, "keyed")["grain"] == ["a", "b"]
+    assert step(found, "total")["grain"] == [] and "assay_grain_rows" not in step(found, "total")["counts"]
+    assert "assay_grain_rows" not in step(found, "everything")["counts"]
+    assert "grain" not in step(found, "plain") and "assay_grain_rows" not in step(found, "plain")["counts"]
+
+
+JOINS = """WITH
+-- grain: order_id
+spend AS (
+  SELECT o.order_id
+  FROM shop.orders o
+  -- join: 1:many on order_id
+  JOIN shop.lines l ON l.order_id = o.order_id AND l.shop = o.shop
+  -- join: many:1 on k
+  JOIN dims USING (k)
+  -- join: many:many on none
+  CROSS JOIN other
+  -- join: 1:1 on a
+  JOIN third t ON t.a < o.a
+  -- join: 1:1 on a
+  JOIN fourth f ON f.a = o.a AND f.b = t.b
+  JOIN bare ON bare.a = o.a
+)
+SELECT 1 FROM spend"""
+
+
+@pytest.mark.parametrize("dialect", ["databricks", "postgres"])
+def test_join_counts_name_each_side_by_the_on_columns(dialect: str) -> None:
+    found = plan(JOINS, dialect)
+    joins = step(found, "spend")["joins"]
+    assert joins[0] == {"j": 1, "source": "lines", "declared": "1:many", "keys": ["order_id"]}
+    counts = step(found, "spend")["counts"]
+    for column in ("left_rows", "left_keys", "right_rows", "right_keys"):
+        assert f"AS assay_j1_{column}" in counts
+    assert "SELECT DISTINCT order_id, shop FROM shop.orders" in counts and "SELECT DISTINCT order_id, shop FROM shop.lines" in counts
+    parses(counts, dialect)
+
+
+def test_unchecked_joins_say_why_and_have_no_counts() -> None:
+    joins = {j["j"]: j for j in step(plan(JOINS), "spend")["joins"]}
+    assert joins[2]["source"] == "dims" and joins[2]["checked"] is False and "USING" in joins[2]["reason"]
+    assert joins[3]["checked"] is False and "CROSS" in joins[3]["reason"]
+    assert joins[4]["checked"] is False and "equalities" in joins[4]["reason"]
+    assert joins[5]["checked"] is False and "more than two" in joins[5]["reason"]
+    assert joins[6]["checked"] is False and "join:" in joins[6]["reason"] and "declared" not in joins[6]
+    counts = step(plan(JOINS), "spend")["counts"]
+    assert "assay_j3_" not in counts and "assay_j4_" not in counts and "assay_j5_" not in counts and "assay_j6_" not in counts
+
+
+def test_using_is_read_only_for_the_first_join() -> None:
+    later = plan("WITH\n-- grain: a\nx AS (SELECT 1 AS a FROM p\n-- join: 1:1 on a\nJOIN q ON q.a = p.a\n-- join: 1:1 on a\nJOIN r USING (a))\nSELECT 1 FROM x")
+    first, second = step(later, "x")["joins"]
+    assert "checked" not in first and second["checked"] is False and "USING" in second["reason"]
+
+
+def test_final_select_joins_are_counted_too() -> None:
+    found = plan("WITH\n-- grain: a\nx AS (SELECT a FROM p)\n-- grain: a\nSELECT x.a FROM x\n-- join: 1:1 on a\nJOIN y ON y.a = x.a")
+    assert step(found, "final")["joins"][0]["declared"] == "1:1"
+    assert "AS assay_j1_left_rows" in step(found, "final")["counts"]
+
+
+def test_no_cte_a_recursive_cte_and_no_statement_give_no_steps_and_a_note() -> None:
+    assert plan("SELECT 1 FROM t")["steps"] == [] and "note" in plan("SELECT 1 FROM t")
+    recursive = plan("WITH RECURSIVE r AS (SELECT 1 AS n UNION ALL SELECT n + 1 FROM r WHERE n < 3) SELECT n FROM r")
+    assert recursive["steps"] == [] and "recursive" in recursive["note"].lower()
+    assert plan("")["steps"] == [] and "note" in plan("")
+
+
+def test_a_set_operation_in_the_final_select_counts_rows_only_but_its_ctes_are_steps() -> None:
+    found = plan("WITH\n-- grain: a\nx AS (SELECT a FROM p)\n-- grain: a\nSELECT a FROM x UNION ALL SELECT a FROM x")
+    assert [s["name"] for s in found["steps"]] == ["x", "final"]
+    assert "assay_grain_rows" not in step(found, "final")["counts"] and "grain" not in step(found, "final")
+    assert "note" in found
+    parses(step(found, "final")["counts"], "postgres")
+
+
+def test_steps_with_template_bind_placeholders() -> None:
+    found = plan("WITH\n-- grain: a\nx AS (SELECT a FROM t WHERE d > :since)\nSELECT a FROM x", template=True)
+    assert "d > NULL" in step(found, "x")["preview"]
+
+
+def test_the_last_statement_is_stepped() -> None:
+    found = plan("WITH x AS (SELECT 1 FROM a) SELECT 1 FROM x; WITH y AS (SELECT 1 FROM b) SELECT 1 FROM y")
+    assert [s["name"] for s in found["steps"]] == ["y", "final"] and "note" in found["lineage"]
+
+
+def test_steps_command_prints_json_and_a_parse_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(sys, "stdin", io.StringIO("WITH x AS (SELECT 1 FROM t WHERE d > :since) SELECT 1 FROM x"))
+    assert sql_rules.main(["steps", "postgres", "--template"]) == 0
+    assert [s["name"] for s in json.loads(capsys.readouterr().out)["steps"]] == ["x", "final"]
+    monkeypatch.setattr(sys, "stdin", io.StringIO("SELECT FROM WHERE ("))
+    assert sql_rules.main(["steps", "databricks"]) == 1
     assert "does not parse" in json.loads(capsys.readouterr().out)["error"]

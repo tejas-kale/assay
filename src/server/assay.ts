@@ -19,6 +19,8 @@ import type { UserRun } from '../core/rules.ts'
 import type { Engine } from '../core/runs.ts'
 import { codeBody, nextRunNumber, parseRunHeader, parseRuns } from '../core/runs.ts'
 import type { LineageFile } from '../core/lineage.ts'
+import { stepChecks, stepFiles, stepNoticeLine, stepSlug } from '../core/steps.ts'
+import type { Step, StepsFile } from '../core/steps.ts'
 import { formatThreads, parseThreads } from '../core/threads.ts'
 import type { Threads } from '../core/threads.ts'
 import type { Child, Proc } from './proc.ts'
@@ -38,6 +40,8 @@ const KERNEL_READY_MS = 120_000
 const APP_STATUS = '.assay/runs.json'
 /** For the UserPromptSubmit hook: the user's runs since the last prompt, and the kernel's python. */
 export const USER_RUNS = '.assay/user-runs.json'
+/** For the same hook: the step checks that failed since the last prompt, one line each (docs/slice-9.md). */
+export const STEP_NOTICES = '.assay/step-notices.json'
 export const SESSION = '.assay/session.json'
 
 export type Config = {
@@ -100,6 +104,15 @@ function queue() {
     return done
   }
 }
+
+/** What `python -m analysis_sql steps` prints (docs/slice-9.md, slice 9c). */
+type StepPlan = {
+  lineage: LineageFile
+  steps: { k: number; name: string; node: number; preview: string | null; counts: string; grain?: string[]; joins?: Step['joins'] }[]
+  note?: string
+}
+
+const TRUSTED_STEPS_NOTE = "Steps run only SQL written in the run: a trusted calculation's arguments are not replayed."
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
@@ -238,18 +251,23 @@ export class Assay {
     await this.writeAtomic(APP_STATUS, `${JSON.stringify(status, null, 2)}\n`).catch(() => undefined)
   }
 
-  /** Records a run the user made from the app, for the next prompt's notice. */
-  recordUserRun(run: UserRun) {
+  /** Appends `item` to the JSON list in `path`, one write at a time; a missing or unreadable list starts again. */
+  private appendTo(path: string, item: unknown) {
     return this.userRunWrites(async () => {
-      let runs: UserRun[] = []
+      let items: unknown[] = []
       try {
-        const parsed: unknown = JSON.parse(await this.readText(USER_RUNS))
-        if (Array.isArray(parsed)) runs = parsed as UserRun[]
+        const parsed: unknown = JSON.parse(await this.readText(path))
+        if (Array.isArray(parsed)) items = parsed
       } catch {
         // None yet, or the hook took them.
       }
-      await this.writeAtomic(USER_RUNS, `${JSON.stringify([...runs, run])}\n`).catch(() => undefined)
+      await this.writeAtomic(path, `${JSON.stringify([...items, item])}\n`).catch(() => undefined)
     })
+  }
+
+  /** Records a run the user made from the app, for the next prompt's notice. */
+  recordUserRun(run: UserRun) {
+    return this.appendTo(USER_RUNS, run)
   }
 
   /** Saves a run under the next number, runs it and keeps its result; the tool's reply. */
@@ -308,12 +326,15 @@ export class Assay {
       saved: `${header}${engine === 'postgres' ? `${POSTGRES_MARK}\n` : ''}${sql.trim()}\n`,
       ...(onClaim ? { onClaim } : {}),
       hasTables: engine === 'databricks',
-      run: async sqlFile => {
-        const command = Assay.queryCommand(engine, readTarget(await this.readText(ANALYSIS_FILE)), sqlFile)
-        const ran = await this.config.proc.run(command.argv, { cwd: this.config.analysis, timeoutMs: QUERY_TIMEOUT_MS })
-        return ran.isStdoutTruncated ? { error: 'The result is over 4 MiB. Aggregate it or add a LIMIT.' } : command.read(ran)
-      },
+      run: sqlFile => this.queryFile(engine, sqlFile),
     })
+  }
+
+  /** Runs a saved .sql file (a path from the analysis) on the engine; its rows, or the error. */
+  async queryFile(engine: Engine, sqlFile: string): Promise<Table | { error: string }> {
+    const command = Assay.queryCommand(engine, readTarget(await this.readText(ANALYSIS_FILE)), sqlFile)
+    const ran = await this.config.proc.run(command.argv, { cwd: this.config.analysis, timeoutMs: QUERY_TIMEOUT_MS })
+    return ran.isStdoutTruncated ? { error: 'The result is over 4 MiB. Aggregate it or add a LIMIT.' } : command.read(ran)
   }
 
   // -------------------------------------------------------------------------
@@ -346,25 +367,119 @@ export class Assay {
     return Array.isArray(found.errors) && Array.isArray(found.warnings) ? found : { error: 'analysis_sql printed no errors and warnings' }
   }
 
+  /** Run `number`'s file, text and header; undefined when there is no such run. */
+  private async savedRun(number: number) {
+    const run = parseRuns(await this.names(QUERIES)).find(each => each.number === number)
+    if (run?.code === undefined) return undefined
+    const text = await this.readText(`${QUERIES}/${run.code}`)
+    const header = parseRunHeader(text, run.language)
+    const body = codeBody(text, run.language === 'python' ? 'python' : 'sql')
+    // A trusted run whose body is `-- python:` is a Python calculation.
+    return { header, body, python: run.language === 'python' || (header.trusted !== undefined && /^-- python:/m.test(body)) }
+  }
+
   /**
    * Writes `queries/NNN.lineage.json` for SQL run `number` (docs/slice-9.md): the CTE graph from `analysis_sql lineage`,
    * or `{error}` when there is none. Undefined on success, else why the run has no file to write for.
    */
   async lineage(number: number): Promise<string | undefined> {
-    const run = parseRuns(await this.names(QUERIES)).find(each => each.number === number)
-    if (run?.code === undefined) return `No run ${queryLabel(number)}.`
+    const saved = await this.savedRun(number)
+    if (!saved) return `No run ${queryLabel(number)}.`
     const write = (answer: LineageFile | { error: string }) => this.writeAtomic(`${QUERIES}/${queryLabel(number)}.lineage.json`, `${JSON.stringify(answer)}\n`)
-    const text = await this.readText(`${QUERIES}/${run.code}`)
-    const header = parseRunHeader(text, run.language)
-    const body = codeBody(text, run.language === 'python' ? 'python' : 'sql')
-    if (run.language === 'python' || (header.trusted && /^-- python:/m.test(body))) {
+    if (saved.python) {
       await write({ error: 'Steps reads SQL runs.' })
       return undefined
     }
     // A trusted run's body is the template, with its `:name` parameters.
-    const args = ['lineage', header.engine, ...(header.trusted ? ['--template'] : [])]
-    const found = await this.helper<LineageFile>(args, 30_000, 'analysis_sql', body)
-    await write(found)
+    const args = ['lineage', saved.header.engine, ...(saved.header.trusted ? ['--template'] : [])]
+    await write(await this.helper<LineageFile>(args, 30_000, 'analysis_sql', saved.body))
+    return undefined
+  }
+
+  /**
+   * Runs SQL run `number` one CTE at a time (docs/slice-9.md, slice 9c): each step's preview (50 rows, saved as a .csv)
+   * and counts, with `queries/NNN.steps.json` rewritten as each step starts and ends. Steps are not runs: they claim no
+   * number and leave `.assay/runs.json` alone. Undefined on success, else why there is nothing to run.
+   */
+  async runSteps(number: number): Promise<string | undefined> {
+    const saved = await this.savedRun(number)
+    if (!saved) return `No run ${queryLabel(number)}.`
+    const label = queryLabel(number)
+    const stepsPath = `${QUERIES}/${label}.steps.json`
+    const save = (file: StepsFile) => this.writeAtomic(stepsPath, `${JSON.stringify(file)}\n`)
+    // A request always re-runs: the earlier files go first.
+    for (const old of stepFiles(await this.names(QUERIES), number)) {
+      for (const name of [old.sql, old.csv, old.counts]) if (name) await rm(this.at(`${QUERIES}/${name}`), { force: true })
+    }
+    await rm(this.at(stepsPath), { force: true })
+    if (saved.python) return this.lineage(number)
+    if (saved.header.trusted) {
+      const failed = await this.lineage(number)
+      if (!failed) await save({ run: number, status: 'done', note: TRUSTED_STEPS_NOTE, steps: [] })
+      return failed
+    }
+
+    const engine = saved.header.engine
+    const plan = await this.helper<StepPlan>(['steps', engine], 30_000, 'analysis_sql', saved.body)
+    if ('error' in plan) {
+      await this.writeAtomic(`${QUERIES}/${label}.lineage.json`, `${JSON.stringify({ error: plan.error })}\n`)
+      await save({ run: number, status: 'error', note: plan.error, steps: [] })
+      return undefined
+    }
+    await this.writeAtomic(`${QUERIES}/${label}.lineage.json`, `${JSON.stringify(plan.lineage)}\n`)
+    const file: StepsFile = {
+      run: number,
+      status: plan.steps.length > 0 ? 'running' : 'done',
+      ...(plan.note ? { note: plan.note } : {}),
+      steps: plan.steps.map(({ k, name, node, grain, joins }) => ({ k, name, node, status: 'pending', ...(grain ? { grain } : {}), ...(joins ? { joins } : {}) })),
+    }
+    await save(file)
+
+    const mark = engine === 'postgres' ? `${POSTGRES_MARK}\n` : ''
+    const notices: string[] = []
+    let failed = false
+    for (const [i, planned] of plan.steps.entries()) {
+      const step = file.steps[i]
+      if (!step) continue
+      if (failed) {
+        step.status = 'skipped'
+        await save(file)
+        continue
+      }
+      step.status = 'running'
+      await save(file)
+      const base = `${QUERIES}/${label}.${planned.k}_${stepSlug(planned.name)}`
+      const fail = (error: string) => {
+        step.status = 'error'
+        step.error = error
+        failed = true
+      }
+      if (planned.preview !== null) {
+        await this.write(`${base}.sql`, `${mark}${planned.preview}\n`)
+        const rows = await this.queryFile(engine, `${base}.sql`).catch((error: unknown) => ({ error: message(error) }))
+        if ('error' in rows) fail(rows.error)
+        else await this.write(`${base}.csv`, toCsv(rows.columns, rows.rows))
+      }
+      if (!failed) {
+        await this.write(`${base}.counts.sql`, `${mark}${planned.counts}\n`)
+        const counted = await this.queryFile(engine, `${base}.counts.sql`).catch((error: unknown) => ({ error: message(error) }))
+        const row = 'error' in counted ? undefined : counted.rows[0]
+        if ('error' in counted) fail(counted.error)
+        else if (!row) fail('The counts query returned no row.')
+        else {
+          step.counts = Object.fromEntries(counted.columns.map((column, c) => [column.toLowerCase(), row[c] ?? '']))
+          const rowCount = Number(step.counts.assay_rows)
+          if (Number.isInteger(rowCount)) step.rows = rowCount
+          step.status = 'ok'
+          step.checks = stepChecks(step, step.counts)
+          for (const check of step.checks) if (!check.ok) notices.push(stepNoticeLine(number, step, check))
+        }
+      }
+      await save(file)
+    }
+    file.status = 'done'
+    await save(file)
+    for (const line of notices) await this.appendTo(STEP_NOTICES, line)
     return undefined
   }
 

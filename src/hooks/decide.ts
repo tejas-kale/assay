@@ -69,9 +69,9 @@ export async function writeDecision(input: Record<string, unknown>, env: Env) {
   )
 }
 
-/** The user's runs the server recorded since the last prompt, taken (the file is moved away first, then read). */
-async function takeUserRuns(analysis: string): Promise<UserRun[]> {
-  const file = join(analysis, '.assay/user-runs.json')
+/** A list the server appended to under `.assay/`, taken: the file is moved away first, then read and removed. */
+async function takeList(analysis: string, name: string): Promise<unknown[]> {
+  const file = join(analysis, '.assay', name)
   const taken = `${file}.${process.pid}.taken`
   try {
     await rename(file, taken)
@@ -80,13 +80,19 @@ async function takeUserRuns(analysis: string): Promise<UserRun[]> {
   }
   try {
     const parsed: unknown = JSON.parse(await readFile(taken, 'utf8'))
-    return Array.isArray(parsed) ? (parsed as UserRun[]) : []
+    return Array.isArray(parsed) ? (parsed as unknown[]) : []
   } catch {
     return []
   } finally {
     await rm(taken, { force: true }).catch(() => undefined)
   }
 }
+
+/** The user's runs the server recorded since the last prompt. */
+const takeUserRuns = async (analysis: string) => (await takeList(analysis, 'user-runs.json')) as UserRun[]
+
+/** The step checks that failed since the last prompt, one line each. */
+const takeStepNotices = async (analysis: string) => (await takeList(analysis, 'step-notices.json')).filter((line): line is string => typeof line === 'string')
 
 /** The kernel's python as the server last started it, if it said. */
 async function kernelPython(analysis: string): Promise<string | undefined> {
@@ -112,15 +118,15 @@ async function calculations(proc: Proc, env: Env, analysis: string, home: string
 
 /**
  * UserPromptSubmit: the rules on each prompt the user types (Claude Code runs this hook for those only), the trusted
- * calculations, and the user's runs since the last prompt. Only in an Assay session.
+ * calculations, and the user's runs and failed step checks since the last prompt. Only in an Assay session.
  */
 export async function promptDecision(env: Env, proc: Proc) {
   const analysis = env.ASSAY_ANALYSIS
   const home = env.ASSAY_ROOT
   if (!analysis || !home) return undefined
-  const [runs, python, list] = await Promise.all([takeUserRuns(analysis), kernelPython(analysis), calculations(proc, env, analysis, home)])
+  const [runs, stepLines, python, list] = await Promise.all([takeUserRuns(analysis), takeStepNotices(analysis), kernelPython(analysis), calculations(proc, env, analysis, home)])
   const open = await openRef(analysis, home)
-  const notice = runNotice(runs, open.folder)
+  const notice = runNotice(runs, open.folder, stepLines)
   // The kernel's python, else venv-assay's when it is built (as the mod's rules named it).
   const venvPython = `${env.ASSAY_VENV || VENV_ASSAY}/bin/python`
   const named = python ?? (await access(venvPython).then(() => venvPython, () => undefined))
