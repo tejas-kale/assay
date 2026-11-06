@@ -114,6 +114,69 @@ def test_the_final_select_needs_a_grain_line() -> None:
     assert lint(text)["errors"] == ['Final SELECT: no "-- grain:" line above it.']
 
 
+CTE_BODY = """WITH
+-- grain: customer_id
+spend_per_customer AS (SELECT customer_id, SUM(amount) AS spend FROM orders GROUP BY customer_id)
+{final_grain}SELECT s.customer_id, s.spend FROM spend_per_customer s
+"""
+
+JOIN_BODY = """{final_grain}SELECT c.customer_id, n.name FROM customers c
+-- join: 1:1 on customer_id
+JOIN names n ON n.customer_id = c.customer_id
+"""
+
+CREATE_AS = {
+    "create view with": "CREATE VIEW spend_view AS\n" + CTE_BODY,
+    "create or replace view with": "CREATE OR REPLACE VIEW spend_view AS\n" + CTE_BODY,
+    "create or replace temporary view with": "CREATE OR REPLACE TEMPORARY VIEW spend_view AS\n" + CTE_BODY,
+    "create or replace table with": "CREATE OR REPLACE TABLE spend_table AS\n" + CTE_BODY,
+    "create view, no with, join": "CREATE VIEW names_view AS\n" + JOIN_BODY,
+    "comments between as and with": "CREATE OR REPLACE VIEW spend_view AS\n-- spend per customer, rebuilt nightly\n-- owner: analytics\n" + CTE_BODY,
+}
+FINAL_GRAIN = "-- grain: customer_id\n"
+
+
+@pytest.mark.parametrize("dialect", ["databricks", "postgres"])
+@pytest.mark.parametrize("name", list(CREATE_AS))
+def test_create_as_reads_the_grain_above_its_final_select(name: str, dialect: str) -> None:
+    text = CREATE_AS[name].format(final_grain=FINAL_GRAIN)
+    if dialect == "postgres" and "TABLE" in text:
+        text = text.replace("CREATE OR REPLACE TABLE", "CREATE TABLE")
+    assert lint(text, dialect) == {"errors": [], "warnings": []}
+
+
+@pytest.mark.parametrize("dialect", ["databricks", "postgres"])
+@pytest.mark.parametrize("name", list(CREATE_AS))
+def test_create_as_without_a_final_grain_line_is_rejected(name: str, dialect: str) -> None:
+    text = CREATE_AS[name].format(final_grain="")
+    if dialect == "postgres" and "TABLE" in text:
+        text = text.replace("CREATE OR REPLACE TABLE", "CREATE TABLE")
+    assert lint(text, dialect)["errors"] == ['Final SELECT: no "-- grain:" line above it.']
+
+
+def test_create_as_checks_the_final_grain_against_its_output_columns() -> None:
+    text = CREATE_AS["create view with"].format(final_grain="-- grain: customer_key\n")
+    assert lint(text)["errors"] == ["Final SELECT: grain customer_key is not one of its output columns (customer_id, spend)."]
+
+
+def test_a_grain_line_above_create_does_not_count_for_the_final_select() -> None:
+    text = FINAL_GRAIN + CREATE_AS["create view with"].format(final_grain="")
+    assert lint(text)["errors"] == ['Final SELECT: no "-- grain:" line above it.']
+
+
+def test_a_scalar_subquery_in_the_final_where_still_passes() -> None:
+    text = """
+    WITH
+    -- grain: probe_id
+    probes_scored AS (SELECT probe_id, score FROM probes)
+    -- grain: probe_id
+    SELECT p.probe_id, p.score FROM probes_scored p
+    WHERE p.score >= (SELECT pool_floor FROM probe_constants)
+    """
+    assert lint(text) == {"errors": [], "warnings": []}
+    assert lint("CREATE VIEW probes_view AS\n" + text) == {"errors": [], "warnings": []}
+
+
 def test_a_join_without_a_join_line_is_rejected_and_named_by_its_line() -> None:
     text = """-- grain: id
 SELECT t.id FROM t

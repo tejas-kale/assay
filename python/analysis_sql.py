@@ -107,6 +107,14 @@ def _cte_comments(cte: exp.CTE) -> list[str]:
     return [*(alias.comments or [] if alias is not None else []), *(cte.comments or [])]
 
 
+def _final_query(statement: exp.Expression) -> exp.Expression:
+    """The query a statement's final SELECT belongs to: the ``AS`` query of ``CREATE VIEW`` or ``CREATE TABLE ... AS``,
+    else the statement itself. A comment above ``CREATE`` is not above the final SELECT."""
+    if isinstance(statement, exp.Create) and isinstance(statement.expression, exp.Query):
+        return statement.expression
+    return statement
+
+
 def _final_comments(statement: exp.Expression) -> list[str]:
     final = _first_select(statement)
     return [*(statement.comments or []), *((final.comments or []) if final is not statement else [])]
@@ -189,7 +197,8 @@ def lint_statement(statement: exp.Expression, errors: list[str], warnings: list[
         elif CRYPTIC.match(name):
             errors.append(f"{where}: name says what it does, not what it holds; say what it holds.")
 
-    _check_grain("Final SELECT", _final_comments(statement), _outputs(statement), errors)
+    final = _final_query(statement)
+    _check_grain("Final SELECT", _final_comments(final), _outputs(final), errors)
 
     for join in joins:
         label = _join_label(join)
@@ -297,7 +306,7 @@ def lineage_statement(statement: exp.Expression) -> dict[str, Any]:
             node["grain"] = grain
         nodes.append(node)
     final: dict[str, Any] = {"id": final_id, "kind": "final", "name": "Final SELECT"}
-    grain = _grain(_final_comments(statement))
+    grain = _grain(_final_comments(_final_query(statement)))
     if grain is not None:
         final["grain"] = grain
     nodes.append(final)
