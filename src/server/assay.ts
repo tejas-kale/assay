@@ -84,6 +84,10 @@ type Runner = {
   named?: string
 }
 
+/** What `python -m analysis_sql lint` prints: rule breaks that stop the query, and warnings that do not. */
+export type SqlLint = { errors: string[]; warnings: string[] }
+export const SQL_RULES_REJECTED = 'Not run: the query breaks the SQL rules. Fix and send again:'
+
 export type PythonOutcome = { text: string; number?: number; status?: PythonRun['status'] }
 
 /** A queue: each piece of work starts when the one before it settled. */
@@ -318,11 +322,11 @@ export class Assay {
     return (await this.exists(this.python)) ? this.python : undefined
   }
 
-  async helper<T>(args: readonly string[], timeoutMs = 30_000): Promise<T | { error: string }> {
+  async helper<T>(args: readonly string[], timeoutMs = 30_000, module = 'analysis_trust', input?: string): Promise<T | { error: string }> {
     const python = await this.toolsPython()
     if (!python) return { error: VENV_ASSAY_HINT }
     const ran = await this.config.proc
-      .run([python, '-m', 'analysis_trust', ...args], { cwd: this.config.analysis, timeoutMs })
+      .run([python, '-m', module, ...args], { cwd: this.config.analysis, timeoutMs, ...(input === undefined ? {} : { input }) })
       .catch((error: unknown) => ({ exitCode: 1, stdout: '', stderr: message(error) }))
     try {
       const parsed: unknown = JSON.parse(ran.stdout)
@@ -330,7 +334,29 @@ export class Assay {
     } catch {
       // Not JSON: say what it printed instead.
     }
-    return { error: (ran.stderr.trim() || ran.stdout.trim() || `analysis_trust exited with ${ran.exitCode}`).split('\n').slice(-3).join(' ') }
+    return { error: (ran.stderr.trim() || ran.stdout.trim() || `${module} exited with ${ran.exitCode}`).split('\n').slice(-3).join(' ') }
+  }
+
+  /** The SQL rules' verdict on Claude's statement (docs/slice-9.md); undefined for one with no WITH and no JOIN. */
+  async lintSql(sql: string, engine: Engine): Promise<SqlLint | { error: string } | undefined> {
+    if (!/\b(with|join)\b/i.test(sql)) return undefined
+    const found = await this.helper<SqlLint>(['lint', engine], 30_000, 'analysis_sql', sql)
+    if ('error' in found) return found
+    return Array.isArray(found.errors) && Array.isArray(found.warnings) ? found : { error: 'analysis_sql printed no errors and warnings' }
+  }
+
+  /** Claude's `sql` call: the rules first. A rejected statement claims no number and records no run. */
+  async runClaudeSql(sql: string, slugText: string, engine: Engine): Promise<string> {
+    const linted = await this.lintSql(sql, engine)
+    if (linted && !('error' in linted) && linted.errors.length > 0) {
+      return [SQL_RULES_REJECTED, ...linted.errors.map(line => `- ${line}`)].join('\n')
+    }
+    const reply = await this.runSql(sql, slugText, engine)
+    if (!linted) return reply
+    // A lint that cannot run does not block: the query ran, and the reply says why it was not checked.
+    if ('error' in linted) return `${reply}\n\nSQL rules not checked: ${linted.error}`
+    if (linted.warnings.length === 0) return reply
+    return [reply, '', 'SQL rule warnings:', ...linted.warnings.map(line => `- ${line}`)].join('\n')
   }
 
   /** The dictionary text for the tables a saved query touches, the first time this session touches each. */

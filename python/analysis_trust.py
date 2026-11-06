@@ -263,7 +263,7 @@ def render_definition(data: dict[str, Any], table: str, name: str, values: dict[
 
     metric: ``SELECT <by>, <sql> AS name ... GROUP BY <by>``; filter: the count of rows it keeps, by ``<by>``;
     derived: ``<by>`` (or every column) and the value, at most ``limit`` rows. ``filters`` are the entry's
-    filter definitions, ANDed in.
+    filter definitions, ANDed in. A metric or filter starts with its ``-- grain:`` line: the ``by`` columns, or none.
     """
     definitions = {item["name"]: item for item in definitions_of(data)}
     if name not in definitions:
@@ -289,7 +289,9 @@ def render_definition(data: dict[str, Any], table: str, name: str, values: dict[
         select = [*by, f"count(*) AS `{name}`"]
     else:
         select = [*(by or (["*"] if kind == "derived" else [])), f"{expression} AS `{name}`"]
-    sql = f"SELECT {', '.join(select)} FROM {source}"
+    # The grain line (docs/slice-9.md): a derived value has none, since its `by` only picks the columns shown.
+    grain = "" if kind == "derived" else f"-- grain: {', '.join(columns[c.lower()] for c in values.get('by') or []) or 'none'}\n"
+    sql = f"{grain}SELECT {', '.join(select)} FROM {source}"
     if where:
         sql += f" WHERE {' AND '.join(where)}"
     if by and kind != "derived":
@@ -822,6 +824,27 @@ class Steps:
         return test_steps(result, self)
 
 
+def rules_step(sql: str, step: Any) -> bool:
+    """The SQL rules on a template, its parameters bound to dummies: a ``rules`` step when it has a CTE or a JOIN.
+
+    True unless a rule rejects it. Warnings pass, listed in the step's text.
+    """
+    import analysis_sql
+
+    try:
+        found = analysis_sql.lint(analysis_sql.bind_dummies(sql), DIALECT)
+    except Exception as error:
+        step({"step": "rules", "ok": False, "text": f"the SQL rules could not run: {error}"})
+        return False
+    if found["errors"]:
+        step({"step": "rules", "ok": False, "text": "\n".join(f"- {line}" for line in found["errors"])})
+        return False
+    if re.search(r"\b(WITH|JOIN)\b", sql, re.IGNORECASE):
+        text = "\n".join(["warnings:", *(f"- {line}" for line in found["warnings"])]) if found["warnings"] else "grain, joins and names as the rules ask"
+        step({"step": "rules", "ok": True, "text": text})
+    return True
+
+
 def check(folder: Path, name: str, analysis: Path, emit: Any = None) -> dict[str, Any]:
     """What the Trust tab shows for a proposal: its code, the tests, the transpile check and a live run.
 
@@ -851,6 +874,8 @@ def check(folder: Path, name: str, analysis: Path, emit: Any = None) -> dict[str
             step({"step": "transpile", "ok": True, "text": to_duckdb(found["sql"])})
         except Exception as error:
             step({"step": "transpile", "ok": False, "text": str(error)})
+            return answer
+        if not rules_step(found["sql"], step):
             return answer
     if not step.tests(folder, name):
         return answer

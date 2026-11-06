@@ -78,6 +78,9 @@ Each example is valid as written. Replace names, tables and values.
 
 Front matter in `/*--- ---*/` on top: `description` and `parameters`, as `name: type` or
 `name: {type, default}` (a default makes it optional). SQL in Databricks dialect, parameters as `:name`.
+A template with WITH or JOIN follows the `sql` tool's SQL rules, or Check fails at its `rules` step: a
+`-- grain:` line above each CTE and the final SELECT, a `-- join:` line above each JOIN, CTEs named for what they
+hold, no subquery in FROM or JOIN.
 
 <!-- example: lib/trusted/completes_by_site.sql -->
 ```sql

@@ -1,6 +1,6 @@
 # Slice 9 spec: readable SQL (rules, lineage, steps)
 
-Status: slice 9a `ready-for-agent`; 9b and 9c outlined, each to be specced after the one before ships.
+Status: slice 9a built (needs `claude-pkg venv-assay` for `analysis_sql`); 9b and 9c outlined, each to be specced after the one before ships.
 
 Agreed in a grilling session on 2026-11-05. It comes from advice on reading complex SQL: think in grain, know each
 join's cardinality, read top-down and verify bottom-up, sketch the lineage. Three slices, each usable on its own:

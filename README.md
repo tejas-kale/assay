@@ -62,7 +62,8 @@ Every shortcut is in `src/core/keymap.ts`: `COMMANDS` (Cmd keys, caught in main 
   - `assay:resume`: report where the analysis stands and offer past root notes to link.
   - `assay:wrap-up`: close threads, write findings as root notes, settle weak citations, link the notes read.
   - `assay:propose-trusted`: draft a trusted calculation or dictionary entry, with every file Check needs.
-- `python/`: `analysis_db`, `analysis_kernel`, `analysis_trust`, built into venv-assay by `claude-pkg venv-assay`.
+- `python/`: `analysis_db`, `analysis_kernel`, `analysis_trust`, `analysis_sql` (the SQL rules on Claude's `sql`
+  calls and on SQL templates at Check, docs/slice-9.md), built into venv-assay by `claude-pkg venv-assay`.
 - The app talks to the server through files: it writes `.assay/requests/<id>.json` (`sql`, `python`, `interrupt`,
   `restart`, `replay`, `trust-list`, `trust-check`, `trust-answer`), the server answers in `.assay/replies/`, and
   writes `.assay/runs.json` and `.assay/trust/<name>.json` for run status and the trust review. For the prompt hook

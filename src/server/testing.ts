@@ -7,10 +7,10 @@ import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 
 import { Assay } from './assay.ts'
-import type { Child, Proc, RunResult } from './proc.ts'
+import type { Child, Proc, RunOptions, RunResult } from './proc.ts'
 import { Requests } from './requests.ts'
 
-export type Run = (argv: readonly string[]) => Partial<RunResult> | Promise<Partial<RunResult>>
+export type Run = (argv: readonly string[], options?: RunOptions) => Partial<RunResult> | Promise<Partial<RunResult>>
 
 /** A spawned process the test drives: what it prints, and how it ends. */
 export type Serve = {
@@ -82,10 +82,10 @@ export async function fake(files: Record<string, string> = { 'analysis.yaml': 't
   const serves: Serve[] = []
   const state = { autoReady: true }
   const proc: Proc = {
-    async run(argv) {
+    async run(argv, options) {
       runs.push(argv)
       if (argv[0] === 'kill') return { exitCode: 0, stdout: '', stderr: '' }
-      const ran = await run(argv)
+      const ran = await run(argv, options)
       return { exitCode: 0, stdout: '', stderr: '', ...ran }
     },
     spawn(argv, { cwd }): Child {

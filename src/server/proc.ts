@@ -4,7 +4,8 @@
 import { spawn } from 'node:child_process'
 
 export type RunResult = { exitCode: number; stdout: string; stderr: string; isStdoutTruncated?: boolean }
-export type RunOptions = { cwd: string; timeoutMs?: number }
+/** `input`, when given, is written to the program's stdin (closed after it); otherwise stdin is closed at once. */
+export type RunOptions = { cwd: string; timeoutMs?: number; input?: string }
 
 /** A child the server reads line by line. `exited` settles with its exit code (null when killed by a signal). */
 export type Child = {
@@ -23,14 +24,17 @@ export type Proc = {
 const MAX_STDOUT = 4 * 1024 * 1024
 
 export const realProc: Proc = {
-  run(argv, { cwd, timeoutMs }) {
+  run(argv, { cwd, timeoutMs, input }) {
     return new Promise(resolve => {
       const [file = '', ...args] = argv
       let stdout = ''
       let stderr = ''
       let isStdoutTruncated = false
       let settled = false
-      const child = spawn(file, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+      const child = spawn(file, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] })
+      // A program that exits without reading all of it closes the pipe: that is its answer, not a crash.
+      child.stdin.on('error', () => undefined)
+      child.stdin.end(input ?? '')
       const finish = (result: RunResult) => {
         if (settled) return
         settled = true

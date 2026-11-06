@@ -234,6 +234,33 @@ def test_check_stops_at_a_template_whose_parameters_do_not_match(trusted: Path, 
     assert answer["steps"][-1] == {"step": "transpile", "ok": False, "text": "uses :end, :start, :status but declares end, start"}
 
 
+CTE_TEMPLATE = TEMPLATE.replace(
+    "SELECT site_id, count(*) AS completes\nFROM main.panel.surveys\nWHERE status = :status AND day BETWEEN :start AND :end\nGROUP BY site_id\n",
+    "WITH sv AS (SELECT * FROM main.panel.surveys WHERE status = :status AND day BETWEEN :start AND :end)\n"
+    "SELECT site_id, count(*) AS completes FROM sv GROUP BY site_id\n",
+)
+
+
+def test_check_fails_a_template_that_breaks_the_sql_rules(trusted: Path, tmp_path: Path) -> None:
+    (trusted / "completes_by_site.sql").write_text(CTE_TEMPLATE)
+    answer = trust.check(trusted, "completes_by_site", tmp_path)
+    assert answer["ok"] is False
+    assert [(step["step"], step["ok"]) for step in answer["steps"]] == [("form", True), ("transpile", True), ("rules", False)]
+    assert answer["steps"][-1]["text"] == (
+        '- CTE sv: no "-- grain:" line above it.\n- CTE sv: name too short; say what it holds.\n- Final SELECT: no "-- grain:" line above it.'
+    )
+
+
+def test_a_template_that_follows_the_rules_passes_its_rules_step() -> None:
+    steps: list[dict[str, Any]] = []
+    body = trust.split_template(CTE_TEMPLATE)[1].replace("WITH sv AS", "WITH\n-- grain: id\nrecent_surveys AS").replace("FROM sv", "FROM recent_surveys")
+    body = body.replace("SELECT site_id, count", "-- grain: site_id\nSELECT site_id, count")
+    assert trust.rules_step(body, steps.append) is True
+    assert steps == [{"step": "rules", "ok": True, "text": "grain, joins and names as the rules ask"}]
+    plain: list[dict[str, Any]] = []
+    assert trust.rules_step(trust.split_template(TEMPLATE)[1], plain.append) is True and plain == []
+
+
 def test_check_needs_live_arguments_for_required_parameters(trusted: Path, tmp_path: Path) -> None:
     (trusted / "completes_by_site.test.yaml").write_text(TEMPLATE_TESTS.split("live:")[0])
     answer = trust.check(trusted, "completes_by_site", tmp_path)
@@ -323,10 +350,10 @@ def test_a_definition_renders_with_checked_names_only() -> None:
     data = yaml.safe_load(ENTRY)
     t = "main.panel.surveys"
     assert trust.render_definition(data, t, "completes", {"by": ["Site_Id"]}) == (
-        "SELECT `site_id`, count_if(status = 'C') AS `completes` FROM `main`.`panel`.`surveys` GROUP BY `site_id`"
+        "-- grain: site_id\nSELECT `site_id`, count_if(status = 'C') AS `completes` FROM `main`.`panel`.`surveys` GROUP BY `site_id`"
     )
     assert trust.render_definition(data, t, "is_complete", {}) == (
-        "SELECT count(*) AS `is_complete` FROM `main`.`panel`.`surveys` WHERE (status = 'C')"
+        "-- grain: none\nSELECT count(*) AS `is_complete` FROM `main`.`panel`.`surveys` WHERE (status = 'C')"
     )
     assert trust.render_definition(data, t, "site_label", {"filters": ["is_complete"]}) == (
         "SELECT *, concat('site ', site_id) AS `site_label` FROM `main`.`panel`.`surveys` WHERE (status = 'C') LIMIT 100"

@@ -13,7 +13,9 @@ export const TOOLS = [
   {
     name: 'sql',
     description:
-      'Run one SQL statement on the Databricks SQL warehouse, or on the Postgres database with engine "postgres". Saves analyses/<slug>/queries/NNN_<slug>.sql and .csv (the folder of the open analysis, named in the rules), shows the full result in the app, and returns the query number, row count, columns and at most 50 rows. Use it for every query.',
+      'Run one SQL statement on the Databricks SQL warehouse, or on the Postgres database with engine "postgres". Saves analyses/<slug>/queries/NNN_<slug>.sql and .csv (the folder of the open analysis, named in the rules), shows the full result in the app, and returns the query number, row count, columns and at most 50 rows. Use it for every query. ' +
+      'A statement with WITH or JOIN must follow the SQL rules or it is not run: on the line directly above each CTE (`name AS (`) and above the final SELECT, `-- grain: <col>[, <col>...]`, the output columns that identify one row (`-- grain: none` for a single row); on the line directly above each JOIN, `-- join: <1:1|1:many|many:1|many:many> on <key>[, <key>...]`, left side first (a CROSS JOIN is `many:many on none`). ' +
+      'Name CTEs for what they hold (orders_per_customer, not t1, cte2 or step_3); no subquery in FROM or JOIN, make it a CTE. Each CTE does one of filter, join, aggregate, and aggregates before joining a many side.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -180,7 +182,7 @@ async function dispatch(assay: Assay, name: string, args: Args): Promise<string>
     case 'sql': {
       const sql = field(args, 'sql')
       const engine: Engine = field(args, 'engine') === 'postgres' ? 'postgres' : 'databricks'
-      return sql.trim() ? assay.runSql(sql, field(args, 'slug'), engine) : 'Give the SQL to run.'
+      return sql.trim() ? assay.runClaudeSql(sql, field(args, 'slug'), engine) : 'Give the SQL to run.'
     }
     case 'python': {
       const code = field(args, 'code')
