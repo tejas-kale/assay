@@ -13,6 +13,7 @@ export type CommandId =
   | 'tab.plots'
   | 'tab.code'
   | 'tab.history'
+  | 'tab.steps'
   | 'tab.trust'
   | 'tab.notes'
   | 'tab.threads'
@@ -51,6 +52,7 @@ export const COMMANDS: readonly Command[] = [
   { id: 'tab.plots', title: 'Show Plots tab', accelerator: { code: 'KeyP', shift: true } },
   { id: 'tab.code', title: 'Show Code tab', accelerator: { code: 'KeyC', shift: true } },
   { id: 'tab.history', title: 'Show History tab', accelerator: { code: 'KeyH', shift: true } },
+  { id: 'tab.steps', title: 'Show Steps tab', accelerator: { code: 'KeyS', shift: true } },
   { id: 'tab.trust', title: 'Show Trust tab', accelerator: { code: 'KeyR', shift: true } },
   { id: 'tab.threads', title: 'Show Threads tab', accelerator: { code: 'KeyT', shift: true } },
   { id: 'tab.notes', title: 'Show Notes tab', accelerator: { code: 'KeyN', shift: true } },

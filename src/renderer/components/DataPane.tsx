@@ -15,6 +15,7 @@ import type { Run, RunRequest, RunStatus, RunView, TrustReview } from '../../sha
 import { CodeEditor, CodeView, formatSql } from './CodeView.tsx'
 import type { EditorHandle, SelectionHandle } from './CodeView.tsx'
 import { isPaneKey } from './common.tsx'
+import { StepsTab, lineageRequests } from './StepsTab.tsx'
 import { TrustTab, trustRequests } from './TrustTab.tsx'
 import type { DataTabName } from './common.tsx'
 
@@ -23,6 +24,7 @@ export const DATA_TABS: { id: DataTabName; title: string }[] = [
   { id: 'plots', title: 'Plots' },
   { id: 'code', title: 'Code' },
   { id: 'history', title: 'History' },
+  { id: 'steps', title: 'Steps' },
   { id: 'trust', title: 'Trust' },
 ]
 
@@ -171,8 +173,8 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
   latestRef.current = { status, runCount: runs.length }
   useEffect(() => {
     const stop = window.app.runs.onReply(reply => {
-      // The Trust tab reads the replies to its own requests.
-      if (trustRequests.has(reply.id) || 'proposals' in reply) return
+      // The Trust and Steps tabs read the replies to their own requests.
+      if (trustRequests.has(reply.id) || lineageRequests.has(reply.id) || 'proposals' in reply) return
       const sent = pending.current.get(reply.id)
       if (sent) clearTimeout(sent.timer)
       pending.current.delete(reply.id)
@@ -465,6 +467,16 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
           tableCount={tableCount}
           onToggleText={() => setTextOverride(!textView)}
           onTable={delta => setTableK(Math.max(1, Math.min(k + delta, tableCount)))}
+          onCode={() => onTab('code')}
+          onPin={togglePin}
+          onStep={stepRun}
+        />
+      ) : tab === 'steps' ? (
+        <StepsTab
+          header={header}
+          view={view}
+          run={current}
+          onToast={onToast}
           onCode={() => onTab('code')}
           onPin={togglePin}
           onStep={stepRun}

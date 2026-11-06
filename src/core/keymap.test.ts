@@ -33,6 +33,7 @@ test('every handoff shortcut maps to its command, by code', () => {
     [{ code: 'KeyF', meta: true, shift: true }, 'tab.files'],
     [{ code: 'KeyF', meta: true }, 'search.open'],
     [{ code: 'KeyR', meta: true, shift: true }, 'tab.trust'],
+    [{ code: 'KeyS', meta: true, shift: true }, 'tab.steps'],
   ]
   for (const [over, id] of table) assert.equal(commandForInput(input(over)), id, id)
 })
@@ -66,7 +67,7 @@ test('COMMANDS lists every action once, with titles', () => {
   assert.equal(new Set(ids).size, ids.length)
   for (const id of [
     'focus.terminal', 'focus.notes', 'focus.data', 'palette.open', 'code.run', 'code.edit', 'code.new', 'window.new',
-    'tab.data', 'tab.plots', 'tab.code', 'tab.history', 'tab.notes', 'tab.threads', 'tab.files',
+    'tab.data', 'tab.plots', 'tab.code', 'tab.history', 'tab.steps', 'tab.notes', 'tab.threads', 'tab.files',
     'window.close', 'settings.open', 'pin.toggle', 'kernel.restart', 'replay.open', 'run.interrupt', 'shortcuts.show',
   ]) assert.ok(ids.includes(id as never), id)
   for (const c of COMMANDS) assert.ok(c.title.length > 0)

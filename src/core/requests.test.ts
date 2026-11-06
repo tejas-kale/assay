@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { canRerun, interruptRequest, selectedSql, newRequestId, parseReply, parseRunRequest, pythonRequest, replayRequest, requestText, restartRequest, sqlRequest } from './requests.ts'
+import { canRerun, interruptRequest, isUrgent, parseRequestFile, selectedSql, newRequestId, parseReply, parseRunRequest, pythonRequest, replayRequest, requestText, restartRequest, sqlRequest } from './requests.ts'
 
 test('newRequestId is 13 digits of time, a dash and 6 random [a-z0-9], so names sort by time', () => {
   const id = newRequestId(1_700_000_000_123, () => 0)
@@ -119,4 +119,14 @@ test('selectedSql runs selected SQL, refuses other languages and leaves an empty
   assert.equal(selectedSql(' \n ', 'python'), undefined)
   assert.deepEqual(selectedSql('print(1)', 'python'), { error: 'Only SQL can be run from a selection.' })
   assert.deepEqual(selectedSql('a: 1', undefined), { error: 'Only SQL can be run from a selection.' })
+})
+
+test('the lineage request is checked, written, read by the server and urgent', () => {
+  assert.deepEqual(parseRunRequest({ kind: 'lineage', run: 12, junk: 1 }), { kind: 'lineage', run: 12 })
+  assert.deepEqual(parseRunRequest({ kind: 'lineage', run: -1 }), { error: 'Invalid run' })
+  assert.deepEqual(parseRunRequest({ kind: 'lineage' }), { error: 'Invalid run' })
+  assert.deepEqual(JSON.parse(requestText('i', { kind: 'lineage', run: 3 })), { id: 'i', kind: 'lineage', run: 3 })
+  assert.deepEqual(parseRequestFile('{"kind":"lineage","run":3}'), { kind: 'lineage', run: 3 })
+  assert.deepEqual(parseRequestFile('{"kind":"lineage","run":0}'), { error: 'Name the run, by number.' })
+  assert.equal(isUrgent({ kind: 'lineage', run: 3 }), true)
 })

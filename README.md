@@ -1,7 +1,7 @@
 # Assay
 
 A Mac desktop app for data analysis with Claude Code, laid out like RStudio: Claude Code in a terminal on the left,
-Threads / Notes / Files top right, and Data / Plots / Code / History / Trust bottom right. Its backend is this repo's
+Threads / Notes / Files top right, and Data / Plots / Code / History / Steps / Trust bottom right. Its backend is this repo's
 Claude Code plugin (`plugin/`): an MCP server, hooks and skills that Claude loads in the session the app starts. The
 files are the contract between the two, and the app keeps no database.
 
@@ -63,9 +63,10 @@ Every shortcut is in `src/core/keymap.ts`: `COMMANDS` (Cmd keys, caught in main 
   - `assay:wrap-up`: close threads, write findings as root notes, settle weak citations, link the notes read.
   - `assay:propose-trusted`: draft a trusted calculation or dictionary entry, with every file Check needs.
 - `python/`: `analysis_db`, `analysis_kernel`, `analysis_trust`, `analysis_sql` (the SQL rules on Claude's `sql`
-  calls and on SQL templates at Check, docs/slice-9.md), built into venv-assay by `claude-pkg venv-assay`.
+  calls and on SQL templates at Check, and the lineage the Steps tab draws; docs/slice-9.md), built into venv-assay by `claude-pkg venv-assay`.
 - The app talks to the server through files: it writes `.assay/requests/<id>.json` (`sql`, `python`, `interrupt`,
-  `restart`, `replay`, `trust-list`, `trust-check`, `trust-answer`), the server answers in `.assay/replies/`, and
+  `restart`, `replay`, `lineage`, `trust-list`, `trust-check`, `trust-answer`), the server answers in
+  `.assay/replies/`, writes `queries/NNN.lineage.json` next to a SQL run when the Steps tab asks, and
   writes `.assay/runs.json` and `.assay/trust/<name>.json` for run status and the trust review. For the prompt hook
   only, it writes `.assay/user-runs.json` (the user's runs, emptied by the hook) and `.assay/session.json` (the
   kernel's python). No tool of Claude's can start or answer a review: only the Trust tab's buttons do.

@@ -6,6 +6,10 @@ Assay's MCP server runs it with venv-assay's python before a ``sql`` tool call r
 
 It prints ``{"errors": [...], "warnings": [...]}``, or ``{"error": ...}`` when the SQL does not parse.
 
+    python -m analysis_sql lineage <databricks|postgres> [--template] [<sql-file>]
+
+prints the query's CTE graph, ``{"nodes": [...], "edges": [...]}`` (``--template`` binds ``:name`` parameters first).
+
 The comments it reads, each on the line directly above what it describes:
 
     -- grain: <col>[, <col>...]        above ``<name> AS (`` and above the final SELECT; ``none`` for one row
@@ -93,6 +97,16 @@ def _first_select(query: exp.Expression) -> exp.Expression:
     return query
 
 
+def _cte_comments(cte: exp.CTE) -> list[str]:
+    alias = cte.args.get("alias")
+    return [*(alias.comments or [] if alias is not None else []), *(cte.comments or [])]
+
+
+def _final_comments(statement: exp.Expression) -> list[str]:
+    final = _first_select(statement)
+    return [*(statement.comments or []), *((final.comments or []) if final is not statement else [])]
+
+
 def _owner(node: exp.Expression) -> str:
     """Who a node belongs to, as a reply names it: ``CTE <name>`` or ``Final SELECT``."""
     cte = node.find_ancestor(exp.CTE)
@@ -163,17 +177,14 @@ def lint_statement(statement: exp.Expression, errors: list[str], warnings: list[
 
     for cte in ctes:
         where = f"CTE {cte.alias}"
-        alias = cte.args.get("alias")
-        comments = [*(alias.comments or [] if alias is not None else []), *(cte.comments or [])]
-        _check_grain(where, comments, _outputs(cte.this, alias), errors)
+        _check_grain(where, _cte_comments(cte), _outputs(cte.this, cte.args.get("alias")), errors)
         name = cte.alias
         if len(name) < MIN_NAME:
             errors.append(f"{where}: name too short; say what it holds.")
         elif CRYPTIC.match(name):
             errors.append(f"{where}: name says what it does, not what it holds; say what it holds.")
 
-    final = _first_select(statement)
-    _check_grain("Final SELECT", [*(statement.comments or []), *((final.comments or []) if final is not statement else [])], _outputs(statement), errors)
+    _check_grain("Final SELECT", _final_comments(statement), _outputs(statement), errors)
 
     for join in joins:
         label = _join_label(join)
@@ -226,6 +237,84 @@ def lint(sql: str, dialect: str = "databricks") -> dict[str, list[str]]:
     return {"errors": errors, "warnings": warnings}
 
 
+def _grain(comments: list[str]) -> list[str] | None:
+    """The columns on a ``-- grain:`` line, ``[]`` for ``none``; None when there is no line."""
+    text = _comment(comments, GRAIN)
+    if text is None:
+        return None
+    columns = [_name(part) for part in text.split(",") if part.strip()]
+    return [] if columns == ["none"] else columns
+
+
+def _join_edge(table: exp.Table) -> dict[str, Any] | None:
+    """The ``join`` of an edge: the declared cardinality and keys, ``{}`` for a JOIN without a good line; None for FROM."""
+    join = table.parent
+    if not isinstance(join, exp.Join) or join.this is not table:
+        return None
+    text = _comment(join.comments, JOIN)
+    match = JOIN_FORM.match(text) if text is not None else None
+    if match is None:
+        return {}
+    keys = [key.strip() for key in match.group(2).split(",") if key.strip()]
+    return {"cardinality": match.group(1).lower(), "keys": keys}
+
+
+def lineage_statement(statement: exp.Expression) -> dict[str, Any]:
+    ctes = [cte for cte in statement.find_all(exp.CTE) if cte.find_ancestor(exp.CTE) is None]
+    cte_names = {cte.alias.lower() for cte in ctes}
+    final_id = "final_select" if "final" in cte_names else "final"
+    readers: list[tuple[str, exp.Expression | None]] = [(cte.alias.lower(), cte) for cte in ctes] + [(final_id, None)]
+
+    tables: dict[str, dict[str, Any]] = {}
+    edges: list[dict[str, Any]] = []
+    for target, cte in readers:
+        for table in (cte.this if cte is not None else statement).find_all(exp.Table):
+            # The final SELECT reads what is outside the CTEs.
+            if not table.name or (cte is None and table.find_ancestor(exp.CTE) is not None):
+                continue
+            name = ".".join(part.name for part in table.parts)
+            source = name.lower()
+            if source not in cte_names or len(table.parts) > 1:
+                tables.setdefault(source, {"id": source, "kind": "table", "name": name})
+            edge: dict[str, Any] = {"from": source, "to": target}
+            join = _join_edge(table)
+            if join is not None:
+                edge["join"] = join
+            # Each JOIN is its own edge; a source read twice outside a JOIN is one.
+            if join is not None or edge not in edges:
+                edges.append(edge)
+
+    nodes: list[dict[str, Any]] = list(tables.values())
+    for cte in ctes:
+        node: dict[str, Any] = {"id": cte.alias.lower(), "kind": "cte", "name": cte.alias}
+        grain = _grain(_cte_comments(cte))
+        if grain is not None:
+            node["grain"] = grain
+        nodes.append(node)
+    final: dict[str, Any] = {"id": final_id, "kind": "final", "name": "Final SELECT"}
+    grain = _grain(_final_comments(statement))
+    if grain is not None:
+        final["grain"] = grain
+    nodes.append(final)
+    return {"nodes": nodes, "edges": edges}
+
+
+def lineage(sql: str, dialect: str = "databricks", template: bool = False) -> dict[str, Any]:
+    """The CTE graph of the last statement in ``sql`` (docs/slice-9.md, "analysis_sql lineage").
+
+    ``template`` binds ``:name`` parameters first. Raises when ``sql`` does not parse.
+    """
+    if dialect not in DIALECTS:
+        raise ValueError(f"dialect {dialect!r} is not one of {', '.join(DIALECTS)}")
+    statements = [s for s in sqlglot.parse(bind_dummies(sql) if template else sql, read=dialect) if s is not None]
+    if not statements:
+        return {"nodes": [], "edges": [], "note": "There is no statement."}
+    found = lineage_statement(statements[-1])
+    if len(statements) > 1:
+        found["note"] = f"{len(statements)} statements; the lineage is of the last one."
+    return found
+
+
 PLACEHOLDER = re.compile(r"(?<![:\w]):([A-Za-z_]\w*)")
 
 
@@ -234,7 +323,10 @@ def bind_dummies(sql: str) -> str:
     return PLACEHOLDER.sub("NULL", sql)
 
 
-USAGE = "usage: python -m analysis_sql lint <databricks|postgres> [<sql-file>]   (SQL on stdin without a file)"
+USAGE = (
+    "usage: python -m analysis_sql lint <databricks|postgres> [<sql-file>]   (SQL on stdin without a file)\n"
+    "       python -m analysis_sql lineage <databricks|postgres> [--template] [<sql-file>]"
+)
 
 
 def main(argv: list[str]) -> int:
@@ -243,6 +335,11 @@ def main(argv: list[str]) -> int:
         if command == "lint" and len(args) in (1, 2):
             sql = Path(args[1]).read_text() if len(args) == 2 else sys.stdin.read()
             answer: dict[str, Any] = lint(sql, args[0])
+        elif command == "lineage" and 1 <= len([arg for arg in args if arg != "--template"]) <= 2:
+            template = "--template" in args
+            args = [arg for arg in args if arg != "--template"]
+            sql = Path(args[1]).read_text() if len(args) == 2 else sys.stdin.read()
+            answer = lineage(sql, args[0], template)
         else:
             answer = {"error": f"{USAGE}\ngot: {argv}"}
     except sqlglot.errors.ParseError as error:

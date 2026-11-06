@@ -17,7 +17,8 @@ import { TRUST_TAB } from '../core/calculations.ts'
 import { VENV_ASSAY_HINT } from '../core/rules.ts'
 import type { UserRun } from '../core/rules.ts'
 import type { Engine } from '../core/runs.ts'
-import { nextRunNumber, parseRuns } from '../core/runs.ts'
+import { codeBody, nextRunNumber, parseRunHeader, parseRuns } from '../core/runs.ts'
+import type { LineageFile } from '../core/lineage.ts'
 import { formatThreads, parseThreads } from '../core/threads.ts'
 import type { Threads } from '../core/threads.ts'
 import type { Child, Proc } from './proc.ts'
@@ -343,6 +344,28 @@ export class Assay {
     const found = await this.helper<SqlLint>(['lint', engine], 30_000, 'analysis_sql', sql)
     if ('error' in found) return found
     return Array.isArray(found.errors) && Array.isArray(found.warnings) ? found : { error: 'analysis_sql printed no errors and warnings' }
+  }
+
+  /**
+   * Writes `queries/NNN.lineage.json` for SQL run `number` (docs/slice-9.md): the CTE graph from `analysis_sql lineage`,
+   * or `{error}` when there is none. Undefined on success, else why the run has no file to write for.
+   */
+  async lineage(number: number): Promise<string | undefined> {
+    const run = parseRuns(await this.names(QUERIES)).find(each => each.number === number)
+    if (run?.code === undefined) return `No run ${queryLabel(number)}.`
+    const write = (answer: LineageFile | { error: string }) => this.writeAtomic(`${QUERIES}/${queryLabel(number)}.lineage.json`, `${JSON.stringify(answer)}\n`)
+    const text = await this.readText(`${QUERIES}/${run.code}`)
+    const header = parseRunHeader(text, run.language)
+    const body = codeBody(text, run.language === 'python' ? 'python' : 'sql')
+    if (run.language === 'python' || (header.trusted && /^-- python:/m.test(body))) {
+      await write({ error: 'Steps reads SQL runs.' })
+      return undefined
+    }
+    // A trusted run's body is the template, with its `:name` parameters.
+    const args = ['lineage', header.engine, ...(header.trusted ? ['--template'] : [])]
+    const found = await this.helper<LineageFile>(args, 30_000, 'analysis_sql', body)
+    await write(found)
+    return undefined
   }
 
   /** Claude's `sql` call: the rules first. A rejected statement claims no number and records no run. */

@@ -8,6 +8,7 @@ import { ANALYSIS_FILE } from '../core/analyses.ts'
 import type { AnalysisRef, FsPort } from '../core/analyses.ts'
 import { StaleEdit } from '../core/errors.ts'
 import { newRequestId, parseReply, requestText } from '../core/requests.ts'
+import { parseLineage } from '../core/lineage.ts'
 import { parseCsv, parseRunHeader, parseRunResult, parseRunStatus, parseRuns } from '../core/runs.ts'
 import type { Reply } from '../core/requests.ts'
 import type { ResultStatus, Run, RunHeader } from '../core/runs.ts'
@@ -226,6 +227,9 @@ export async function readRun(folder: string, number: number, options: { table?:
     return { ...table, truncated: table.truncated || cut }
   }
   try {
+    // Written by the server next to the run when the Steps tab asked (docs/slice-9.md); not a run file.
+    const lineage = parseLineage(await readText(join(dir, `${run.label}.lineage.json`)))
+    if (lineage) view.lineage = lineage
     if (run.code) view.code = (await readHead(join(dir, run.code), MAX_CODE_BYTES)).text
     if (run.data) view.table = await readTable(run.data)
     if (run.result) {

@@ -110,6 +110,10 @@ export class Requests {
       }
       case 'replay':
         return this.replay(request.runs)
+      case 'lineage': {
+        const failed = await assay.lineage(request.run)
+        return failed ? { error: failed } : { ok: true }
+      }
       case 'trust-list':
         return { proposals: (await this.trust.proposals()).map(({ name, kind, folder }) => ({ name, kind, folder })) }
       case 'trust-check': {

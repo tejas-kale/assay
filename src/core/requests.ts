@@ -43,6 +43,7 @@ export type RunRequest =
   | { kind: 'restart' }
   | { kind: 'replay'; runs: number[] }
   | TrustRequest
+  | LineageRequest
 
 /** The request file's text for any kind. */
 export function requestText(id: string, request: RunRequest): string {
@@ -61,6 +62,8 @@ export function requestText(id: string, request: RunRequest): string {
     case 'trust-check':
     case 'trust-answer':
       return trustRequestText(id, request)
+    case 'lineage':
+      return JSON.stringify({ id, ...request })
   }
 }
 
@@ -115,7 +118,8 @@ export const isIndex = (v: unknown): v is number => typeof v === 'number' && Num
 /** Checks what the renderer sent, per kind, and returns the request or the reason it is refused. */
 export function parseRunRequest(input: unknown): RunRequest | { error: string } {
   if (typeof input !== 'object' || input === null) return { error: 'Invalid request' }
-  const { kind, sql, code, engine, from, slug, runs, name, answer } = input as Record<string, unknown>
+  const { kind, sql, code, engine, from, slug, runs, name, answer, run } = input as Record<string, unknown>
+  if (kind === 'lineage') return isIndex(run) && run > 0 ? { kind, run } : { error: 'Invalid run' }
   if (kind === 'interrupt' || kind === 'restart' || kind === 'trust-list') return { kind }
   if (kind === 'trust-check' || kind === 'trust-answer') {
     if (typeof name !== 'string' || !PROPOSAL.test(name)) return { error: 'Invalid proposal' }
@@ -142,6 +146,9 @@ export function parseRunRequest(input: unknown): RunRequest | { error: string } 
   return { kind, sql, engine, ...origin }
 }
 
+/** The Steps tab asks for run `run`'s lineage (docs/slice-9.md): the server writes `queries/NNN.lineage.json` and replies ok. */
+export type LineageRequest = { kind: 'lineage'; run: number }
+
 // ---------------------------------------------------------------------------
 // The trust review's requests (docs/slice-5.md): the app lists the proposals, starts a check, and answers one
 // that passed. Only these start or answer a review: no tool of Claude's can.
@@ -166,8 +173,9 @@ export type ServerRequest =
   | { kind: 'restart' }
   | { kind: 'replay'; runs: number[] }
   | TrustRequest
+  | LineageRequest
 
-/** Interrupt, restart and the trust requests are taken at once, even while a run is in progress. */
+/** Interrupt, restart, the trust requests and lineage are taken at once, even while a run is in progress. */
 export const isUrgent = (request: ServerRequest) => request.kind !== 'sql' && request.kind !== 'python' && request.kind !== 'replay'
 
 const isRunNumber = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value > 0
@@ -181,7 +189,7 @@ export function parseRequestFile(text: string): ServerRequest | { error: string 
     return { error: 'The request is not valid JSON.' }
   }
   if (typeof body !== 'object' || body === null) return { error: 'The request is not a JSON object.' }
-  const { kind, sql, code, engine, from, slug, runs, name, answer } = body as Record<string, unknown>
+  const { kind, sql, code, engine, from, slug, runs, name, answer, run } = body as Record<string, unknown>
   const origin = isRunNumber(from) ? { from } : {}
   const slugText = typeof slug === 'string' ? slug : 'query'
   if (kind === 'sql') {
@@ -194,6 +202,7 @@ export function parseRequestFile(text: string): ServerRequest | { error: string 
     return { kind, code, ...origin, slug: slugText }
   }
   if (kind === 'interrupt' || kind === 'restart' || kind === 'trust-list') return { kind }
+  if (kind === 'lineage') return isRunNumber(run) ? { kind, run } : { error: 'Name the run, by number.' }
   if (kind === 'replay') {
     if (!Array.isArray(runs) || runs.length === 0 || !runs.every(isRunNumber)) return { error: 'Name the runs to replay, by number.' }
     return { kind, runs }

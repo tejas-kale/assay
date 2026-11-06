@@ -1,6 +1,7 @@
 // Which of the Data pane's tabs have content the user has not looked at.
 
-export type MarkedTab = 'data' | 'plots' | 'code' | 'history' | 'trust'
+/** Steps is never marked: it draws the current run, which Data and Code already mark. */
+export type MarkedTab = 'data' | 'plots' | 'code' | 'history' | 'steps' | 'trust'
 
 /** A snapshot of the current run (file names) and of how many runs exist. `trust` keys the latest trust review. */
 export type Seen = { number?: number; code?: string; data?: string; plots: readonly string[]; failed: boolean; runCount: number; trust?: string }

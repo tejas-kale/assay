@@ -113,6 +113,7 @@ export function App() {
         case 'tab.plots':
         case 'tab.code':
         case 'tab.history':
+        case 'tab.steps':
         case 'tab.trust':
           setDataTab(id.slice(4) as DataTabName)
           focusPane('data')

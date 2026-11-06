@@ -1,6 +1,6 @@
 # Slice 9 spec: readable SQL (rules, lineage, steps)
 
-Status: slice 9a built (needs `claude-pkg venv-assay` for `analysis_sql`); 9b and 9c specced on 2026-11-06.
+Status: slices 9a and 9b built (need `claude-pkg venv-assay` for `analysis_sql`); 9c specced on 2026-11-06.
 
 Agreed in a grilling session on 2026-11-05. It comes from advice on reading complex SQL: think in grain, know each
 join's cardinality, read top-down and verify bottom-up, sketch the lineage. Three slices, each usable on its own:
@@ -135,14 +135,14 @@ reads SQL runs.` A trusted run whose body is `-- python:` says the same.
 ```json
 {
   "nodes": [
-    {"id": "orders", "kind": "table", "name": "shop.sales.orders"},
-    {"id": "order_lines", "kind": "table", "name": "shop.sales.order_lines"},
+    {"id": "shop.sales.orders", "kind": "table", "name": "shop.sales.orders"},
+    {"id": "shop.sales.order_lines", "kind": "table", "name": "shop.sales.order_lines"},
     {"id": "daily_spend", "kind": "cte", "name": "daily_spend", "grain": ["customer_id", "order_date"]},
     {"id": "final", "kind": "final", "name": "Final SELECT", "grain": []}
   ],
   "edges": [
-    {"from": "orders", "to": "daily_spend"},
-    {"from": "order_lines", "to": "daily_spend", "join": {"cardinality": "1:many", "keys": ["order_id"]}},
+    {"from": "shop.sales.orders", "to": "daily_spend"},
+    {"from": "shop.sales.order_lines", "to": "daily_spend", "join": {"cardinality": "1:many", "keys": ["order_id"]}},
     {"from": "daily_spend", "to": "final"}
   ]
 }
@@ -208,6 +208,11 @@ reads SQL runs.` A trusted run whose body is `-- python:` says the same.
 - `src/core/requests.test.ts`: the `lineage` kind both ways, urgent.
 - `src/server`: a `lineage` request writes the file from the helper's answer, a missing run replies with an error, a
   Python run writes `{error}`, the engine follows the header, a trusted SQL run passes `--template`.
+
+As built: the Steps tab is `⇧⌘S`; `stepsView` in `src/core/lineage.ts` decides what the tab shows (testable apart from the
+component); `lineageMermaid(lineage, marks?, colors?)` takes the theme's `good`, `bad` and `dim` colours for 9c. Small
+deviations: the example's node ids are the full lower-cased names (as the Nodes rule says, the example had short ones), and
+a run that got no reply within `PICKUP_MS` is asked again on the next visit instead of never.
 
 ## Slice 9c: steps
 

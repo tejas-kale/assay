@@ -209,3 +209,93 @@ def test_the_command_says_when_the_sql_does_not_parse(monkeypatch: pytest.Monkey
 
 def test_template_parameters_bind_to_dummies_but_casts_stay() -> None:
     assert sql_rules.bind_dummies("SELECT a::int FROM t WHERE d >= :start AND s = '12:30'") == "SELECT a::int FROM t WHERE d >= NULL AND s = '12:30'"
+
+
+SPEC_EXAMPLE = """
+WITH
+-- grain: customer_id, order_date
+daily_spend AS (
+  SELECT o.customer_id, o.order_date, SUM(l.amount) AS spend
+  FROM shop.sales.orders o
+  -- join: 1:many on order_id
+  JOIN shop.sales.order_lines l ON l.order_id = o.order_id
+  GROUP BY o.customer_id, o.order_date
+)
+-- grain: none
+SELECT SUM(spend) FROM daily_spend
+"""
+
+
+def lineage(text: str, dialect: str = "databricks", template: bool = False) -> dict:
+    return sql_rules.lineage(text, dialect, template)
+
+
+def edge(found: dict, source: str, target: str) -> list[dict]:
+    return [e for e in found["edges"] if e["from"] == source and e["to"] == target]
+
+
+@pytest.mark.parametrize("dialect", ["databricks", "postgres"])
+def test_lineage_of_the_spec_example(dialect: str) -> None:
+    assert lineage(SPEC_EXAMPLE, dialect) == {
+        "nodes": [
+            {"id": "shop.sales.orders", "kind": "table", "name": "shop.sales.orders"},
+            {"id": "shop.sales.order_lines", "kind": "table", "name": "shop.sales.order_lines"},
+            {"id": "daily_spend", "kind": "cte", "name": "daily_spend", "grain": ["customer_id", "order_date"]},
+            {"id": "final", "kind": "final", "name": "Final SELECT", "grain": []},
+        ],
+        "edges": [
+            {"from": "shop.sales.orders", "to": "daily_spend"},
+            {"from": "shop.sales.order_lines", "to": "daily_spend", "join": {"cardinality": "1:many", "keys": ["order_id"]}},
+            {"from": "daily_spend", "to": "final"},
+        ],
+    }
+
+
+def test_a_table_used_in_two_ctes_is_one_node() -> None:
+    found = lineage("WITH\n-- grain: a\nfirst_cte AS (SELECT a FROM Orders),\n-- grain: a\nsecond_cte AS (SELECT a FROM orders)\nSELECT 1 FROM first_cte")
+    assert [n["id"] for n in found["nodes"] if n["kind"] == "table"] == ["orders"]
+    assert edge(found, "orders", "first_cte") and edge(found, "orders", "second_cte")
+
+
+def test_two_joins_of_one_table_give_two_edges_and_a_missing_line_gives_empty_join() -> None:
+    found = lineage("SELECT 1 FROM a\n-- join: many:1 on x\nJOIN b ON 1=1\nJOIN b b2 ON 1=1")
+    assert edge(found, "b", "final") == [{"from": "b", "to": "final", "join": {"cardinality": "many:1", "keys": ["x"]}}, {"from": "b", "to": "final", "join": {}}]
+    assert edge(found, "a", "final") == [{"from": "a", "to": "final"}]
+
+
+def test_grain_is_absent_empty_or_columns() -> None:
+    found = lineage("WITH\nplain AS (SELECT 1 FROM t),\n-- grain: none\ntotal AS (SELECT 1 FROM t),\n-- grain: `a`, B\nkeyed AS (SELECT 1 FROM t)\nSELECT 1 FROM plain")
+    nodes = {n["id"]: n for n in found["nodes"]}
+    assert "grain" not in nodes["plain"] and "grain" not in nodes["final"]
+    assert nodes["total"]["grain"] == [] and nodes["keyed"]["grain"] == ["a", "b"]
+
+
+def test_a_subquery_table_is_an_edge_without_join() -> None:
+    found = lineage("SELECT 1 FROM a WHERE id IN (SELECT id FROM b) AND EXISTS (SELECT 1 FROM c)")
+    assert edge(found, "b", "final") == [{"from": "b", "to": "final"}]
+    assert edge(found, "c", "final") == [{"from": "c", "to": "final"}]
+
+
+def test_a_cte_named_final_leaves_the_id_to_the_cte() -> None:
+    found = lineage("WITH final AS (SELECT 1 FROM t) SELECT 1 FROM final")
+    assert [(n["id"], n["kind"]) for n in found["nodes"]] == [("t", "table"), ("final", "cte"), ("final_select", "final")]
+    assert edge(found, "final", "final_select")
+
+
+def test_only_the_last_statement_is_read_and_a_note_says_so() -> None:
+    found = lineage("SELECT 1 FROM a; SELECT 1 FROM b")
+    assert [n["id"] for n in found["nodes"]] == ["b", "final"]
+    assert "note" in found
+
+
+def test_template_binds_placeholders() -> None:
+    assert lineage("SELECT 1 FROM t WHERE d > :since", template=True)["nodes"][0]["id"] == "t"
+
+
+def test_lineage_command_prints_json_and_a_parse_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(sys, "stdin", io.StringIO("SELECT 1 FROM t WHERE d > :since"))
+    assert sql_rules.main(["lineage", "postgres", "--template"]) == 0
+    assert json.loads(capsys.readouterr().out)["nodes"][0]["id"] == "t"
+    monkeypatch.setattr(sys, "stdin", io.StringIO("SELECT FROM WHERE ("))
+    assert sql_rules.main(["lineage", "databricks"]) == 1
+    assert "does not parse" in json.loads(capsys.readouterr().out)["error"]
