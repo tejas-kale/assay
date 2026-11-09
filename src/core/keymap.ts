@@ -2,6 +2,7 @@ export type CommandId =
   | 'focus.terminal'
   | 'focus.notes'
   | 'focus.data'
+  | 'terminal.zoom'
   | 'palette.open'
   | 'search.open'
   | 'code.run'
@@ -39,7 +40,7 @@ export function analysisNumber(id: CommandId): number | undefined {
 
 /**
  * A shortcut, by physical key `code` (for example `Digit1`) so layouts do not matter. Cmd is implied, unless `ctrl`
- * puts Ctrl in its place: every pane key (focus and tabs) uses Ctrl, so Cmd is left for analyses and the app.
+ * puts Ctrl in its place: every pane key (focus, tabs, zoom) uses Ctrl, so Cmd is left for analyses and the app.
  */
 export type KeySpec = { code: string; shift?: true; ctrl?: true }
 
@@ -53,6 +54,7 @@ export const COMMANDS: readonly Command[] = [
   { id: 'focus.terminal', title: 'Focus terminal', accelerator: { code: 'Digit1', ctrl: true } },
   { id: 'focus.notes', title: 'Focus notes and threads', accelerator: { code: 'Digit2', ctrl: true } },
   { id: 'focus.data', title: 'Focus data pane', accelerator: { code: 'Digit3', ctrl: true } },
+  { id: 'terminal.zoom', title: 'Zoom terminal / restore panes', accelerator: { code: 'Digit0', ctrl: true } },
   { id: 'palette.open', title: 'Command palette', accelerator: { code: 'KeyP' } },
   { id: 'search.open', title: 'Search everything', accelerator: { code: 'KeyF' } },
   { id: 'code.run', title: 'Run current code, or the selected SQL', accelerator: { code: 'Enter' } },

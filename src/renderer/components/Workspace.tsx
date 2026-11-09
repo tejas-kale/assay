@@ -30,6 +30,8 @@ type Props = {
   toast: string | undefined
   /** Left Ctrl is long-pressed: show each pane's shortcuts. */
   hints: boolean
+  /** Ctrl+0: the terminal fills the analysis; notes and data stay mounted but hidden. */
+  zoomed: boolean
   /** A note's citation was followed: hold that run in the data pane. */
   onShowRun: (number: number) => void
   /** A universal-search hit for the notes pane's tabs to select. */
@@ -43,7 +45,7 @@ const tabOf = (reveal: Reveal | undefined): NotesTabName | undefined => {
   return kind === 'thread' ? 'threads' : kind === 'note' ? 'notes' : kind === 'file' ? 'files' : undefined
 }
 
-export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, focusRequest, dataCommand, onToast, toast, hints, onShowRun, reveal, onRevealed }: Props) {
+export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, focusRequest, dataCommand, onToast, toast, hints, zoomed, onShowRun, reveal, onRevealed }: Props) {
   const revealFor = (tab: NotesTabName) => (tabOf(reveal) === tab ? reveal : undefined)
   const terminalRef = useRef<TerminalHandle | undefined>(undefined)
   const notesRef = useRef<HTMLElement>(null)
@@ -69,10 +71,10 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
   }, [focusRequest])
 
   return (
-    <div className="workspace">
+    <div className={zoomed ? 'workspace zoomed' : 'workspace'}>
       <section className="pane terminal-pane" data-pane="terminal" aria-label="Claude Code">
         <TerminalPane handleRef={terminalRef} />
-        {hints && <PaneHint>{shortcutLabel('focus.terminal')}</PaneHint>}
+        {hints && <PaneHint>{`${shortcutLabel('focus.terminal')}  ·  ${zoomed ? 'Restore' : 'Zoom'} ${shortcutLabel('terminal.zoom')}`}</PaneHint>}
       </section>
 
       <section className="pane" data-pane="notes" ref={notesRef} tabIndex={-1} aria-label="Notes and threads">

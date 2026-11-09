@@ -148,7 +148,7 @@ test('the pane keys name Ctrl+2 for cycling the notes tabs', () => {
 })
 
 test('every pane shortcut uses Ctrl: Ctrl+1..3 focus a pane, Ctrl+Shift+letter shows a tab, and Cmd+Shift+letter no longer does', () => {
-  for (const c of COMMANDS.filter(c => c.id.startsWith('focus.') || c.id.startsWith('tab.'))) {
+  for (const c of COMMANDS.filter(c => c.id.startsWith('focus.') || c.id.startsWith('tab.') || c.id === 'terminal.zoom')) {
     const a = c.accelerator
     assert.ok(a, c.id)
     assert.equal(a.ctrl, true, c.id)
@@ -156,4 +156,11 @@ test('every pane shortcut uses Ctrl: Ctrl+1..3 focus a pane, Ctrl+Shift+letter s
   }
   assert.equal(commandForInput(input({ code: 'KeyC', ctrl: true })), undefined, 'Ctrl+C stays with the terminal')
   assert.equal(shortcutLabel('tab.code'), '⌃⇧C')
+})
+
+test('Ctrl+0 zooms the terminal to the whole analysis and back; Cmd+0 stays free', () => {
+  assert.equal(commandForInput(input({ code: 'Digit0', ctrl: true })), 'terminal.zoom')
+  assert.equal(commandForInput(input({ code: 'Digit0', meta: true })), undefined)
+  assert.equal(shortcutLabel('terminal.zoom'), '⌃0')
+  assert.equal(COMMANDS.find(c => c.id === 'terminal.zoom')?.title, 'Zoom terminal / restore panes')
 })

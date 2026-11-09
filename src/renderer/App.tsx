@@ -27,6 +27,8 @@ export function App() {
   const [notesTab, setNotesTab] = useState<NotesTabName>('threads')
   const [dataTab, setDataTab] = useState<DataTabName>('data')
   const [focusRequest, setFocusRequest] = useState<FocusRequest>()
+  // Ctrl+0: the terminal fills the analysis. Focus moving to another pane brings the panes back, so it never lands in a hidden one.
+  const [zoomed, setZoomed] = useState(false)
   const [dataCommand, setDataCommand] = useState<DataCommand>()
   const [palette, setPalette] = useState<{ returnTo: PaneName | undefined }>()
   const [searchOpen, setSearchOpen] = useState<{ returnTo: PaneName | undefined }>()
@@ -85,13 +87,21 @@ export function App() {
     toastTimer.current = setTimeout(() => setToast(undefined), 4000)
   }, [])
 
-  const focusPane = useCallback((pane: PaneName) => setFocusRequest({ pane, n: ++counter.current }), [])
+  const focusPane = useCallback((pane: PaneName) => {
+    if (pane !== 'terminal') setZoomed(false)
+    setFocusRequest({ pane, n: ++counter.current })
+  }, [])
 
   /** Runs a command. Returns true when it moved focus itself. */
   const run = useCallback(
     (id: CommandId): boolean => {
       switch (id) {
         case 'focus.terminal':
+          focusPane('terminal')
+          return true
+        case 'terminal.zoom':
+          if (viewRef.current.type !== 'workspace') return false
+          setZoomed(z => !z)
           focusPane('terminal')
           return true
         case 'focus.notes':
@@ -196,6 +206,7 @@ export function App() {
         case 'code.edit':
         case 'code.new':
           // The pane switches to Code and focuses the editor itself once it has the run's text.
+          setZoomed(false)
           setDataCommand({ id, n: ++counter.current })
           return true
         case 'analysis.new':
@@ -277,6 +288,7 @@ export function App() {
           onToast={showToast}
           toast={toast}
           hints={hints === 'ctrl'}
+          zoomed={zoomed}
           onShowRun={number => setDataCommand({ id: 'run.show', number, n: ++counter.current })}
           reveal={reveal}
           onRevealed={() => setReveal(undefined)}
