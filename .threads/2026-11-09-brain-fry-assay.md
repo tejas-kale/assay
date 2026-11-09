@@ -5,10 +5,12 @@ tool: codex
 
 ## Open
 
-1. Design an explicitly invoked guided manual trial in Assay/Claude Code; interview before implementation.
-2. Explore multiple running analyses in one window, a floating bottom pane and Cmd+number switching.
 
 ## Closed
+
+- Multiple analyses in one window -> Design confirmed: one window, up to 9 analyses, Cmd+1..9 switches, panes move to Ctrl+1..3, always-visible status strip, full state kept. Saved in docs/multi-analysis-window.md; not implemented.
+
+- Design an explicitly invoked guided manual trial -> Abandoned by the user on 2026-11-09, together with its skill. Partial design (gated full loop, threads + notes for state, resume recall/time vs usual-way baseline) was never confirmed or implemented.
 
 - Is the approach useful for Assay's intended work? -> Yes: durable questions, evidence-backed decision packets, and explicit handoffs fit analysis; automated checks do not settle analytical validity. Assay already has file-backed threads, recorded runs, notes and human trust review.
 

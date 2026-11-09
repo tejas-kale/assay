@@ -1,6 +1,6 @@
 # Decision workflow: manual trial and possible enhancements
 
-Status: discussion notes, not an implementation specification. Trial the workflow before changing Assay.
+Status: trial abandoned on 2026-11-09; kept as discussion notes only. Not an implementation specification.
 
 Source: [Sergey Kuhne, How I'm fighting the AI Brain Fry](https://sergeykuhne.com/blog/fighting-ai-brain-fry).
 
