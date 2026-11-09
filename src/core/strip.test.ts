@@ -7,7 +7,7 @@ const base = { number: 2, title: 'Buyer ratings', claude: 'working' as const, se
 const NOW = 1_000_000_000
 
 test('an entry carries its number, title, Claude state and whether it is the one shown', () => {
-  assert.deepEqual(stripEntry(base, NOW), { number: 2, title: 'Buyer ratings', label: 'Buyer ratings', state: 'working', stateText: 'working', current: false })
+  assert.deepEqual(stripEntry(base, NOW), { number: 2, title: 'Buyer ratings', label: 'Buyer ratings', state: 'working', current: false })
   assert.equal(stripEntry({ ...base, claude: 'waiting', current: true }, NOW).state, 'waiting')
   assert.equal(stripEntry({ ...base, current: true }, NOW).current, true)
 })
@@ -35,9 +35,7 @@ test('titles longer than the strip allows are cut on a word where one is near, w
   assert.equal(stripEntry({ ...base, title: 'Buyer ratings metric validation for Q4' }, NOW).label, 'Buyer ratings metric…')
 })
 
-test('the state word is left out for idle, which the empty circle already shows', () => {
-  assert.equal(stripEntry(base, NOW).stateText, 'working')
-  assert.equal(stripEntry({ ...base, claude: 'waiting' }, NOW).stateText, 'waiting for you')
-  assert.equal(stripEntry({ ...base, sessionLive: false }, NOW).stateText, 'session ended')
-  assert.equal(stripEntry({ ...base, claude: 'idle' }, NOW).stateText, undefined)
+test('no state is put in words: the icon alone shows it', () => {
+  for (const claude of ['working', 'waiting', 'idle'] as const) assert.equal('stateText' in stripEntry({ ...base, claude }, NOW), false)
+  assert.equal('stateText' in stripEntry({ ...base, sessionLive: false }, NOW), false)
 })

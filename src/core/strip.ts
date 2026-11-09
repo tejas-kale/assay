@@ -20,18 +20,10 @@ export type StripEntry = {
   title: string
   /** The title cut to TITLE_CHARS, for the strip; `title` is the full one, for the tooltip. */
   label: string
+  /** Shown by its icon alone, never in words: empty circle idle, pulsing orange dot working, white hand waiting. */
   state: ClaudeState | 'ended'
-  /** The state in words beside the dot; absent for idle, which the empty circle shows on its own. */
-  stateText?: string
   current: boolean
   run?: { number: number; duration: string }
-}
-
-const STATE_TEXT: Record<StripEntry['state'], string | undefined> = {
-  working: 'working',
-  waiting: 'waiting for you',
-  idle: undefined,
-  ended: 'session ended',
 }
 
 export function stripEntry(facts: StripFacts, nowMs: number): StripEntry {
@@ -42,8 +34,6 @@ export function stripEntry(facts: StripFacts, nowMs: number): StripEntry {
     state: facts.sessionLive ? facts.claude : 'ended',
     current: facts.current,
   }
-  const stateText = STATE_TEXT[entry.state]
-  if (stateText) entry.stateText = stateText
   if (facts.running) entry.run = { number: facts.running.number, duration: runDuration(facts.running.startedAt, nowMs) }
   return entry
 }

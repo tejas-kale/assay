@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react'
 
 import type { HoldKind } from '../../core/cmdHold.ts'
+import type { StripEntry } from '../../core/strip.ts'
 import type { StripView } from '../../shared/ipc.ts'
 
 export function Strip() {
@@ -23,13 +24,41 @@ export function Strip() {
           title={`⌘${entry.number}  ${entry.title}`}
           onClick={() => void window.app.showAnalysis(entry.number)}
         >
-          <span className={`strip-dot ${entry.state}`} aria-hidden="true" />
+          <StateIcon state={entry.state} />
           {hints === 'cmd' && <b className="strip-key">⌘{entry.number}</b>}
           <span className="strip-title">{entry.label}</span>
-          {entry.stateText && <span className={`strip-state ${entry.state}`}>{entry.stateText}</span>}
           {entry.run && <span className="strip-run">#{entry.run.number} {entry.run.duration}</span>}
         </button>
       ))}
     </nav>
+  )
+}
+
+const STATE_NAME: Record<StripEntry['state'], string> = {
+  idle: 'idle',
+  working: 'working',
+  waiting: 'waiting for you',
+  ended: 'session ended',
+}
+
+/** Claude's state as an icon, with no visible words: empty circle, pulsing orange dot, or a small white hand. */
+function StateIcon({ state }: { state: StripEntry['state'] }) {
+  if (state !== 'waiting') return <span className={`strip-dot ${state}`} role="img" aria-label={STATE_NAME[state]} />
+  // A raised hand: drawn once thick in the outline colour, then filled white on top, so it reads on light panels too.
+  const hand = (
+    <>
+      <rect x="3.5" y="1.5" width="2" height="8" rx="1" />
+      <rect x="6" y="0.5" width="2" height="8" rx="1" />
+      <rect x="8.5" y="1" width="2" height="8" rx="1" />
+      <rect x="11" y="2.5" width="2" height="7" rx="1" />
+      <rect x="1.5" y="8" width="2" height="5" rx="1" transform="rotate(-40 2.5 10.5)" />
+      <rect x="3.5" y="6.5" width="9.5" height="9" rx="3" />
+    </>
+  )
+  return (
+    <svg className="strip-hand" viewBox="-1 -1 16 18" role="img" aria-label={STATE_NAME.waiting}>
+      <g className="outline">{hand}</g>
+      <g className="fill">{hand}</g>
+    </svg>
   )
 }

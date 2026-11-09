@@ -255,14 +255,15 @@ table.grid th.cur-col { color: var(--accent); }
 .strip-entry.current { border-color: var(--accent); color: var(--text); }
 .strip-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; border: 1px solid var(--dim); }
 .strip-dot.working { background: var(--accent); border-color: var(--accent); animation: strip-pulse 1.2s ease-in-out infinite; }
-.strip-dot.waiting { background: var(--warn); border-color: var(--warn); }
 .strip-dot.idle { background: none; }
 .strip-dot.ended { background: var(--line); border-color: var(--line); }
 .strip-key { font-weight: 600; color: var(--text); }
 .strip-title { color: var(--text); }
-.strip-state { color: var(--dim); }
-.strip-state::before { content: '·'; margin-inline-end: 6px; }
-.strip-state.waiting { color: var(--warn); }
+/* Waiting for you: a small white hand, outlined in the text colour so it shows on the light panel. */
+.strip-hand { width: 10px; height: 11px; flex: none; }
+.strip.left .strip-hand { transform: rotate(180deg); }
+.strip-hand .outline { fill: var(--text); stroke: var(--text); stroke-width: 2; stroke-linejoin: round; }
+.strip-hand .fill { fill: #fff; }
 .strip-run { color: var(--accent); font-variant-numeric: tabular-nums; }
 @keyframes strip-pulse { 50% { opacity: 0.4; } }
 @media (prefers-reduced-motion: reduce) { .strip-dot.working { animation: none; } }
