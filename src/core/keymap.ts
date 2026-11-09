@@ -39,7 +39,7 @@ export function analysisNumber(id: CommandId): number | undefined {
 
 /**
  * A shortcut, by physical key `code` (for example `Digit1`) so layouts do not matter. Cmd is implied, unless `ctrl`
- * puts Ctrl in its place (the pane keys, so Cmd+number can switch analyses).
+ * puts Ctrl in its place: every pane key (focus and tabs) uses Ctrl, so Cmd is left for analyses and the app.
  */
 export type KeySpec = { code: string; shift?: true; ctrl?: true }
 
@@ -62,15 +62,15 @@ export const COMMANDS: readonly Command[] = [
   { id: 'analysis.new', title: 'Open another analysis', accelerator: { code: 'KeyN' } },
   { id: 'analysis.close', title: 'Close analysis', accelerator: { code: 'KeyW' } },
   { id: 'settings.open', title: 'Settings', accelerator: { code: 'Comma' } },
-  { id: 'tab.data', title: 'Show Data tab', accelerator: { code: 'KeyD', shift: true } },
-  { id: 'tab.plots', title: 'Show Plots tab', accelerator: { code: 'KeyP', shift: true } },
-  { id: 'tab.code', title: 'Show Code tab', accelerator: { code: 'KeyC', shift: true } },
-  { id: 'tab.history', title: 'Show History tab', accelerator: { code: 'KeyH', shift: true } },
-  { id: 'tab.steps', title: 'Show Steps tab', accelerator: { code: 'KeyS', shift: true } },
-  { id: 'tab.trust', title: 'Show Trust tab', accelerator: { code: 'KeyR', shift: true } },
-  { id: 'tab.threads', title: 'Show Threads tab', accelerator: { code: 'KeyT', shift: true } },
-  { id: 'tab.notes', title: 'Show Notes tab', accelerator: { code: 'KeyN', shift: true } },
-  { id: 'tab.files', title: 'Show Files tab', accelerator: { code: 'KeyF', shift: true } },
+  { id: 'tab.data', title: 'Show Data tab', accelerator: { code: 'KeyD', shift: true, ctrl: true } },
+  { id: 'tab.plots', title: 'Show Plots tab', accelerator: { code: 'KeyP', shift: true, ctrl: true } },
+  { id: 'tab.code', title: 'Show Code tab', accelerator: { code: 'KeyC', shift: true, ctrl: true } },
+  { id: 'tab.history', title: 'Show History tab', accelerator: { code: 'KeyH', shift: true, ctrl: true } },
+  { id: 'tab.steps', title: 'Show Steps tab', accelerator: { code: 'KeyS', shift: true, ctrl: true } },
+  { id: 'tab.trust', title: 'Show Trust tab', accelerator: { code: 'KeyR', shift: true, ctrl: true } },
+  { id: 'tab.threads', title: 'Show Threads tab', accelerator: { code: 'KeyT', shift: true, ctrl: true } },
+  { id: 'tab.notes', title: 'Show Notes tab', accelerator: { code: 'KeyN', shift: true, ctrl: true } },
+  { id: 'tab.files', title: 'Show Files tab', accelerator: { code: 'KeyF', shift: true, ctrl: true } },
   { id: 'shortcuts.show', title: 'Show Shortcuts' },
   { id: 'pin.toggle', title: 'Pin current run' },
   { id: 'kernel.restart', title: 'Restart kernel' },
@@ -101,12 +101,12 @@ export function commandForInput(input: KeyInput): CommandId | undefined {
 
 const KEY_SYMBOLS: Record<string, string> = { Enter: '↩', Comma: ',', Period: '.' }
 
-/** A command's shortcut as the Mac writes it, such as `⇧⌘P`; empty when it has none. */
+/** A command's shortcut as the Mac writes it, modifiers in the order ⌃⇧⌘, such as `⇧⌘P` or `⌃⇧C`; empty when it has none. */
 export function shortcutLabel(id: CommandId): string {
   const a = COMMANDS.find(c => c.id === id)?.accelerator
   if (!a) return ''
   const key = a.code.replace(/^Key|^Digit/, '')
-  return `${a.shift ? '⇧' : ''}${a.ctrl ? '⌃' : '⌘'}${KEY_SYMBOLS[key] ?? key}`
+  return `${a.ctrl ? '⌃' : ''}${a.shift ? '⇧' : ''}${a.ctrl ? '' : '⌘'}${KEY_SYMBOLS[key] ?? key}`
 }
 
 /** Single keys inside a pane, for the Show Shortcuts overlay. The panes no longer print them. */

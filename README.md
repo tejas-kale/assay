@@ -43,9 +43,11 @@ The code is the source of truth. `docs/slice-*.md` are the specs each slice was 
 
 ## Keys
 
-Every shortcut is in `src/core/keymap.ts`: `COMMANDS` (Cmd keys, plus Ctrl+1..3 for the panes, caught in main before
-the terminal) and `PANE_KEYS` (single keys per pane). In the app, the palette's Show Shortcuts lists them all. Holding
-left Cmd shows the Cmd shortcuts and the analysis numbers in the strip; holding left Ctrl shows the pane hints.
+Every shortcut is in `src/core/keymap.ts`: `COMMANDS` (caught in main before the terminal) and `PANE_KEYS` (single
+keys per pane). Pane shortcuts use Ctrl: Ctrl+1..3 focus a pane and Ctrl+Shift+letter shows a tab (Ctrl+Shift+C Code,
+Ctrl+Shift+D Data, ...). Cmd is for analyses and the app: Cmd+1..9, Cmd+N, Cmd+W, the palette, search and Settings,
+plus Cmd+Enter, Cmd+E and Cmd+. on runs. In the app, the palette's Show Shortcuts lists them all. Holding left Cmd
+shows the Cmd shortcuts and the analysis numbers in the strip; holding left Ctrl shows the pane and tab hints.
 
 ## Several analyses in one window
 

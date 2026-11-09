@@ -24,16 +24,16 @@ test('every handoff shortcut maps to its command, by code', () => {
     [{ code: 'KeyE', meta: true }, 'code.edit'],
     [{ code: 'KeyN', meta: true }, 'analysis.new'],
     [{ code: 'KeyW', meta: true }, 'analysis.close'],
-    [{ code: 'KeyD', meta: true, shift: true }, 'tab.data'],
-    [{ code: 'KeyP', meta: true, shift: true }, 'tab.plots'],
-    [{ code: 'KeyC', meta: true, shift: true }, 'tab.code'],
-    [{ code: 'KeyH', meta: true, shift: true }, 'tab.history'],
-    [{ code: 'KeyT', meta: true, shift: true }, 'tab.threads'],
-    [{ code: 'KeyN', meta: true, shift: true }, 'tab.notes'],
-    [{ code: 'KeyF', meta: true, shift: true }, 'tab.files'],
+    [{ code: 'KeyD', ctrl: true, shift: true }, 'tab.data'],
+    [{ code: 'KeyP', ctrl: true, shift: true }, 'tab.plots'],
+    [{ code: 'KeyC', ctrl: true, shift: true }, 'tab.code'],
+    [{ code: 'KeyH', ctrl: true, shift: true }, 'tab.history'],
+    [{ code: 'KeyT', ctrl: true, shift: true }, 'tab.threads'],
+    [{ code: 'KeyN', ctrl: true, shift: true }, 'tab.notes'],
+    [{ code: 'KeyF', ctrl: true, shift: true }, 'tab.files'],
     [{ code: 'KeyF', meta: true }, 'search.open'],
-    [{ code: 'KeyR', meta: true, shift: true }, 'tab.trust'],
-    [{ code: 'KeyS', meta: true, shift: true }, 'tab.steps'],
+    [{ code: 'KeyR', ctrl: true, shift: true }, 'tab.trust'],
+    [{ code: 'KeyS', ctrl: true, shift: true }, 'tab.steps'],
   ]
   for (const [over, id] of table) assert.equal(commandForInput(input(over)), id, id)
 })
@@ -111,11 +111,11 @@ test('shortcut labels use the Mac symbols', () => {
   assert.equal(shortcutLabel('focus.terminal'), '⌃1')
   assert.equal(shortcutLabel('analysis.1'), '⌘1')
   assert.equal(shortcutLabel('palette.open'), '⌘P')
-  assert.equal(shortcutLabel('tab.plots'), '⇧⌘P')
+  assert.equal(shortcutLabel('tab.plots'), '⌃⇧P')
   assert.equal(shortcutLabel('code.run'), '⌘↩')
   assert.equal(shortcutLabel('settings.open'), '⌘,')
-  assert.equal(shortcutLabel('tab.threads'), '⇧⌘T')
-  assert.equal(shortcutLabel('tab.notes'), '⇧⌘N')
+  assert.equal(shortcutLabel('tab.threads'), '⌃⇧T')
+  assert.equal(shortcutLabel('tab.notes'), '⌃⇧N')
   assert.equal(shortcutLabel('shortcuts.show'), '')
 })
 
@@ -145,4 +145,15 @@ test('the pane keys name Ctrl+2 for cycling the notes tabs', () => {
   const keys = PANE_KEYS.flatMap(p => p.keys.map(([key]) => key))
   assert.ok(keys.includes('⌃2 again'))
   assert.ok(!keys.includes('⌘2 again'))
+})
+
+test('every pane shortcut uses Ctrl: Ctrl+1..3 focus a pane, Ctrl+Shift+letter shows a tab, and Cmd+Shift+letter no longer does', () => {
+  for (const c of COMMANDS.filter(c => c.id.startsWith('focus.') || c.id.startsWith('tab.'))) {
+    const a = c.accelerator
+    assert.ok(a, c.id)
+    assert.equal(a.ctrl, true, c.id)
+    if (c.id.startsWith('tab.')) assert.equal(commandForInput(input({ code: a.code, shift: true, meta: true })), undefined, `cmd ${c.id}`)
+  }
+  assert.equal(commandForInput(input({ code: 'KeyC', ctrl: true })), undefined, 'Ctrl+C stays with the terminal')
+  assert.equal(shortcutLabel('tab.code'), '⌃⇧C')
 })
