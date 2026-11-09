@@ -15,15 +15,15 @@ const input = (over: Partial<Parameters<typeof commandForInput>[0]>) => ({
 
 test('every handoff shortcut maps to its command, by code', () => {
   const table: [Partial<Parameters<typeof commandForInput>[0]>, string][] = [
-    [{ code: 'Digit1', meta: true }, 'focus.terminal'],
-    [{ code: 'Digit2', meta: true }, 'focus.notes'],
-    [{ code: 'Digit3', meta: true }, 'focus.data'],
+    [{ code: 'Digit1', ctrl: true }, 'focus.terminal'],
+    [{ code: 'Digit2', ctrl: true }, 'focus.notes'],
+    [{ code: 'Digit3', ctrl: true }, 'focus.data'],
     [{ code: 'KeyP', meta: true }, 'palette.open'],
     [{ code: 'Comma', meta: true }, 'settings.open'],
     [{ code: 'Enter', meta: true }, 'code.run'],
     [{ code: 'KeyE', meta: true }, 'code.edit'],
-    [{ code: 'KeyN', meta: true }, 'window.new'],
-    [{ code: 'KeyW', meta: true }, 'window.close'],
+    [{ code: 'KeyN', meta: true }, 'analysis.new'],
+    [{ code: 'KeyW', meta: true }, 'analysis.close'],
     [{ code: 'KeyD', meta: true, shift: true }, 'tab.data'],
     [{ code: 'KeyP', meta: true, shift: true }, 'tab.plots'],
     [{ code: 'KeyC', meta: true, shift: true }, 'tab.code'],
@@ -39,7 +39,8 @@ test('every handoff shortcut maps to its command, by code', () => {
 })
 
 test('the layout does not matter: code decides, key is ignored', () => {
-  assert.equal(commandForInput(input({ code: 'Digit1', key: '&', meta: true })), 'focus.terminal')
+  assert.equal(commandForInput(input({ code: 'Digit1', key: '&', meta: true })), 'analysis.1')
+  assert.equal(commandForInput(input({ code: 'Digit1', key: '&', ctrl: true })), 'focus.terminal')
   assert.equal(commandForInput(input({ code: 'KeyP', key: 'з', meta: true })), 'palette.open')
 })
 
@@ -47,7 +48,7 @@ test('copy, paste, select-all, quit and every non-Cmd key are not claimed', () =
   for (const code of ['KeyC', 'KeyV', 'KeyA', 'KeyQ', 'KeyX', 'KeyZ', 'KeyK']) {
     assert.equal(commandForInput(input({ code, meta: true })), undefined, code)
   }
-  for (const code of ['Digit1', 'KeyP', 'KeyN', 'KeyW', 'Enter', 'KeyD']) {
+  for (const code of ['KeyP', 'KeyN', 'KeyW', 'Enter', 'KeyD']) {
     assert.equal(commandForInput(input({ code })), undefined, code)
     assert.equal(commandForInput(input({ code, ctrl: true })), undefined, `ctrl ${code}`)
     assert.equal(commandForInput(input({ code, shift: true })), undefined, `shift ${code}`)
@@ -58,6 +59,9 @@ test('extra modifiers do not match: Cmd+Shift+1, Cmd+Alt+P, Cmd+Ctrl+N, Cmd+Shif
   assert.equal(commandForInput(input({ code: 'Digit1', meta: true, shift: true })), undefined)
   assert.equal(commandForInput(input({ code: 'KeyP', meta: true, alt: true })), undefined)
   assert.equal(commandForInput(input({ code: 'KeyN', meta: true, ctrl: true })), undefined)
+  assert.equal(commandForInput(input({ code: 'Digit1', meta: true, ctrl: true })), undefined)
+  assert.equal(commandForInput(input({ code: 'Digit1', ctrl: true, alt: true })), undefined)
+  assert.equal(commandForInput(input({ code: 'Digit1', ctrl: true, shift: true })), undefined)
   assert.equal(commandForInput(input({ code: 'KeyW', meta: true, shift: true })), undefined)
   assert.equal(commandForInput(input({ code: 'KeyD', meta: true })), undefined)
 })
@@ -66,9 +70,9 @@ test('COMMANDS lists every action once, with titles', () => {
   const ids = COMMANDS.map(c => c.id)
   assert.equal(new Set(ids).size, ids.length)
   for (const id of [
-    'focus.terminal', 'focus.notes', 'focus.data', 'palette.open', 'code.run', 'code.edit', 'code.new', 'window.new',
+    'focus.terminal', 'focus.notes', 'focus.data', 'palette.open', 'code.run', 'code.edit', 'code.new', 'analysis.new',
     'tab.data', 'tab.plots', 'tab.code', 'tab.history', 'tab.steps', 'tab.notes', 'tab.threads', 'tab.files',
-    'window.close', 'settings.open', 'pin.toggle', 'kernel.restart', 'replay.open', 'run.interrupt', 'shortcuts.show',
+    'analysis.close', 'settings.open', 'pin.toggle', 'kernel.restart', 'replay.open', 'run.interrupt', 'shortcuts.show',
   ]) assert.ok(ids.includes(id as never), id)
   for (const c of COMMANDS) assert.ok(c.title.length > 0)
 })
@@ -103,7 +107,8 @@ test('the shortcuts overlay lists the Python keys: tables and stdout in Data, pl
 })
 
 test('shortcut labels use the Mac symbols', () => {
-  assert.equal(shortcutLabel('focus.terminal'), '⌘1')
+  assert.equal(shortcutLabel('focus.terminal'), '⌃1')
+  assert.equal(shortcutLabel('analysis.1'), '⌘1')
   assert.equal(shortcutLabel('palette.open'), '⌘P')
   assert.equal(shortcutLabel('tab.plots'), '⇧⌘P')
   assert.equal(shortcutLabel('code.run'), '⌘↩')
@@ -124,4 +129,19 @@ test('the shortcuts overlay lists pin in Data, Code and History, edit in Code, a
   assert.ok(keys('Code').includes('i'))
   assert.ok(keys('Code editing').includes('Esc'))
   assert.ok(keys('Code editing').includes('⌘↩'))
+})
+
+test('Cmd+1 to Cmd+9 switch to analyses 1 to 9; Ctrl+1 to Ctrl+3 focus the panes and Ctrl+4 up is not claimed', () => {
+  for (let n = 1; n <= 9; n++) {
+    assert.equal(commandForInput(input({ code: `Digit${n}`, meta: true })), `analysis.${n}`)
+  }
+  assert.equal(commandForInput(input({ code: 'Digit0', meta: true })), undefined)
+  for (const n of [4, 5, 9]) assert.equal(commandForInput(input({ code: `Digit${n}`, ctrl: true })), undefined, `ctrl ${n}`)
+  assert.equal(commandForInput(input({ code: 'KeyP', ctrl: true })), undefined)
+})
+
+test('the pane keys name Ctrl+2 for cycling the notes tabs', () => {
+  const keys = PANE_KEYS.flatMap(p => p.keys.map(([key]) => key))
+  assert.ok(keys.includes('⌃2 again'))
+  assert.ok(!keys.includes('⌘2 again'))
 })

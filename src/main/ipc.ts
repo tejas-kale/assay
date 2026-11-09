@@ -13,7 +13,7 @@ import { analysisRoot, chooseRootPath, saveRoot } from './settings.ts'
 import { listFiles, openChart, openFile, previewFile } from './browse.ts'
 import { THREADS, editFile, fsPort, loadState, readPlot, readRun, readSearchContents, rootOf, writeRequest } from './files.ts'
 import { addRootNote, readCitedRun, readRootNote, saveRootNote } from './notes.ts'
-import { attachAnalysis, broadcast, contextFor, createWindow, pushState, requestClose, startPty } from './windows.ts'
+import { attachAnalysis, broadcast, contextFor, hostWindow, openPicker, pushState, requestClose, retitle, showAnalysis, startPty } from './windows.ts'
 import type { WindowCtx } from './windows.ts'
 
 const MAX_WRITE = 1 << 20
@@ -76,7 +76,10 @@ export function registerIpc() {
     if (result.ok) broadcast(CHANNELS.settingsChanged, { root: result.root } satisfies SettingsView)
     return result
   })
-  handle(CHANNELS.settingsChooseRoot, ctx => chooseRootPath(ctx.win))
+  handle(CHANNELS.settingsChooseRoot, () => {
+    const win = hostWindow()
+    return win ? chooseRootPath(win) : undefined
+  })
 
   handle(CHANNELS.analysesCreate, async (ctx, title): Promise<OpenResult> => {
     if (typeof title !== 'string' || title.length > 200) return { ok: false, message: 'Invalid title' }
@@ -106,7 +109,7 @@ export function registerIpc() {
     if (!ctx.analysis || typeof title !== 'string' || title.length > 200) return { ok: false, message: 'Invalid title' }
     try {
       ctx.analysis = await renameAnalysis(fsPort, ctx.analysis.path, title)
-      ctx.win.setTitle(`${ctx.analysis.title} — Assay`)
+      retitle(ctx)
       void pushState(ctx)
       return { ok: true }
     } catch (err) {
@@ -214,9 +217,14 @@ export function registerIpc() {
   })
 
   handle(CHANNELS.windowNew, () => {
-    createWindow()
+    openPicker()
   })
   handle(CHANNELS.windowClose, ctx => {
     requestClose(ctx)
+  })
+  // The strip and the palette's Show analysis N. The strip is no analysis's view, so this skips senderCtx.
+  ipcMain.handle(CHANNELS.analysisShow, (event, n: unknown) => {
+    if (event.senderFrame !== event.sender.mainFrame) return
+    if (typeof n === 'number' && Number.isInteger(n) && n >= 1 && n <= 9) showAnalysis(n)
   })
 }

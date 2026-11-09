@@ -43,8 +43,17 @@ The code is the source of truth. `docs/slice-*.md` are the specs each slice was 
 
 ## Keys
 
-Every shortcut is in `src/core/keymap.ts`: `COMMANDS` (Cmd keys, caught in main before the terminal) and `PANE_KEYS`
-(single keys per pane). In the app, the palette's Show Shortcuts lists them all, and holding left Cmd shows hints.
+Every shortcut is in `src/core/keymap.ts`: `COMMANDS` (Cmd keys, plus Ctrl+1..3 for the panes, caught in main before
+the terminal) and `PANE_KEYS` (single keys per pane). In the app, the palette's Show Shortcuts lists them all. Holding
+left Cmd shows the Cmd shortcuts and the analysis numbers in the strip; holding left Ctrl shows the pane hints.
+
+## Several analyses in one window
+
+One window holds up to nine analyses (`docs/multi-analysis-window.md`). Each is its own `WebContentsView` running the
+whole renderer with its own Claude session, so a hidden one keeps running and keeps its UI state. Cmd+1..9 switches,
+Cmd+N opens another from the picker, Cmd+W closes the shown one. The strip along the bottom (`#strip`, the same
+renderer bundle) shows each analysis's Claude state, from `.assay/claude.json` that the plugin's `state` hook writes,
+and any run in progress. The open set is saved in the user data folder (`open-analyses.json`) and reopened at launch.
 
 ## Where things are
 
@@ -88,7 +97,8 @@ Built and tested with a stub Claude, simulated replies and the MCP SDK's client 
 2. The Trust tab's Check, Trust and Reject against a real proposal, the commit, and removing the `lib/` draft.
 3. A re-run or edited query from the app reaching the session, its latency, and Postgres re-runs.
 4. `note` from Claude, and Claude `revise_note` on a note open in the reader.
-5. Cmd+W and Cmd+Q closing a window while the wrapper finishes its git import.
+5. Cmd+W and Cmd+Q closing an analysis while the wrapper finishes its git import.
+6. The multi-analysis window: switching, the strip's Claude states from the `state` hook, and relaunch restore.
 
 ## Driving the app without a person
 

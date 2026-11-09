@@ -16,7 +16,7 @@ const outdir = process.argv[2] ?? 'out'
 await build({ ...common, entryPoints: { index: 'src/server/index.ts' }, outdir: `${outdir}/server`, outExtension: { '.js': '.mjs' } })
 await build({
   ...common,
-  entryPoints: { prompt: 'src/hooks/prompt.ts', bash: 'src/hooks/bash.ts', write: 'src/hooks/write.ts' },
+  entryPoints: { prompt: 'src/hooks/prompt.ts', bash: 'src/hooks/bash.ts', write: 'src/hooks/write.ts', state: 'src/hooks/state.ts' },
   outdir: `${outdir}/hooks`,
   outExtension: { '.js': '.mjs' },
 })

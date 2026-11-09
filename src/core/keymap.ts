@@ -8,7 +8,7 @@ export type CommandId =
   | 'code.edit'
   | 'code.new'
   | 'run.interrupt'
-  | 'window.new'
+  | 'analysis.new'
   | 'tab.data'
   | 'tab.plots'
   | 'tab.code'
@@ -18,16 +18,29 @@ export type CommandId =
   | 'tab.notes'
   | 'tab.threads'
   | 'tab.files'
-  | 'window.close'
+  | 'analysis.close'
   | 'settings.open'
   | 'pin.toggle'
   | 'kernel.restart'
   | 'replay.open'
   | 'analysis.rename'
   | 'shortcuts.show'
+  | AnalysisSwitch
 
-/** A Cmd shortcut, by physical key `code` (for example `Digit1`) so layouts do not matter. Cmd is always implied. */
-export type KeySpec = { code: string; shift?: true }
+/** Cmd+1 to Cmd+9: show that analysis in the window's set (core/analysisSet.ts). */
+export type AnalysisSwitch = `analysis.${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`
+
+/** The number an analysis-switch command shows, or undefined for any other command. */
+export function analysisNumber(id: CommandId): number | undefined {
+  const match = /^analysis\.([1-9])$/.exec(id)
+  return match ? Number(match[1]) : undefined
+}
+
+/**
+ * A shortcut, by physical key `code` (for example `Digit1`) so layouts do not matter. Cmd is implied, unless `ctrl`
+ * puts Ctrl in its place (the pane keys, so Cmd+number can switch analyses).
+ */
+export type KeySpec = { code: string; shift?: true; ctrl?: true }
 
 export type Command = {
   id: CommandId
@@ -36,17 +49,17 @@ export type Command = {
 }
 
 export const COMMANDS: readonly Command[] = [
-  { id: 'focus.terminal', title: 'Focus terminal', accelerator: { code: 'Digit1' } },
-  { id: 'focus.notes', title: 'Focus notes and threads', accelerator: { code: 'Digit2' } },
-  { id: 'focus.data', title: 'Focus data pane', accelerator: { code: 'Digit3' } },
+  { id: 'focus.terminal', title: 'Focus terminal', accelerator: { code: 'Digit1', ctrl: true } },
+  { id: 'focus.notes', title: 'Focus notes and threads', accelerator: { code: 'Digit2', ctrl: true } },
+  { id: 'focus.data', title: 'Focus data pane', accelerator: { code: 'Digit3', ctrl: true } },
   { id: 'palette.open', title: 'Command palette', accelerator: { code: 'KeyP' } },
   { id: 'search.open', title: 'Search everything', accelerator: { code: 'KeyF' } },
   { id: 'code.run', title: 'Run current code, or the selected SQL', accelerator: { code: 'Enter' } },
   { id: 'code.edit', title: 'Edit current code', accelerator: { code: 'KeyE' } },
   { id: 'code.new', title: 'New SQL query' },
   { id: 'run.interrupt', title: 'Interrupt run', accelerator: { code: 'Period' } },
-  { id: 'window.new', title: 'New window', accelerator: { code: 'KeyN' } },
-  { id: 'window.close', title: 'Close window', accelerator: { code: 'KeyW' } },
+  { id: 'analysis.new', title: 'Open another analysis', accelerator: { code: 'KeyN' } },
+  { id: 'analysis.close', title: 'Close analysis', accelerator: { code: 'KeyW' } },
   { id: 'settings.open', title: 'Settings', accelerator: { code: 'Comma' } },
   { id: 'tab.data', title: 'Show Data tab', accelerator: { code: 'KeyD', shift: true } },
   { id: 'tab.plots', title: 'Show Plots tab', accelerator: { code: 'KeyP', shift: true } },
@@ -62,6 +75,11 @@ export const COMMANDS: readonly Command[] = [
   { id: 'kernel.restart', title: 'Restart kernel' },
   { id: 'replay.open', title: 'Replay' },
   { id: 'analysis.rename', title: 'Rename analysis' },
+  ...([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map(n => ({
+    id: `analysis.${n}` as const,
+    title: `Show analysis ${n}`,
+    accelerator: { code: `Digit${n}` },
+  })),
 ]
 
 /** The parts of Electron's `Input` that matter here. */
@@ -69,9 +87,13 @@ export type KeyInput = { key: string; code: string; meta: boolean; shift: boolea
 
 /** The command a key press claims, or undefined to let it through to the terminal. */
 export function commandForInput(input: KeyInput): CommandId | undefined {
-  if (!input.meta || input.ctrl || input.alt) return undefined
+  if (input.alt || input.meta === input.ctrl) return undefined
   return COMMANDS.find(
-    c => c.accelerator && c.accelerator.code === input.code && (c.accelerator.shift ?? false) === input.shift,
+    c =>
+      c.accelerator &&
+      c.accelerator.code === input.code &&
+      (c.accelerator.shift ?? false) === input.shift &&
+      (c.accelerator.ctrl ?? false) === input.ctrl,
   )?.id
 }
 
@@ -82,18 +104,18 @@ export function shortcutLabel(id: CommandId): string {
   const a = COMMANDS.find(c => c.id === id)?.accelerator
   if (!a) return ''
   const key = a.code.replace(/^Key|^Digit/, '')
-  return `${a.shift ? '⇧' : ''}⌘${KEY_SYMBOLS[key] ?? key}`
+  return `${a.shift ? '⇧' : ''}${a.ctrl ? '⌃' : '⌘'}${KEY_SYMBOLS[key] ?? key}`
 }
 
 /** Single keys inside a pane, for the Show Shortcuts overlay. The panes no longer print them. */
 export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
   {
     pane: 'Threads',
-    keys: [['⌘2 again', 'switch to Notes'], ['j / k', 'move'], ['/', 'search'], ['Tab', 'full text in a pop-up'], ['a', 'add'], ['e', 'edit'], ['c', 'close'], ['d', 'delete'], ['J / K', 'reorder'], ['z', 'show / hide closed threads']],
+    keys: [['⌃2 again', 'switch to Notes'], ['j / k', 'move'], ['/', 'search'], ['Tab', 'full text in a pop-up'], ['a', 'add'], ['e', 'edit'], ['c', 'close'], ['d', 'delete'], ['J / K', 'reorder'], ['z', 'show / hide closed threads']],
   },
   {
     pane: 'Notes',
-    keys: [['⌘2 again', 'switch to Files'], ['j / k', 'move'], ['/', 'search'], ['Enter', 'read note'], ['a', 'add note (⌘Enter saves)'], ['e', 'edit']],
+    keys: [['⌃2 again', 'switch to Files'], ['j / k', 'move'], ['/', 'search'], ['Enter', 'read note'], ['a', 'add note (⌘Enter saves)'], ['e', 'edit']],
   },
   {
     pane: 'Note reader',
@@ -123,7 +145,7 @@ export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
   { pane: 'Trust', keys: [['J / K  ↑ / ↓', 'choose a proposal'], ['c / Enter', 'check it'], ['t / r', 'trust / reject, once every check passed'], ['l', 'list the proposals again'], ['j / k', 'scroll'], ['g / G', 'top / bottom'], ['⌘↩', 'run the selected SQL (opens in Data)']] },
   {
     pane: 'Files',
-    keys: [['j / k', 'move'], ['/', 'search'], ['Enter', 'open: text in Neovim, Mermaid chart in the browser, image preview'], ['Tab', 'preview in a pop-up'], ['r', 'refresh'], ['⌘2 again', 'switch to Threads']],
+    keys: [['j / k', 'move'], ['/', 'search'], ['Enter', 'open: text in Neovim, Mermaid chart in the browser, image preview'], ['Tab', 'preview in a pop-up'], ['r', 'refresh'], ['⌃2 again', 'switch to Threads']],
   },
   {
     pane: 'Search (⌘F)',

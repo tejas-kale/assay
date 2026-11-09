@@ -28,7 +28,7 @@ type Props = {
   onToast: (text: string) => void
   /** A short message from the last command. */
   toast: string | undefined
-  /** Left Cmd is long-pressed: show each pane's shortcuts. */
+  /** Left Ctrl is long-pressed: show each pane's shortcuts. */
   hints: boolean
   /** A note's citation was followed: hold that run in the data pane. */
   onShowRun: (number: number) => void

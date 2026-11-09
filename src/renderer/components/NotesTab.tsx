@@ -92,7 +92,7 @@ export function NotesTab(props: {
 
   const readNote = mode.type === 'read' ? rootNotes.find(n => n.name === mode.name) : undefined
   const editNote = mode.type === 'editNote' ? rootNotes.find(n => n.name === mode.name) : undefined
-  // The reader, the editor and the add form carry the focus target themselves, so Cmd+2 reaches them rather than the list.
+  // The reader, the editor and the add form carry the focus target themselves, so Ctrl+2 reaches them rather than the list.
   const ownsFocus = mode.type === 'read' || mode.type === 'editNote' || mode.type === 'add'
   const now = Date.now()
 

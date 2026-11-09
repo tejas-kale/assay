@@ -6,12 +6,12 @@ import type { CommandId } from '../../core/keymap.ts'
 const GLOBAL: [CommandId, string][] = [
   ['palette.open', 'Palette'],
   ['search.open', 'Search'],
-  ['window.new', 'New window'],
-  ['window.close', 'Close'],
+  ['analysis.new', 'Open analysis'],
+  ['analysis.close', 'Close analysis'],
   ['settings.open', 'Settings'],
 ]
 
-/** One pane's hint, shown in its top-right corner while left Cmd is held. */
+/** One pane's hint, shown in its top-right corner while left Ctrl is held. */
 export const PaneHint = ({ children }: { children: string }) => (
   <span className="key-hint" aria-hidden="true">
     {children}

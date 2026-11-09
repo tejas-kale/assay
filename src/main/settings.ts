@@ -1,7 +1,7 @@
 // The app's settings file, in Electron's per-user data folder. Written by temp file and rename,
 // like the analysis files.
 import { app, dialog } from 'electron'
-import type { BrowserWindow } from 'electron'
+import type { BaseWindow } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -31,7 +31,7 @@ export async function saveRoot(input: string): Promise<SetRootResult> {
   return { ok: true, root: result.path }
 }
 
-export async function chooseRootPath(win: BrowserWindow): Promise<string | undefined> {
+export async function chooseRootPath(win: BaseWindow): Promise<string | undefined> {
   const { canceled, filePaths } = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] })
   return canceled ? undefined : filePaths[0]
 }

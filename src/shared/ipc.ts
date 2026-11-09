@@ -7,6 +7,8 @@
 
 import type { Analysis, AnalysisRef } from '../core/analyses.ts'
 import type { CommandId } from '../core/keymap.ts'
+import type { HoldKind } from '../core/cmdHold.ts'
+import type { StripEntry } from '../core/strip.ts'
 import type { FileEntry } from '../core/files.ts'
 import type { CitationLabel } from '../core/citationLabels.ts'
 import type { NoteLists, RootNote } from '../core/rootNotes.ts'
@@ -61,9 +63,9 @@ export type PlotResult = { ok: true; dataUrl: string } | { ok: false; message: s
 export type RequestResult = { ok: true; id: string } | { ok: false; message: string }
 
 export type OpenResult =
-  /** This window is now the workspace for `path`. */
+  /** This view is now the workspace for `path`. */
   | { ok: true; outcome: 'opened'; path: string }
-  /** The analysis is open in another window, which main focused; this window stays on the picker. */
+  /** The analysis is already open in another view, which main showed; this picker view is closed. */
   | { ok: true; outcome: 'focused-other-window'; path: string }
   | { ok: false; message: string }
 
@@ -180,15 +182,19 @@ export type AppApi = {
   }
 
   /**
-   * A shortcut claimed in main's before-input-event (see core/keymap.ts). Main handles
-   * `window.new` and `window.close` itself and never sends them here; the palette calls
-   * `newWindow()` and `closeWindow()` for those two.
+   * A shortcut claimed in main's before-input-event (see core/keymap.ts). Main handles `analysis.new`,
+   * `analysis.close` and `analysis.1` to `analysis.9` itself and never sends them here; the palette calls
+   * `newWindow()`, `closeWindow()` and `showAnalysis(n)` for those.
    */
   onCommand(cb: (id: CommandId) => void): Unsubscribe
-  /** Opens a new picker window (Cmd+N). */
+  /** Shows the picker to open another analysis in this window (Cmd+N). */
   newWindow(): Promise<void>
-  /** Same path as the window's close button: starts the graceful close while a session runs. */
+  /** Closes this analysis (Cmd+W): starts the graceful close while its session runs. */
   closeWindow(): Promise<void>
+  /** Shows analysis `n` of the window's set (Cmd+1..9, a click on the strip). */
+  showAnalysis(n: number): Promise<void>
+  /** The analysis strip's entries, about once a second; only the strip view listens. */
+  onStripEntries(cb: (entries: StripEntry[]) => void): Unsubscribe
 
   settings: {
     get(): Promise<SettingsView>
@@ -200,8 +206,8 @@ export type AppApi = {
     onChange(cb: (settings: SettingsView) => void): Unsubscribe
   }
 
-  /** True while left Cmd is long-pressed: show the navigation hints. */
-  onHints(cb: (visible: boolean) => void): Unsubscribe
+  /** Which hints a long press shows: left Cmd the Cmd shortcuts and analysis numbers, left Ctrl the pane numbers. */
+  onHints(cb: (kind: HoldKind | undefined) => void): Unsubscribe
 
   /**
    * Graceful-close state. 'closing' -> show the "Closing: waiting for the session to finish" banner
@@ -240,6 +246,7 @@ export const CHANNELS = {
   searchContents: 'search:contents',
   windowNew: 'window:new',
   windowClose: 'window:close',
+  analysisShow: 'analysis:show',
   settingsGet: 'settings:get',
   settingsSetRoot: 'settings:setRoot',
   settingsChooseRoot: 'settings:chooseRoot',
@@ -255,6 +262,7 @@ export const CHANNELS = {
   closeState: 'close:state',
   settingsChanged: 'settings:changed',
   hints: 'hints',
+  stripEntries: 'strip:entries',
 } as const
 
 export type Channel = (typeof CHANNELS)[keyof typeof CHANNELS]

@@ -243,3 +243,17 @@ table.grid th.cur-col { color: var(--accent); }
 .check-bad { color: var(--bad); }
 .mermaid-diagram svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 .mermaid-file { flex: 1; min-height: 0; overflow: auto; }
+
+/* The analysis strip (components/Strip.tsx): its own view, STRIP_HEIGHT (main/windows.ts) tall. */
+.strip { height: 26px; display: flex; align-items: center; gap: 2px; padding: 0 8px; background: var(--panel); border-top: 1px solid var(--line); overflow: hidden; }
+.strip-entry { display: flex; align-items: center; gap: 6px; height: 20px; padding: 0 8px; border: 1px solid transparent; border-radius: 4px; background: none; color: var(--dim); font-size: 11px; white-space: nowrap; cursor: pointer; }
+.strip-entry.current { border-color: var(--accent); color: var(--text); }
+.strip-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; border: 1px solid var(--dim); }
+.strip-dot.working { background: var(--accent); border-color: var(--accent); animation: strip-pulse 1.2s ease-in-out infinite; }
+.strip-dot.waiting { background: var(--warn); border-color: var(--warn); }
+.strip-dot.idle { background: none; }
+.strip-dot.ended { background: var(--line); border-color: var(--line); }
+.strip-name b { font-weight: 600; }
+.strip-run { color: var(--accent); font-variant-numeric: tabular-nums; }
+@keyframes strip-pulse { 50% { opacity: 0.4; } }
+@media (prefers-reduced-motion: reduce) { .strip-dot.working { animation: none; } }

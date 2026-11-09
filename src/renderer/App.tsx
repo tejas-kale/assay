@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { analysisNumber } from '../core/keymap.ts'
 import type { CommandId } from '../core/keymap.ts'
+import type { HoldKind } from '../core/cmdHold.ts'
 import { runningPythonRun } from '../core/runs.ts'
 import type { AnalysisState, SettingsView } from '../shared/ipc.ts'
 import { GlobalHints, ShortcutsOverlay } from './components/KeyHints.tsx'
@@ -32,7 +34,7 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState<{ returnTo: PaneName | undefined }>()
   const [settings, setSettings] = useState<SettingsView>()
   const [isRenaming, setRenaming] = useState(false)
-  const [hints, setHints] = useState(false)
+  const [hints, setHints] = useState<HoldKind>()
   const [shortcuts, setShortcuts] = useState(0)
   const [pickerFocus, setPickerFocus] = useState(0)
   const [toast, setToast] = useState<string>()
@@ -196,14 +198,18 @@ export function App() {
           // The pane switches to Code and focuses the editor itself once it has the run's text.
           setDataCommand({ id, n: ++counter.current })
           return true
-        case 'window.new':
+        case 'analysis.new':
           void window.app.newWindow()
           return false
-        case 'window.close':
+        case 'analysis.close':
           void window.app.closeWindow()
           return false
-        default:
+        default: {
+          // Show analysis N, from the palette; the keys go straight to main.
+          const n = analysisNumber(id)
+          if (n !== undefined) void window.app.showAnalysis(n)
           return false
+        }
       }
     },
     [focusPane, showToast],
@@ -267,7 +273,7 @@ export function App() {
           dataCommand={dataCommand}
           onToast={showToast}
           toast={toast}
-          hints={hints}
+          hints={hints === 'ctrl'}
           onShowRun={number => setDataCommand({ id: 'run.show', number, n: ++counter.current })}
           reveal={reveal}
           onRevealed={() => setReveal(undefined)}
@@ -300,7 +306,7 @@ export function App() {
       )}
       {settingsOpen && settings && <Settings root={settings.root} onClose={closeSettings} />}
       {!settingsOpen && settings && !settings.root && view.type === 'picker' && <Settings root={undefined} onClose={undefined} />}
-      {hints && <GlobalHints />}
+      {hints === 'cmd' && <GlobalHints />}
       {shortcuts > 0 && <ShortcutsOverlay key={shortcuts} onDone={() => setShortcuts(0)} />}
       {view.type === 'picker' && toast && <div className="toast floating">{toast}</div>}
     </>

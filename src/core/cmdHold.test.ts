@@ -2,9 +2,10 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { HOLD_MS, cmdHold } from './cmdHold.ts'
+import type { HoldKind } from './cmdHold.ts'
 
 function setup() {
-  const seen: boolean[] = []
+  const seen: (HoldKind | undefined)[] = []
   const timers: { cb: () => void; ms: number; cancelled: boolean }[] = []
   const hold = cmdHold({
     onChange: visible => seen.push(visible),
@@ -26,9 +27,9 @@ test('holding left Cmd shows the hints after the hold time, and releasing hides 
   assert.deepEqual(seen, [])
   assert.equal(timers[0]?.ms, HOLD_MS)
   fire()
-  assert.deepEqual(seen, [true])
+  assert.deepEqual(seen, ['cmd'])
   hold.key('keyUp', 'MetaLeft')
-  assert.deepEqual(seen, [true, false])
+  assert.deepEqual(seen, ['cmd', undefined])
 })
 
 test('a quick tap shows nothing', () => {
@@ -60,9 +61,9 @@ test('a shortcut pressed while they show hides them, and they stay hidden until 
   hold.key('keyDown', 'MetaLeft')
   fire()
   hold.key('keyDown', 'KeyP')
-  assert.deepEqual(seen, [true, false])
+  assert.deepEqual(seen, ['cmd', undefined])
   hold.key('keyUp', 'MetaLeft')
-  assert.deepEqual(seen, [true, false])
+  assert.deepEqual(seen, ['cmd', undefined])
   hold.key('keyDown', 'MetaLeft')
   assert.equal(timers.length, 2)
 })
@@ -72,9 +73,9 @@ test('Shift on its own does not cancel, so Cmd+Shift hints stay reachable', () =
   hold.key('keyDown', 'MetaLeft')
   hold.key('keyDown', 'ShiftLeft')
   fire()
-  assert.deepEqual(seen, [true])
+  assert.deepEqual(seen, ['cmd'])
   hold.key('keyUp', 'ShiftLeft')
-  assert.deepEqual(seen, [true])
+  assert.deepEqual(seen, ['cmd'])
 })
 
 test('losing window focus hides them, since the key-up would never arrive', () => {
@@ -82,11 +83,11 @@ test('losing window focus hides them, since the key-up would never arrive', () =
   hold.key('keyDown', 'MetaLeft')
   fire()
   hold.blur()
-  assert.deepEqual(seen, [true, false])
+  assert.deepEqual(seen, ['cmd', undefined])
   hold.key('keyDown', 'MetaLeft')
   hold.blur()
   assert.equal(timers[1]?.cancelled, true)
-  assert.deepEqual(seen, [true, false])
+  assert.deepEqual(seen, ['cmd', undefined])
 })
 
 test('a repeated key-down does not start a second timer', () => {
@@ -94,4 +95,30 @@ test('a repeated key-down does not start a second timer', () => {
   hold.key('keyDown', 'MetaLeft')
   hold.key('keyDown', 'MetaLeft')
   assert.equal(timers.length, 1)
+})
+
+test('holding left Ctrl shows the pane hints; releasing hides them', () => {
+  const { hold, seen, timers, fire } = setup()
+  hold.key('keyDown', 'ControlLeft')
+  assert.equal(timers[0]?.ms, HOLD_MS)
+  fire()
+  hold.key('keyUp', 'ControlLeft')
+  assert.deepEqual(seen, ['ctrl', undefined])
+})
+
+test('a Ctrl key combination such as Ctrl-C cancels the Ctrl hold, so typing in the terminal never flashes hints', () => {
+  const { hold, seen, timers } = setup()
+  hold.key('keyDown', 'ControlLeft')
+  hold.key('keyDown', 'KeyC')
+  assert.equal(timers[0]?.cancelled, true)
+  assert.deepEqual(seen, [])
+})
+
+test('pressing the other hold key while one is held cancels both', () => {
+  const { hold, seen, timers, fire } = setup()
+  hold.key('keyDown', 'MetaLeft')
+  hold.key('keyDown', 'ControlLeft')
+  fire()
+  assert.equal(timers[0]?.cancelled, true)
+  assert.deepEqual(seen, [])
 })

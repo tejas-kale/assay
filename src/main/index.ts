@@ -3,7 +3,7 @@ import type { MenuItemConstructorOptions } from 'electron'
 import { fileURLToPath } from 'node:url'
 
 import { registerIpc } from './ipc.ts'
-import { allContexts, createWindow, followSystemTheme, isLive, requestClose, setOnClosed, setOnKeepWaiting } from './windows.ts'
+import { allContexts, closeAll, ensureWindow, followSystemTheme, hostWindow, isLive, setOnClosed, setOnKeepWaiting } from './windows.ts'
 
 // Only standard roles. Shortcuts of the app's own commands (Cmd+W, Cmd+N, ...) live in core/keymap.ts
 // and are caught in before-input-event; a duplicate accelerator here would fire twice.
@@ -22,7 +22,7 @@ function buildMenu(): Menu {
   return Menu.buildFromTemplate(template)
 }
 
-// Cmd+Q: run the close flow in every window and quit when the last session has exited.
+// Cmd+Q: run the close flow in every analysis and quit when the last session has exited.
 let quitPending = false
 let quitting = false
 
@@ -42,14 +42,14 @@ app.on('before-quit', event => {
   }
   event.preventDefault()
   quitPending = true
-  for (const ctx of allContexts()) requestClose(ctx)
+  closeAll()
 })
 
 setOnClosed(() => {
   finishQuitIfDone()
 })
 
-// "Keep waiting" cancels the quit, so the next window close must not quit the app.
+// "Keep waiting" cancels the quit, so the next analysis close must not quit the app.
 setOnKeepWaiting(() => {
   quitPending = false
 })
@@ -59,7 +59,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('activate', () => {
-  if (allContexts().length === 0 && !quitPending) createWindow()
+  if (!hostWindow() && !quitPending) ensureWindow(true)
 })
 
 void app.whenReady().then(() => {
@@ -72,5 +72,5 @@ void app.whenReady().then(() => {
   Menu.setApplicationMenu(buildMenu())
   registerIpc()
   followSystemTheme()
-  createWindow()
+  ensureWindow(true)
 })
