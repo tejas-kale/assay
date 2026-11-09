@@ -67,6 +67,7 @@ const api: AppApi = {
   closeWindow: () => invoke(CHANNELS.windowClose),
   showAnalysis: n => invoke(CHANNELS.analysisShow, n),
   onStripEntries: cb => subscribe(CHANNELS.stripEntries, cb),
+  toggleStripSide: () => invoke(CHANNELS.stripSide),
   settings: {
     get: () => invoke(CHANNELS.settingsGet),
     setRoot: input => invoke(CHANNELS.settingsSetRoot, input),

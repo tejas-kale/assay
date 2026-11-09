@@ -1,40 +1,39 @@
-// The analysis strip along the bottom of the window: one entry per open analysis with Claude's state and any run in
-// progress. Its own view (main loads the page with #strip). Numbers and titles show while left Cmd is held.
+// The analysis strip: one entry per open analysis with its title, Claude's state and any run in progress. Its own
+// view (main loads the page with #strip), along the bottom or down the left (the palette's Move analysis strip).
+// Holding left Cmd adds each entry's Cmd+number.
 import { useEffect, useState } from 'react'
 
 import type { HoldKind } from '../../core/cmdHold.ts'
 import type { StripEntry } from '../../core/strip.ts'
+import type { StripView } from '../../shared/ipc.ts'
 
 const STATE_LABEL: Record<StripEntry['state'], string> = {
-  working: 'Claude working',
-  waiting: 'Claude waiting for you',
-  idle: 'Claude idle',
-  ended: 'Session ended',
+  working: 'working',
+  waiting: 'waiting for you',
+  idle: 'idle',
+  ended: 'session ended',
 }
 
 export function Strip() {
-  const [entries, setEntries] = useState<StripEntry[]>([])
+  const [view, setView] = useState<StripView>({ side: 'bottom', entries: [] })
   const [hints, setHints] = useState<HoldKind>()
   useEffect(() => {
-    const stops = [window.app.onStripEntries(setEntries), window.app.onHints(setHints)]
+    const stops = [window.app.onStripEntries(setView), window.app.onHints(setHints)]
     return () => stops.forEach(stop => stop())
   }, [])
-  const named = hints === 'cmd'
   return (
-    <nav className="strip" aria-label="Open analyses">
-      {entries.map(entry => (
+    <nav className={`strip ${view.side}`} aria-label="Open analyses">
+      {view.entries.map(entry => (
         <button
           key={entry.number}
           className={`strip-entry${entry.current ? ' current' : ''}`}
-          title={`⌘${entry.number} ${entry.title}: ${STATE_LABEL[entry.state]}`}
+          title={`⌘${entry.number}  ${entry.title}`}
           onClick={() => void window.app.showAnalysis(entry.number)}
         >
-          <span className={`strip-dot ${entry.state}`} aria-label={STATE_LABEL[entry.state]} />
-          {named && (
-            <span className="strip-name">
-              <b>⌘{entry.number}</b> {entry.title}
-            </span>
-          )}
+          <span className={`strip-dot ${entry.state}`} aria-hidden="true" />
+          {hints === 'cmd' && <b className="strip-key">⌘{entry.number}</b>}
+          <span className="strip-title">{entry.label}</span>
+          <span className={`strip-state ${entry.state}`}>{STATE_LABEL[entry.state]}</span>
           {entry.run && <span className="strip-run">#{entry.run.number} {entry.run.duration}</span>}
         </button>
       ))}

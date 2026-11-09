@@ -18,6 +18,8 @@ export type StripFacts = {
 export type StripEntry = {
   number: number
   title: string
+  /** The title cut to TITLE_CHARS, for the strip; `title` is the full one, for the tooltip. */
+  label: string
   state: ClaudeState | 'ended'
   current: boolean
   run?: { number: number; duration: string }
@@ -27,11 +29,24 @@ export function stripEntry(facts: StripFacts, nowMs: number): StripEntry {
   const entry: StripEntry = {
     number: facts.number,
     title: facts.title,
+    label: shortTitle(facts.title, TITLE_CHARS),
     state: facts.sessionLive ? facts.claude : 'ended',
     current: facts.current,
   }
   if (facts.running) entry.run = { number: facts.running.number, duration: runDuration(facts.running.startedAt, nowMs) }
   return entry
+}
+
+/** How much of a title the strip shows: room for four entries across the bottom of a laptop screen. */
+export const TITLE_CHARS = 24
+
+/** `title` in at most `max` characters: cut at the last word break in the second half if there is one, then `…`. */
+export function shortTitle(title: string, max: number): string {
+  const trimmed = title.trim()
+  if (trimmed.length <= max) return trimmed
+  const cut = trimmed.slice(0, max - 1)
+  const space = cut.lastIndexOf(' ')
+  return `${(space >= max / 2 ? cut.slice(0, space) : cut).trimEnd()}…`
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')

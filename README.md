@@ -51,8 +51,8 @@ left Cmd shows the Cmd shortcuts and the analysis numbers in the strip; holding 
 
 One window holds up to nine analyses (`docs/multi-analysis-window.md`). Each is its own `WebContentsView` running the
 whole renderer with its own Claude session, so a hidden one keeps running and keeps its UI state. Cmd+1..9 switches,
-Cmd+N opens another from the picker, Cmd+W closes the shown one. The strip along the bottom (`#strip`, the same
-renderer bundle) shows each analysis's Claude state, from `.assay/claude.json` that the plugin's `state` hook writes,
+Cmd+N opens another from the picker, Cmd+W closes the shown one. The strip along the bottom, or down the left after
+the palette's Move analysis strip (`#strip`, the same renderer bundle), shows each analysis's title and Claude state, from `.assay/claude.json` that the plugin's `state` hook writes,
 and any run in progress. The open set is saved in the user data folder (`open-analyses.json`) and reopened at launch.
 
 ## Where things are

@@ -204,6 +204,9 @@ export function App() {
         case 'analysis.close':
           void window.app.closeWindow()
           return false
+        case 'strip.side':
+          void window.app.toggleStripSide()
+          return false
         default: {
           // Show analysis N, from the palette; the keys go straight to main.
           const n = analysisNumber(id)

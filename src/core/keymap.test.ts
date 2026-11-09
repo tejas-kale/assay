@@ -82,8 +82,9 @@ test('no two commands share an accelerator', () => {
   assert.equal(new Set(keys).size, keys.length)
 })
 
-test('restart kernel, replay and new SQL query are palette-only commands', () => {
-  for (const id of ['kernel.restart', 'replay.open', 'code.new']) {
+test('restart kernel, replay, new SQL query and moving the strip are palette-only commands', () => {
+  assert.equal(COMMANDS.find(c => c.id === 'strip.side')?.title, 'Move analysis strip: bottom / left')
+  for (const id of ['kernel.restart', 'replay.open', 'code.new', 'strip.side']) {
     const command = COMMANDS.find(c => c.id === id)
     assert.ok(command, id)
     assert.equal(command.accelerator, undefined)

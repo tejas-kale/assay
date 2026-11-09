@@ -20,8 +20,11 @@ second analysis needs Cmd+N and a separate window. Three pains:
    - Pane focus (terminal, notes and threads, data) moves from Cmd+1..3 to Ctrl+1..3.
    - Holding Cmd shows each analysis's number and title alongside the other Cmd hints. Holding Ctrl shows pane
      numbers.
-3. **Strip.** A thin bar is always visible at the bottom, with one entry per analysis. Each entry shows Claude's
-   state (working, waiting for you, idle) and any run in progress with its duration. A waiting analysis only gets a
+3. **Strip.** A thin bar is always visible at the bottom, with one entry per analysis. Each entry shows the title
+   (cut to 24 characters), Claude's state as a dot and a word (working, waiting for you, idle) and any run in
+   progress with its duration. Changed after first use: the user keeps 3-4 analyses open, so titles always show
+   rather than only on Cmd hold; Cmd hold adds the numbers. The palette's "Move analysis strip: bottom / left"
+   moves it down the left side, to compare; the choice is saved. A waiting analysis only gets a
    badge on the strip: no system notification, no dock bounce. This avoids pulling the user away from the current
    analysis.
 4. **State kept on switch.** The full UI state of each analysis: active tabs, scroll positions, open code or editor,

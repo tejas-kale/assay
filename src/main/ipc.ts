@@ -13,7 +13,7 @@ import { analysisRoot, chooseRootPath, saveRoot } from './settings.ts'
 import { listFiles, openChart, openFile, previewFile } from './browse.ts'
 import { THREADS, editFile, fsPort, loadState, readPlot, readRun, readSearchContents, rootOf, writeRequest } from './files.ts'
 import { addRootNote, readCitedRun, readRootNote, saveRootNote } from './notes.ts'
-import { attachAnalysis, broadcast, contextFor, hostWindow, openPicker, pushState, requestClose, retitle, showAnalysis, startPty } from './windows.ts'
+import { attachAnalysis, broadcast, contextFor, hostWindow, openPicker, pushState, requestClose, retitle, showAnalysis, startPty, toggleStripSide } from './windows.ts'
 import type { WindowCtx } from './windows.ts'
 
 const MAX_WRITE = 1 << 20
@@ -226,5 +226,8 @@ export function registerIpc() {
   ipcMain.handle(CHANNELS.analysisShow, (event, n: unknown) => {
     if (event.senderFrame !== event.sender.mainFrame) return
     if (typeof n === 'number' && Number.isInteger(n) && n >= 1 && n <= 9) showAnalysis(n)
+  })
+  handle(CHANNELS.stripSide, () => {
+    toggleStripSide()
   })
 }

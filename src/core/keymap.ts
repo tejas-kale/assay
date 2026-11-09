@@ -25,6 +25,7 @@ export type CommandId =
   | 'replay.open'
   | 'analysis.rename'
   | 'shortcuts.show'
+  | 'strip.side'
   | AnalysisSwitch
 
 /** Cmd+1 to Cmd+9: show that analysis in the window's set (core/analysisSet.ts). */
@@ -75,6 +76,7 @@ export const COMMANDS: readonly Command[] = [
   { id: 'kernel.restart', title: 'Restart kernel' },
   { id: 'replay.open', title: 'Replay' },
   { id: 'analysis.rename', title: 'Rename analysis' },
+  { id: 'strip.side', title: 'Move analysis strip: bottom / left' },
   ...([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map(n => ({
     id: `analysis.${n}` as const,
     title: `Show analysis ${n}`,

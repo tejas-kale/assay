@@ -26,7 +26,7 @@ import { failedMessage, justAnswered, justFailed } from '../core/trust.ts'
 import type { TrustReview } from '../core/trust.ts'
 import { pollFiles, pollSignature } from '../core/watch.ts'
 import { CHANNELS } from '../shared/ipc.ts'
-import type { OpenResult, PtyExit } from '../shared/ipc.ts'
+import type { OpenResult, PtyExit, StripSide, StripView } from '../shared/ipc.ts'
 import { QUERIES, REPLIES_DIR, RUN_STATUS, THREADS, TRUST_DIR, fsPort, loadState, notesSignature, rootOf, takeReplies, watchPort } from './files.ts'
 import { startSession } from './session.ts'
 import { analysisRoot } from './settings.ts'
@@ -60,10 +60,13 @@ type Host = {
   /** Closing every analysis (Cmd+Q or the window's close button): the set is not saved again until the window is gone. */
   closingAll: boolean
   stopStrip: () => void
+  /** Where the strip sits; the palette's Move analysis strip flips it, and it is saved. */
+  side: StripSide
 }
 
-/** Height of the analysis strip, in CSS pixels; the renderer's `.strip` matches it. */
-const STRIP_HEIGHT = 26
+/** The analysis strip's height along the bottom, or its width down the left, in CSS pixels. */
+const STRIP_HEIGHT = 28
+const STRIP_WIDTH = 220
 const STRIP_MS = 1000
 
 const here = fileURLToPath(new URL('.', import.meta.url))
@@ -174,8 +177,13 @@ export function ensureWindow(restore = false): Host {
   guardPage(strip.webContents)
   win.contentView.addChildView(strip)
   const timer = setInterval(() => void refreshStrip(), STRIP_MS)
-  const h: Host = { win, strip, set: EMPTY_SET, picker: undefined, closingAll: false, stopStrip: () => clearInterval(timer) }
+  const h: Host = { win, strip, set: EMPTY_SET, picker: undefined, closingAll: false, stopStrip: () => clearInterval(timer), side: 'bottom' }
   host = h
+  void readSide().then(side => {
+    h.side = side
+    layout()
+    void refreshStrip()
+  })
 
   const hold = cmdHold({
     onChange: kind => {
@@ -241,9 +249,38 @@ let hostHold: ReturnType<typeof cmdHold> | undefined
 function layout() {
   if (!host) return
   const { width, height } = host.win.getContentBounds()
+  if (host.side === 'left') {
+    const stripWidth = Math.min(STRIP_WIDTH, width)
+    for (const ctx of allContexts()) ctx.view.setBounds({ x: stripWidth, y: 0, width: width - stripWidth, height })
+    host.strip.setBounds({ x: 0, y: 0, width: stripWidth, height })
+    return
+  }
   const main = { x: 0, y: 0, width, height: Math.max(0, height - STRIP_HEIGHT) }
   for (const ctx of allContexts()) ctx.view.setBounds(main)
   host.strip.setBounds({ x: 0, y: main.height, width, height: STRIP_HEIGHT })
+}
+
+const sidePath = () => join(app.getPath('userData'), 'strip.json')
+
+async function readSide(): Promise<StripSide> {
+  try {
+    const side: unknown = Reflect.get(JSON.parse(await readFile(sidePath(), 'utf8')) as object, 'side')
+    return side === 'left' ? 'left' : 'bottom'
+  } catch {
+    return 'bottom'
+  }
+}
+
+/** The palette's Move analysis strip: bottom to left and back, kept for the next launch. */
+export function toggleStripSide() {
+  if (!host) return
+  host.side = host.side === 'bottom' ? 'left' : 'bottom'
+  layout()
+  void refreshStrip()
+  const temp = `${sidePath()}.${randomUUID()}.tmp`
+  void writeFile(temp, JSON.stringify({ side: host.side }))
+    .then(() => rename(temp, sidePath()))
+    .catch(err => console.error('Could not save the strip side', err))
 }
 
 /** The view the window shows: the picker while it is open, else the current analysis. */
@@ -309,6 +346,7 @@ function runWindowCommand(id: CommandId, ctx: WindowCtx | undefined) {
   const n = analysisNumber(id)
   if (n !== undefined) showAnalysis(n)
   else if (id === 'analysis.new') openPicker()
+  else if (id === 'strip.side') toggleStripSide()
   else if (id === 'analysis.close') {
     if (ctx) requestClose(ctx)
   } else if (ctx) send(ctx, CHANNELS.command, id)
@@ -474,7 +512,7 @@ async function refreshStrip() {
       )
     }),
   )
-  if (host === h) sendStrip(CHANNELS.stripEntries, entries)
+  if (host === h) sendStrip(CHANNELS.stripEntries, { side: h.side, entries } satisfies StripView)
 }
 
 // --- an analysis in a view ---

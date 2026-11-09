@@ -62,6 +62,10 @@ export type PlotResult = { ok: true; dataUrl: string } | { ok: false; message: s
 /** `ok`: the request file is written and `id` will come back in a reply. */
 export type RequestResult = { ok: true; id: string } | { ok: false; message: string }
 
+export type StripSide = 'bottom' | 'left'
+
+export type StripView = { side: StripSide; entries: StripEntry[] }
+
 export type OpenResult =
   /** This view is now the workspace for `path`. */
   | { ok: true; outcome: 'opened'; path: string }
@@ -193,8 +197,10 @@ export type AppApi = {
   closeWindow(): Promise<void>
   /** Shows analysis `n` of the window's set (Cmd+1..9, a click on the strip). */
   showAnalysis(n: number): Promise<void>
-  /** The analysis strip's entries, about once a second; only the strip view listens. */
-  onStripEntries(cb: (entries: StripEntry[]) => void): Unsubscribe
+  /** The analysis strip's side and entries, about once a second; only the strip view listens. */
+  onStripEntries(cb: (view: StripView) => void): Unsubscribe
+  /** Moves the analysis strip between the bottom and the left of the window (the palette). */
+  toggleStripSide(): Promise<void>
 
   settings: {
     get(): Promise<SettingsView>
@@ -247,6 +253,7 @@ export const CHANNELS = {
   windowNew: 'window:new',
   windowClose: 'window:close',
   analysisShow: 'analysis:show',
+  stripSide: 'strip:side',
   settingsGet: 'settings:get',
   settingsSetRoot: 'settings:setRoot',
   settingsChooseRoot: 'settings:chooseRoot',
