@@ -23,8 +23,9 @@ second analysis needs Cmd+N and a separate window. Three pains:
 3. **Strip.** A thin bar is always visible at the bottom, with one entry per analysis. Each entry shows the title
    (cut to 24 characters), Claude's state as a dot and a word (working, waiting for you, idle) and any run in
    progress with its duration. Changed after first use: the user keeps 3-4 analyses open, so titles always show
-   rather than only on Cmd hold; Cmd hold adds the numbers. The palette's "Move analysis strip: bottom / left"
-   moves it down the left side, to compare; the choice is saved. A waiting analysis only gets a
+   rather than only on Cmd hold; Cmd hold adds the numbers. Idle shows only the empty circle, with no word. The
+   palette's "Move analysis strip: bottom / left" moves it down the left side, as thin as the bottom strip with the
+   text turned to read upwards, to compare; the choice is saved. A waiting analysis only gets a
    badge on the strip: no system notification, no dock bounce. This avoids pulling the user away from the current
    analysis.
 4. **State kept on switch.** The full UI state of each analysis: active tabs, scroll positions, open code or editor,

@@ -244,17 +244,14 @@ table.grid th.cur-col { color: var(--accent); }
 .mermaid-diagram svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 .mermaid-file { flex: 1; min-height: 0; overflow: auto; }
 
-/* The analysis strip (components/Strip.tsx): its own view, STRIP_HEIGHT tall along the bottom or STRIP_WIDTH wide
-   down the left (main/windows.ts). */
-.strip { height: 100vh; display: flex; gap: 4px; padding: 0 8px; background: var(--panel); overflow: hidden; }
-.strip.bottom { align-items: center; border-top: 1px solid var(--line); }
-.strip.left { flex-direction: column; padding: 10px 6px; border-right: 1px solid var(--line); }
-.strip-entry { display: flex; align-items: center; gap: 6px; padding: 0 8px; border: 1px solid transparent; border-radius: 4px; background: none; color: var(--dim); font-size: 11px; white-space: nowrap; cursor: pointer; text-align: left; }
-.strip.bottom .strip-entry { height: 22px; }
-.strip.left .strip-entry { display: grid; grid-template-columns: 8px auto 1fr; column-gap: 6px; row-gap: 2px; padding: 6px 8px; }
-.strip.left .strip-entry > :not(.strip-dot):not(.strip-key) { grid-column: 2 / -1; }
-.strip.left .strip-key { grid-column: 2; }
-.strip.left .strip-entry:has(.strip-key) .strip-title { grid-column: 3; }
+/* The analysis strip (components/Strip.tsx): its own view, STRIP_HEIGHT tall along the bottom or as wide down the
+   left (main/windows.ts). On the left each entry's text is turned to read upwards, dot at the bottom. */
+.strip { height: 100vh; display: flex; gap: 4px; background: var(--panel); overflow: hidden; }
+.strip.bottom { align-items: center; padding: 0 8px; border-top: 1px solid var(--line); }
+.strip.left { flex-direction: column; align-items: center; padding: 8px 0; border-right: 1px solid var(--line); }
+.strip-entry { display: flex; align-items: center; gap: 6px; border: 1px solid transparent; border-radius: 4px; background: none; color: var(--dim); font-size: 11px; white-space: nowrap; cursor: pointer; }
+.strip.bottom .strip-entry { height: 22px; padding: 0 8px; }
+.strip.left .strip-entry { width: 22px; padding: 8px 0; writing-mode: vertical-rl; transform: rotate(180deg); }
 .strip-entry.current { border-color: var(--accent); color: var(--text); }
 .strip-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; border: 1px solid var(--dim); }
 .strip-dot.working { background: var(--accent); border-color: var(--accent); animation: strip-pulse 1.2s ease-in-out infinite; }
@@ -264,7 +261,7 @@ table.grid th.cur-col { color: var(--accent); }
 .strip-key { font-weight: 600; color: var(--text); }
 .strip-title { color: var(--text); }
 .strip-state { color: var(--dim); }
-.strip.bottom .strip-state::before { content: '·'; margin-right: 6px; }
+.strip-state::before { content: '·'; margin-inline-end: 6px; }
 .strip-state.waiting { color: var(--warn); }
 .strip-run { color: var(--accent); font-variant-numeric: tabular-nums; }
 @keyframes strip-pulse { 50% { opacity: 0.4; } }

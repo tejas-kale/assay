@@ -66,7 +66,7 @@ type Host = {
 
 /** The analysis strip's height along the bottom, or its width down the left, in CSS pixels. */
 const STRIP_HEIGHT = 28
-const STRIP_WIDTH = 220
+const STRIP_WIDTH = STRIP_HEIGHT
 const STRIP_MS = 1000
 
 const here = fileURLToPath(new URL('.', import.meta.url))
