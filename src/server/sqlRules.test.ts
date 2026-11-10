@@ -3,6 +3,7 @@
 import { test } from 'node:test'
 
 import { expect } from '../testing/expect.ts'
+import { VENV_MISSING } from '../core/venv.ts'
 import type { SqlLint } from './assay.ts'
 import type { RunOptions, RunResult } from './proc.ts'
 import { answering, fake } from './testing.ts'
@@ -69,7 +70,7 @@ test('a lint that cannot run does not block: the query runs and the reply says w
   await ws.done()
   const bare = await fake()
   bare.setRun(answering([['1']], ['x']))
-  expect(await bare.call('sql', { sql: CTE_SQL, slug: 'x' })).toBe('Query 001: 1 row. Columns: x\nx\n1\n\nSQL rules not checked: venv-assay is not built. On the Mac, run: claude-pkg venv-assay')
+  expect(await bare.call('sql', { sql: CTE_SQL, slug: 'x' })).toBe(`Query 001: 1 row. Columns: x\nx\n1\n\nSQL rules not checked: ${VENV_MISSING}`)
   await bare.done()
 })
 

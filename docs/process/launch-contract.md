@@ -1,0 +1,52 @@
+# The launch contract
+
+This is the only description a launcher needs: what the app runs to start Claude, and what a launcher that runs
+Claude somewhere else (a container, a VM) must provide. The user's Podman wrapper in the config repo is one such
+launcher. Assay itself works with plain Claude Code.
+
+## What the app runs
+
+For each open analysis, the app runs, through the user's login, interactive shell (`$SHELL -lic`, so `claude` is
+found as a terminal finds it), in the root folder:
+
+```sh
+exec "${ASSAY_CLAUDE_BIN:-claude}" --plugin-dir "$ASSAY_BACKEND/plugin"
+```
+
+`ASSAY_CLAUDE_BIN` is the launcher; unset, plain `claude` runs. The plugin loads with `--plugin-dir` on each launch,
+so only sessions Assay starts see it. The environment carries the app's own, plus:
+
+| Variable | Value |
+|---|---|
+| `ASSAY_APP` | `1` |
+| `ASSAY_ROOT` | the Settings folder (holds `analyses/`, `dictionaries/`, `trusted/`) |
+| `ASSAY_ANALYSIS` | the open analysis's folder |
+| `ASSAY_BACKEND` | `~/Library/Application Support/Assay/backend/<version>` |
+| `ASSAY_VENV` | `~/Library/Application Support/Assay/venvs/<version>` |
+| `ASSAY_THEME` | Claude Code's theme: `dark-ansi` or `light-ansi` |
+
+Every path is absolute. `ASSAY_BACKEND` and `ASSAY_VENV` contain a space (`Application Support`): quote them.
+
+`ASSAY_BACKEND` holds the plugin (`plugin/`), the bundled MCP server and hooks (`out/server/`, `out/hooks/`) and the
+Python project (`python/`, with `uv.lock`). The app builds `ASSAY_VENV` from it with uv, in the background: until it
+is ready, Python tools answer that it is still building, and `ASSAY_VENV.status.json` (beside the venv) says
+`building`, `ready` or `failed` with the error. Without `ASSAY_VENV`, every tool answers that Assay did not start the
+session.
+
+## What a launcher that runs Claude elsewhere must do
+
+- Make `ASSAY_ROOT`, `ASSAY_ANALYSIS` and `ASSAY_BACKEND` valid at the **same absolute paths**, with `ASSAY_BACKEND`
+  read-only.
+- Provide `node` 22 or later and `databricks` on Claude's PATH, plus `rds-psql` if Postgres runs are wanted. Without
+  `rds-psql`, a Postgres run fails with a message that points here.
+- Replace `ASSAY_VENV` with a venv valid where Claude runs, built from `$ASSAY_BACKEND/python` with
+  `uv sync --frozen --no-editable` (the Mac's venv holds macOS binaries). Build it per Assay version: the project
+  installs into it non-editable, so each version's venv holds that version's helpers. A launcher's venv needs no
+  status file; it counts as built when its `bin/python` exists.
+- Pass `ASSAY_APP`, `ASSAY_ROOT`, `ASSAY_ANALYSIS` and `ASSAY_THEME` through unchanged.
+
+## Isolation is the launcher's job
+
+Assay enforces its own rules: its hooks (no Python through Bash, nothing written into `trusted/`, `dictionaries/` or
+another analysis), its tools, its IPC and its updater. It does not contain what code can do once it runs. Containing
+code execution belongs to the launcher: the Podman wrapper, or Claude Code's own sandbox.

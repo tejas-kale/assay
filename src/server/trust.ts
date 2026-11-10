@@ -7,7 +7,6 @@ import { join } from 'node:path'
 import { DICTIONARIES, DRAFT_DICTIONARIES, DRAFT_TRUSTED, PROPOSAL_NAME, splitCheckEvents, TRUST_TAB, TRUSTED } from '../core/calculations.ts'
 import type { CheckAnswer, CheckEvent, TrustFile } from '../core/calculations.ts'
 import type { Proposal, TrustAnswer } from '../core/requests.ts'
-import { VENV_ASSAY_HINT } from '../core/rules.ts'
 import type { TrustState } from '../core/trust.ts'
 import { Assay, QUERY_TIMEOUT_MS } from './assay.ts'
 
@@ -185,7 +184,7 @@ export class TrustReviews {
   /** Runs the helper's checks, streamed, into the review. Returns why it could not, or undefined when it finished. */
   private async stream(review: Review): Promise<string | undefined> {
     const python = await this.assay.toolsPython()
-    if (!python) return VENV_ASSAY_HINT
+    if (!python) return this.assay.venvHint()
     const analysis = this.assay.config.analysis
     const args =
       review.kind === 'calculation' ? ['check', review.folder, review.name, analysis, '--stream'] : ['check-entry', `${review.folder}/${review.name}.yaml`, analysis, '--stream']

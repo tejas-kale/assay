@@ -2,32 +2,54 @@ import type { ThemeMode } from './theme.ts'
 
 export type SpawnSpec = { file: string; args: string[]; cwd: string; env: Record<string, string> }
 
-/** Where the wrapper mounts this repository's plugin in the container (config repo, bin/claude). */
-export const PLUGIN_DIR = '/opt/assay/plugin'
-
 /**
  * Claude Code's theme for a session. The ANSI themes draw with the terminal's 16 colours, which are
  * Ayu's here, so Claude matches the app; and a live light/dark switch recolours them like any other
- * cell. The wrapper passes it to Claude through `--settings`, over the theme saved in its own home.
+ * cell. A launcher passes it to Claude through `--settings`, over the theme saved in its own home.
  */
 export const claudeTheme = (mode: ThemeMode) => (mode === 'dark' ? 'dark-ansi' : 'light-ansi')
 
+export type Launch = {
+  /** The open analysis's folder. */
+  folder: string
+  /** The app's environment, passed on to Claude. */
+  env: Record<string, string | undefined>
+  /** The Settings folder: Claude starts there. */
+  root: string
+  mode: ThemeMode
+  /** This version's installed backend (plugin, server, hooks, Python project). */
+  backend: string
+  /** This version's venv, which runs every tool. */
+  venv: string
+}
+
 /**
- * How to start the wrapper. A GUI app has a thin PATH, so it runs through the user's login,
- * interactive shell, which finds `claude` as a terminal would. Claude loads Assay's plugin; the
- * server finds the analysis in ASSAY_ANALYSIS and the shared folder (Settings) in ASSAY_ROOT. Claude starts in the
- * root, so it can read what is shared; the prompt hook names the open analysis.
+ * How to start Claude (docs/process/launch-contract.md). A GUI app has a thin PATH, so it runs through the user's
+ * login, interactive shell, which finds `claude` as a terminal would. Claude loads the backend's plugin; the server
+ * finds the analysis in ASSAY_ANALYSIS and the shared folder (Settings) in ASSAY_ROOT. Claude starts in the root, so
+ * it can read what is shared; the prompt hook names the open analysis.
  */
-export function spawnSpec(folder: string, env: Record<string, string | undefined>, root: string, mode: ThemeMode): SpawnSpec {
+export function spawnSpec({ folder, env, root, mode, backend, venv }: Launch): SpawnSpec {
   const clean: Record<string, string> = {}
   for (const [name, value] of Object.entries(env)) {
     if (value !== undefined && name !== 'ELECTRON_RUN_AS_NODE') clean[name] = value
   }
   return {
     file: env.SHELL || '/bin/zsh',
-    args: ['-lic', `exec "\${ASSAY_CLAUDE_BIN:-claude}" --plugin-dir ${PLUGIN_DIR}`],
+    // The plugin path is expanded by the shell from ASSAY_BACKEND, so its space (Application Support) stays one word.
+    args: ['-lic', 'exec "${ASSAY_CLAUDE_BIN:-claude}" --plugin-dir "$ASSAY_BACKEND/plugin"'],
     cwd: root,
-    env: { ...clean, ASSAY_APP: '1', ASSAY_ROOT: root, ASSAY_ANALYSIS: folder, ASSAY_THEME: claudeTheme(mode), TERM: 'xterm-256color', COLORTERM: 'truecolor' },
+    env: {
+      ...clean,
+      ASSAY_APP: '1',
+      ASSAY_ROOT: root,
+      ASSAY_ANALYSIS: folder,
+      ASSAY_BACKEND: backend,
+      ASSAY_VENV: venv,
+      ASSAY_THEME: claudeTheme(mode),
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+    },
   }
 }
 

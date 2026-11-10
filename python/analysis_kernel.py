@@ -14,8 +14,8 @@ running and once at the end) with ``NNN_x.tK.csv`` for each displayed table and 
 then prints one JSON summary line. It exits 0 whenever the run was carried out, whatever its status; 3 when the
 kernel could not be reached. Format of the files: ``docs/slice-3.md`` in the Assay repo.
 
-This file lives in the Assay repo (``python/``); Assay's MCP server runs it by path (``/opt/assay/python``), under
-the kernel python (a project ``.venv`` that has ipykernel, else venv-assay). Only the standard library, ``jupyter_client`` and ``ipykernel`` are imported (pandas, polars and
+This file lives in the Assay repo (``python/``); Assay's MCP server runs it by path (``$ASSAY_BACKEND/python``), under
+the kernel python (a project ``.venv`` that has ipykernel, else Assay's venv, ``$ASSAY_VENV``). Only the standard library, ``jupyter_client`` and ``ipykernel`` are imported (pandas, polars and
 matplotlib are used in the kernel when the user's code has them).
 """
 
@@ -50,7 +50,7 @@ WRITE_EVERY = 0.5
 INTERRUPT_GRACE = 8.0
 ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
-MISSING_MESSAGE = "ipykernel is not installed. Run on the Mac: claude-pkg venv-assay"
+MISSING_MESSAGE = "ipykernel is not installed in this Python. Assay's venv has it: open Settings and see the Doctor."
 
 
 def now_ms() -> int:

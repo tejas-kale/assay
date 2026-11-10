@@ -4,6 +4,7 @@ import { cleanTitle } from '../../core/analyses.ts'
 import { formatAge } from '../../core/age.ts'
 import { fuzzyRank } from '../../core/fuzzy.ts'
 import type { Analysis, OpenResult } from '../../shared/ipc.ts'
+import { useDoctor } from './Doctor.tsx'
 
 /** The fuzzy picker a window starts on. `focusToken` changes when something else (the palette) gives focus back. */
 export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened: () => void }) {
@@ -13,6 +14,7 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
   const [selected, setSelected] = useState(0)
   const [message, setMessage] = useState<string>()
   const [busy, setBusy] = useState(false)
+  const [doctor] = useDoctor()
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
 
@@ -125,6 +127,7 @@ export function Picker({ focusToken, onOpened }: { focusToken: number; onOpened:
       </ul>
       {canForceCreate && <div className="hint">Shift+Enter creates "{title}" as a new analysis</div>}
       {message && <div className="status warn">{message}</div>}
+      {doctor?.preparing && <div className="hint">{doctor.preparing}</div>}
       <div className="hint">Up/Down or Ctrl-N/Ctrl-P move  Enter opens</div>
     </div>
   )

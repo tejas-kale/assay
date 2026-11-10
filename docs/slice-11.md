@@ -1,6 +1,6 @@
 # Slice 11 spec: process, gates, backend in the app, CI/CD, auto-update, tab settings, audit
 
-Status: spec only, 2026-11-10. Nothing built. Written from the grilling session of 2026-11-10, after reading Assay's
+Status: 11a and 11b built, 2026-11-10. Written from the grilling session of 2026-11-10, after reading Assay's
 code.
 
 Seven slices, built in this order. Each ships, with CI green, before the next one starts:

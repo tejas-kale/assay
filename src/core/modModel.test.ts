@@ -9,7 +9,7 @@ import type { PythonRun } from './pythonRuns.ts'
 import { formatPythonRun, formatTable, parsePythonRun, pythonBody, pythonHeader, runSlug, splitKernelEvents, toCsv, venvCandidates } from './pythonRuns.ts'
 import { isUrgent, parseRequestFile } from './requests.ts'
 import type { ServerRequest } from './requests.ts'
-import { analysisRules, runNotice, VENV_ASSAY_COMMAND } from './rules.ts'
+import { analysisRules, runNotice } from './rules.ts'
 import { nextRunNumber, parseRunHeader, parseRunResult, parseRuns } from './runs.ts'
 import { closeThread, focusThread, formatThreads, orderThreads, parkThread, parseThreads } from './threads.ts'
 
@@ -174,12 +174,12 @@ test('venvCandidates walks from the folder up to the root, nearest first', () =>
   expect(venvCandidates('/a/b/')).toEqual(['/a/b/.venv/bin/python', '/a/.venv/bin/python', '/.venv/bin/python'])
 })
 
-test('the rules say venv-assay is the only Python and how to add a package', () => {
-  const rules = analysisRules('/opt/venv-assay/bin/python', 'analyses/a')
-  expect(rules).toContain('venv-assay is the only Python for the tools')
-  expect(rules).toContain("Assay repo's python/pyproject.toml")
-  expect(rules).toContain(VENV_ASSAY_COMMAND)
-  expect(rules).toContain('never a Bash pip install and never another venv')
+test("the rules say Assay's venv is the only Python and that a missing package waits for the next release", () => {
+  const rules = analysisRules('/venvs/0.4.3/bin/python', 'analyses/a')
+  expect(rules).toContain("Assay's venv is the only Python for the tools")
+  expect(rules).toContain('If a package is missing, add it to python/pyproject.toml in the Assay repo, lock it, and tell the user; the next Assay release builds it.')
+  expect(rules).toContain('Never a Bash pip install and never another venv.')
+  expect(rules).not.toContain('claude-pkg')
 })
 
 test('the rules are compact and carry the python path when known', () => {

@@ -108,6 +108,15 @@ input:focus { border-color: var(--accent); }
 .settings label { display: block; color: var(--dim); margin-bottom: 4px; }
 .settings-row { display: flex; gap: 6px; }
 .settings-row button { background: var(--bg); border: 1px solid var(--line); border-radius: 3px; padding: 0 12px; cursor: pointer; }
+.doctor { margin-top: 14px; }
+.doctor-head { display: flex; align-items: center; justify-content: space-between; }
+.doctor-head button { background: var(--bg); border: 1px solid var(--line); border-radius: 3px; padding: 2px 12px; cursor: pointer; }
+.doctor ul { margin-top: 6px; }
+.doctor-check { display: grid; grid-template-columns: 9em 6em 1fr; gap: 8px; padding: 3px 0; }
+.doctor-check.warn .doctor-status { color: var(--warn); }
+.doctor-name { font-weight: 600; }
+.doctor-detail { color: var(--dim); overflow-wrap: anywhere; white-space: pre-wrap; }
+.doctor-detail code { display: block; color: var(--text); }
 
 .picker { max-width: 640px; margin: 12vh auto 0; padding: 0 16px; }
 .picker h1 { font-size: 16px; font-weight: 600; margin: 0 0 10px; }

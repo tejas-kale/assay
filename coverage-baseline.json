@@ -24,26 +24,26 @@
     "branches": 88.88
   },
   "src/server/assay.ts": {
-    "lines": 99.29,
-    "branches": 89.6
+    "lines": 99.3,
+    "branches": 89.73
+  },
+  "src/server/main.ts": {
+    "lines": 67.18,
+    "branches": 87.5
   },
   "src/server/notes.ts": {
     "lines": 98.93,
     "branches": 86.66
+  },
+  "src/server/proc.ts": {
+    "lines": 37.2,
+    "branches": 100
   },
   "src/server/trust.ts": {
     "lines": 95.66,
     "branches": 81.37
   },
   "src/server/index.ts": {
-    "lines": 0,
-    "branches": 0
-  },
-  "src/server/main.ts": {
-    "lines": 0,
-    "branches": 0
-  },
-  "src/server/proc.ts": {
     "lines": 0,
     "branches": 0
   },

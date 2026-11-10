@@ -14,7 +14,7 @@ import type { Table, Target } from '../core/engines.ts'
 import { formatPythonRun, formatTable, parsePythonRun, queryLabel, runSlug, splitKernelEvents, toCsv, venvCandidates } from '../core/pythonRuns.ts'
 import type { KernelEvent, KernelState, PythonRun } from '../core/pythonRuns.ts'
 import { TRUST_TAB } from '../core/calculations.ts'
-import { VENV_ASSAY_HINT } from '../core/rules.ts'
+import { parseVenvBuild, venvHint, venvStatusPath } from '../core/venv.ts'
 import type { UserRun } from '../core/rules.ts'
 import type { Engine } from '../core/runs.ts'
 import { codeBody, nextRunNumber, parseRunHeader, parseRuns } from '../core/runs.ts'
@@ -43,13 +43,15 @@ export const USER_RUNS = '.assay/user-runs.json'
 /** For the same hook: the step checks that failed since the last prompt, one line each (docs/slice-9.md). */
 export const STEP_NOTICES = '.assay/step-notices.json'
 export const SESSION = '.assay/session.json'
+/** Only a launcher brings rds-psql; plain Claude Code has none. */
+export const NO_RDS_PSQL = 'Postgres runs need a launcher that provides rds-psql (docs/process/launch-contract.md).'
 
 export type Config = {
   /** The analysis folder (ASSAY_ANALYSIS), absolute. */
   analysis: string
   /** The shared folder holding dictionaries/ and trusted/ (ASSAY_ROOT), absolute. */
   root: string
-  /** venv-assay, which runs every tool: `<venv>/bin/python`. */
+  /** Assay's venv (ASSAY_VENV), which runs every tool: `<venv>/bin/python`. */
   venv: string
   /** `analysis_kernel.py`, run by path. */
   runner: string
@@ -344,10 +346,11 @@ export class Assay {
   /** The command that runs a saved query, and how to read what it prints. */
   static queryCommand(engine: Engine, target: Target, file: string) {
     if (engine === 'postgres') {
-      // rds-psql (the sandbox image) signs an IAM token for $PGHOST and opens a read-only session.
+      // rds-psql (from a launcher, such as the user's sandbox image) signs an IAM token for $PGHOST and opens a read-only session.
       return {
         argv: ['rds-psql', '-X', '--csv', '-v', 'ON_ERROR_STOP=1', ...(target.pgDatabase ? ['-d', target.pgDatabase] : []), '-f', file],
-        read: (ran: { exitCode: number; stdout: string; stderr: string }) => parsePsqlOutput(ran.exitCode, ran.stdout, ran.stderr),
+        read: (ran: { exitCode: number; stdout: string; stderr: string }) =>
+          ran.exitCode === 127 && ran.stderr.includes('ENOENT') ? { error: NO_RDS_PSQL } : parsePsqlOutput(ran.exitCode, ran.stdout, ran.stderr),
       }
     }
     // The trailing `SELECT 1` makes it a multi-query run, whose JSON names the columns even when the query returns no rows.
@@ -406,15 +409,20 @@ export class Assay {
   }
 
   // -------------------------------------------------------------------------
-  // The helpers: `python -m analysis_trust <command>` with venv-assay's python.
+  // The helpers: `python -m analysis_trust <command>` with Assay's venv's python.
 
   async toolsPython(): Promise<string | undefined> {
     return (await this.exists(this.python)) ? this.python : undefined
   }
 
+  /** Why the tools' python is missing: the venv is still building, its build failed, or it was never built. */
+  async venvHint(): Promise<string> {
+    return venvHint(parseVenvBuild(await readFile(venvStatusPath(this.config.venv), 'utf8').catch(() => undefined)))
+  }
+
   async helper<T>(args: readonly string[], timeoutMs = 30_000, module = 'analysis_trust', input?: string): Promise<T | { error: string }> {
     const python = await this.toolsPython()
-    if (!python) return { error: VENV_ASSAY_HINT }
+    if (!python) return { error: await this.venvHint() }
     const ran = await this.config.proc
       .run([python, '-m', module, ...args], { cwd: this.config.analysis, timeoutMs, ...(input === undefined ? {} : { input }) })
       .catch((error: unknown) => ({ exitCode: 1, stdout: '', stderr: message(error) }))
@@ -708,7 +716,7 @@ export class Assay {
     return undefined
   }
 
-  /** The kernel's python: the nearest project .venv's when it imports ipykernel (checked at each start), else venv-assay's. */
+  /** The kernel's python: the nearest project .venv's when it imports ipykernel (checked at each start), else Assay's venv's. */
   async kernelPython(): Promise<string | undefined> {
     const project = await this.findProjectPython(this.config.analysis).catch(() => undefined)
     if (project) {
@@ -733,7 +741,7 @@ export class Assay {
     // For the prompt hook, which names the kernel's python in the rules.
     await this.writeAtomic(SESSION, `${JSON.stringify({ python: python ?? null })}\n`).catch(() => undefined)
     if (!python) {
-      await this.setKernel(current, { state: 'missing', message: VENV_ASSAY_HINT })
+      await this.setKernel(current, { state: 'missing', message: await this.venvHint() })
       current.markReady()
       return
     }

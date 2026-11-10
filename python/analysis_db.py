@@ -6,7 +6,7 @@ SQLAlchemy engine under it. The profile and warehouse come from the nearest ``an
 analysis defaults. There is no token to paste: the Databricks SDK asks the CLI
 (``databricks auth token``) for the profile's OAuth token and refreshes it before it expires.
 
-It lives in the Assay repo (``python/``); venv-assay installs it editable from there.
+It lives in the Assay repo (``python/``); the app installs it into Assay's venv (``$ASSAY_VENV``).
 """
 
 from __future__ import annotations

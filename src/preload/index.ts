@@ -77,6 +77,11 @@ const api: AppApi = {
     chooseRoot: () => invoke(CHANNELS.settingsChooseRoot),
     onChange: cb => subscribe(CHANNELS.settingsChanged, cb),
   },
+  doctor: {
+    get: () => invoke(CHANNELS.doctorGet),
+    recheck: () => invoke(CHANNELS.doctorRecheck),
+    onChange: cb => subscribe(CHANNELS.doctorChanged, cb),
+  },
   onHints: cb => subscribe(CHANNELS.hints, cb),
   onCloseState: cb => subscribe(CHANNELS.closeState, cb),
 }

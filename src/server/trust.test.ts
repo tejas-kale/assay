@@ -7,7 +7,7 @@ import { test } from 'node:test'
 
 import { expect } from '../testing/expect.ts'
 import { citationLabel } from '../core/citationLabels.ts'
-import { VENV_ASSAY_HINT } from '../core/rules.ts'
+import { VENV_MISSING as VENV_ASSAY_HINT } from '../core/venv.ts'
 import { answering, fake, until } from './testing.ts'
 import type { Fake, Run, Serve } from './testing.ts'
 

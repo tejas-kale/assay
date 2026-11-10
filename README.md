@@ -13,17 +13,30 @@ The code is the source of truth. `docs/slice-*.md` are the specs each slice was 
 
 ## Install, run, test (on the Mac)
 
+- Assay needs, on your login shell's PATH: Claude Code (`claude`), `node` 22 or later (`brew install node`), `uv`
+  (`brew install uv`) and `databricks` (`brew install databricks/tap/databricks`). Settings (Cmd+,) has a Doctor that
+  checks them and names each fix; only a missing `claude` stops an analysis from opening. Nothing is bundled.
 - `npm install` (postinstall repairs Electron's unpack on Node 26, rebuilds node-pty for Electron, fixes `spawn-helper`
   and runs `npm run build:server`)
 - `npm run build:server` bundles the MCP server and the hook scripts with esbuild into `out/server/index.mjs` and
-  `out/hooks/*.mjs`, which the plugin runs in the container with plain `node`. Run it after pulling server changes: the
-  wrapper mounts this checkout, so the next session uses the new bundle.
-- `npm run dev`
+  `out/hooks/*.mjs`, which the plugin runs with plain `node`. Run it after changing them: `npm run dev` uses this
+  checkout as the backend.
+- `npm run dev`: the backend is this checkout, and the venv is `venvs/dev/` in the app's data folder, built editable
+  from `python/` at each launch, so edits to the helpers apply at once.
 - `npm run check`: typecheck, lint, every test with coverage, and the ratchet; `git push` runs it first. `npm test`
   runs only the tests. Python runs from `python/`'s locked project, synced by uv into the root `.venv`. Details in
   `docs/process/testing.md`.
 - `npm run install-app` builds `Assay.app`, ad-hoc signed, into `/Applications`; run it again after pulling changes.
   `npm run package` only builds it, into `dist/mac-arm64/`.
+
+## The backend in the app
+
+The app ships its backend in `Contents/Resources/backend/`: `plugin/`, `out/server/`, `out/hooks/` and `python/`
+(the helpers, `pyproject.toml` and `uv.lock`), laid out as in this repo. At launch it copies them, once per version,
+to `~/Library/Application Support/Assay/backend/<version>/`, and builds the venv there with
+`uv sync --frozen --no-editable` into `venvs/<version>/`, in the background (Settings shows `Preparing Assay ...`).
+It keeps this version's and the previous one's folders and deletes older ones. A package the tools need goes in
+`python/pyproject.toml`, locked with `uv lock`; the next release builds it.
 
 ## Environment
 
@@ -34,10 +47,10 @@ The code is the source of truth. `docs/slice-*.md` are the specs each slice was 
   leaves the folder alone. Claude starts in the root, and each prompt names the open analysis.
 - `npm run migrate:root [root] [--apply]` converts the old layout (`.analysis` markers, `investigations/`,
   `explorations/`) once: a dry run by default, `--apply` to act. It never overwrites and does not touch git.
-- `ASSAY_CLAUDE_BIN`: the wrapper to run (default `claude`, the Podman wrapper from the config repo, found through your
-  login shell), started with `--plugin-dir /opt/assay/plugin`. The app sets `ASSAY_APP=1` (the wrapper then mounts
-  `$ASSAY_DIR`, default `~/Code/assay`, at `/opt/assay`), `ASSAY_ANALYSIS` (the open analysis) and `ASSAY_ROOT` (the
-  Settings folder, which holds `dictionaries/` and `trusted/`).
+- `ASSAY_CLAUDE_BIN`: the launcher to run instead of plain `claude` (found through your login shell), started with
+  `--plugin-dir "$ASSAY_BACKEND/plugin"`. The variables the app sets, and what a launcher that runs Claude elsewhere
+  must provide, are in `docs/process/launch-contract.md`.
+- Postgres runs need `rds-psql`, which only a launcher provides; without it they fail with a pointer to the contract.
 - Colours follow the macOS light or dark setting live (Ayu Light / Ayu Dark), all in `src/core/theme.ts`.
 
 ## Keys
@@ -74,18 +87,18 @@ Cmd+N opens another from the picker, Cmd+W closes the shown one. The strip along
 the palette's Move analysis strip (`#strip`, the same renderer bundle), shows each analysis's title and Claude state, from `.assay/claude.json` that the plugin's `state` hook writes,
 and any run in progress. The open set is saved in the user data folder (`open-analyses.json`) and reopened at launch.
 
-## The config repo
+## Launchers
 
-The `claude` wrapper and `claude-pkg` live in `~/Code/config` (`claude/bin`). With `ASSAY_APP=1` the wrapper mounts this
-checkout read-only at `/opt/assay` and passes `ASSAY_ROOT` and `ASSAY_ANALYSIS` through; `claude-pkg venv-assay`
-builds venv-assay from `python/` here. The analysis mod (`claude/analysis`) is no longer loaded.
+The user's Podman wrapper lives in the config repo (`~/Code/config`, `claude/bin`), outside Assay. It is one launcher
+among others, set with `ASSAY_CLAUDE_BIN`, and honours `docs/process/launch-contract.md`. Isolating code execution is
+the launcher's job, not Assay's.
 
 ## Not yet tried with a real Claude session
 
 Built and tested with a stub Claude, simulated replies and the MCP SDK's client only (slice 5's Mac checklist, in
 `docs/slice-5.md`, covers them):
 
-1. The plugin in the Podman container: the server, the hooks and the skills under the wrapper.
+1. The plugin under plain Claude Code and under the Podman launcher: the server, the hooks and the skills.
 2. The Trust tab's Check, Trust and Reject against a real proposal, the commit, and removing the `lib/` draft.
 3. A re-run or edited query from the app reaching the session, its latency, and Postgres re-runs.
 4. `note` from Claude, and Claude `revise_note` on a note open in the reader.

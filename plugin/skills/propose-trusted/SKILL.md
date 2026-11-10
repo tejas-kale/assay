@@ -73,7 +73,7 @@ Fix each before you reply:
    line, and `<name>.rebuild.sql` exists with its `-- rebuilt by:` line.
 
 For a Python draft you may run its own tests with Bash from the analysis folder, with the python the rules'
-test line names (venv-assay, which has `analysis_trust`): `cd <analysis folder> && <python> -m pytest
+test line names (Assay's venv, which has `analysis_trust`): `cd <analysis folder> && <python> -m pytest
 lib/trusted/test_<name>.py`. Do not run anything else in Bash.
 
 ## 5. Reply

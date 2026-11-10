@@ -1,7 +1,7 @@
 // The bundled server end to end: the SDK's MCP client over stdio starts out/server/index.mjs (built into a temp
 // folder) on a scratch analysis, with a stub `databricks` on PATH. With ASSAY_TEST_VENV naming a venv that has
 // ipykernel and the helpers (python/tests/test_venv.sh builds one), the kernel is real; without it the Python tools
-// must say venv-assay is not built.
+// must say Assay's venv is not built.
 import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -10,7 +10,7 @@ import { test } from 'node:test'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
-import { VENV_ASSAY_HINT } from '../core/rules.ts'
+import { VENV_MISSING as VENV_ASSAY_HINT } from '../core/venv.ts'
 import { bundle } from '../testing/bundle.ts'
 import { expect } from '../testing/expect.ts'
 import { until } from './testing.ts'

@@ -64,7 +64,7 @@ test("each prompt carries the rules, the trust rules and the kernel's python", a
   const said = await hook('prompt', { hook_event_name: 'UserPromptSubmit', prompt: 'why? and how?' }, env)
   expect(said?.hookEventName).toBe('UserPromptSubmit')
   const rules = said?.additionalContext ?? ''
-  for (const part of ['one concept per reply', 'mcp__plugin_assay_assay__focus', 'mcp__plugin_assay_assay__order', 'mcp__plugin_assay_assay__python', 'q(N)', 'matplotlib', '.head()', 'lib/<name>.py', 'cd analyses/panel && /w/.venv/bin/python -m pytest tests', 'claude-pkg venv-assay'])
+  for (const part of ['one concept per reply', 'mcp__plugin_assay_assay__focus', 'mcp__plugin_assay_assay__order', 'mcp__plugin_assay_assay__python', 'q(N)', 'matplotlib', '.head()', 'lib/<name>.py', 'cd analyses/panel && /w/.venv/bin/python -m pytest tests', "Assay's venv is the only Python"])
     expect(rules).toContain(part)
   expect(rules).toContain(`${root}/dictionaries`)
   expect(rules).not.toContain('/an')

@@ -21,6 +21,7 @@ import type { SearchContents } from '../core/search.ts'
 import type { ClosedThread, Threads } from '../core/threads.ts'
 import type { TrustReview } from '../core/trust.ts'
 import type { OverviewState, OverviewWhich } from '../core/overview.ts'
+import type { Check } from '../core/doctor.ts'
 
 export type { CitationLabel, Analysis, AnalysisRef, ClosedThread, CloseState, CommandId, Engine, FileEntry, KernelState, NoteLists, Reply, RootNote, Run, RunRequest, RunResult, RunStatus, SearchContents, Table, Threads, TrustReview, OverviewState, OverviewWhich }
 
@@ -110,6 +111,9 @@ export type NoteReadResult = { ok: true; text: string; labels: Record<string, Ci
 export type NoteCreateResult = { ok: true; name: string } | { ok: false; message: string }
 
 export type SettingsView = { root: string | undefined }
+/** The Doctor in Settings: this version, what it is preparing, and the checks of the tools and the venv. */
+export type DoctorView = { version: string; checks: Check[]; isChecking: boolean; preparing?: string; error?: string }
+
 export type SetRootResult = { ok: true; root: string } | { ok: false; message: string }
 
 export type PtyExit = { exitCode: number; signal?: number }
@@ -234,6 +238,14 @@ export type AppApi = {
     onChange(cb: (settings: SettingsView) => void): Unsubscribe
   }
 
+  doctor: {
+    get(): Promise<DoctorView>
+    /** Checks the tools again, and builds the venv again when its build failed. */
+    recheck(): Promise<DoctorView>
+    /** Fired in every window as the backend is prepared and checks finish. */
+    onChange(cb: (view: DoctorView) => void): Unsubscribe
+  }
+
   /** Which hints a long press shows: left Cmd the Cmd shortcuts and analysis numbers, left Ctrl the pane numbers. */
   onHints(cb: (kind: HoldKind | undefined) => void): Unsubscribe
 
@@ -280,6 +292,8 @@ export const CHANNELS = {
   settingsGet: 'settings:get',
   settingsSetRoot: 'settings:setRoot',
   settingsChooseRoot: 'settings:chooseRoot',
+  doctorGet: 'doctor:get',
+  doctorRecheck: 'doctor:recheck',
   // renderer -> main, fire and forget (ipcRenderer.send / ipcMain.on)
   ptyWrite: 'pty:write',
   ptyResize: 'pty:resize',
@@ -291,6 +305,7 @@ export const CHANNELS = {
   command: 'command',
   closeState: 'close:state',
   settingsChanged: 'settings:changed',
+  doctorChanged: 'doctor:changed',
   hints: 'hints',
   stripEntries: 'strip:entries',
 } as const

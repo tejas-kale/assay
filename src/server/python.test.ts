@@ -2,13 +2,13 @@
 import { test } from 'node:test'
 
 import { expect } from '../testing/expect.ts'
-import { VENV_ASSAY_HINT } from '../core/rules.ts'
+import { VENV_BUILDING, VENV_MISSING } from '../core/venv.ts'
 import { fake, READY, RUNNER, until } from './testing.ts'
 import type { Fake, Run } from './testing.ts'
 
 const VENV = { 'analysis.yaml': 'title: Feature\n', '.venv/bin/python': '' }
 const ASSAY = { '/opt/venv-assay/bin/python': '' }
-const HINT = VENV_ASSAY_HINT
+const HINT = VENV_MISSING
 const printed = (out: object = {}) => ({ stdout: `${JSON.stringify({ status: 'ok', stdout: '', tables: [], plots: [], reads: [], ...out })}\n` })
 const isRun = (argv: readonly string[]) => argv[1] === RUNNER && argv[2] === 'run'
 const importsIpykernel = (argv: readonly string[]) => argv[1] === '-c' && argv[2] === 'import ipykernel'
@@ -47,6 +47,33 @@ test('neither a project .venv nor venv-assay: the kernel is missing with the hin
   expect(await ws.list('queries')).toEqual([])
   expect(ws.serves).toEqual([])
   expect(JSON.parse((await ws.file('.assay/session.json')) ?? '{}')).toEqual({ python: null })
+  await ws.done()
+})
+
+test("while the app builds Assay's venv, the python and trusted tools say it is still building", async () => {
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay.status.json': '{"state":"building"}' })
+  await ws.assay.startKernel()
+  expect((await ws.status())?.kernel).toEqual({ state: 'missing', message: VENV_BUILDING })
+  expect(await ws.call('python', { code: '1', slug: 'x' })).toBe(`The Python kernel is not available: ${VENV_BUILDING}`)
+  expect(await ws.call('trusted', { name: 'nope' })).toBe(`Cannot list the trusted calculations: ${VENV_BUILDING}`)
+  await ws.done()
+})
+
+test("a failed build of Assay's venv: the tools return the build's error", async () => {
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay.status.json': '{"state":"failed","error":"uv: no network"}' })
+  await ws.assay.startKernel()
+  expect(await ws.call('python', { code: '1', slug: 'x' })).toBe("The Python kernel is not available: Assay could not build its Python environment: uv: no network")
+  await ws.done()
+})
+
+test('once the venv is built, the next python call starts the kernel with it', async () => {
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay.status.json': '{"state":"building"}' })
+  await ws.assay.startKernel()
+  await ws.put('/opt/venv-assay/bin/python', '')
+  await ws.put('/opt/venv-assay.status.json', '{"state":"ready"}')
+  ws.setRun(argv => (isRun(argv) ? printed({ stdout: '1\n' }) : {}))
+  expect(await ws.call('python', { code: 'print(1)', slug: 'x' })).toMatch(/^Run 001: ok/)
+  expect(ws.serves[0]?.argv[0]).toBe(`${ws.venv}/bin/python`)
   await ws.done()
 })
 
@@ -103,7 +130,7 @@ test('ipykernel missing, said by the runner, is the missing state with its messa
   const ws = await fake(VENV)
   ws.autoReady = false
   await ws.assay.startKernel()
-  const said = 'ipykernel is not installed. Run on the Mac: claude-pkg venv-assay'
+  const said = "ipykernel is not installed in this Python. Assay's venv has it: open Settings and see the Doctor."
   ws.serves[0]?.emit({ event: 'missing', message: said })
   await until(async () => (await kernelState(ws)) === 'missing')
   expect((await ws.status())?.kernel).toEqual({ state: 'missing', message: said })

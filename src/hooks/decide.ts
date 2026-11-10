@@ -8,7 +8,7 @@ import { folderName, openAnalysis } from '../core/analyses.ts'
 import { isGuarded, normalPath, otherAnalysis, TRUST_TAB } from '../core/calculations.ts'
 import type { CalculationList } from '../core/calculations.ts'
 import { inRootNotes } from '../core/rootNotes.ts'
-import { promptContext, runNotice, toolName, VENV_ASSAY } from '../core/rules.ts'
+import { promptContext, runNotice, toolName } from '../core/rules.ts'
 import type { OpenAnalysis, UserRun } from '../core/rules.ts'
 import { deny, addContext, field, toolInput } from './io.ts'
 import type { Proc } from '../server/proc.ts'
@@ -104,9 +104,9 @@ async function kernelPython(analysis: string): Promise<string | undefined> {
   }
 }
 
-/** The trusted calculations, listed by the helper with venv-assay's python; undefined when it cannot. */
-async function calculations(proc: Proc, env: Env, analysis: string, home: string): Promise<CalculationList | undefined> {
-  const python = `${env.ASSAY_VENV || VENV_ASSAY}/bin/python`
+/** The trusted calculations, listed by the helper with Assay's venv's python; undefined when it cannot. */
+async function calculations(proc: Proc, python: string | undefined, analysis: string, home: string): Promise<CalculationList | undefined> {
+  if (!python) return undefined
   const ran = await proc.run([python, '-m', 'analysis_trust', 'list', home], { cwd: analysis, timeoutMs: 30_000 }).catch(() => undefined)
   try {
     const parsed = JSON.parse(ran?.stdout ?? '') as CalculationList | { error: string }
@@ -124,11 +124,11 @@ export async function promptDecision(env: Env, proc: Proc) {
   const analysis = env.ASSAY_ANALYSIS
   const home = env.ASSAY_ROOT
   if (!analysis || !home) return undefined
-  const [runs, stepLines, python, list] = await Promise.all([takeUserRuns(analysis), takeStepNotices(analysis), kernelPython(analysis), calculations(proc, env, analysis, home)])
+  const venvPython = env.ASSAY_VENV ? `${env.ASSAY_VENV}/bin/python` : undefined
+  const [runs, stepLines, python, list] = await Promise.all([takeUserRuns(analysis), takeStepNotices(analysis), kernelPython(analysis), calculations(proc, venvPython, analysis, home)])
   const open = await openRef(analysis, home)
   const notice = runNotice(runs, open.folder, stepLines)
-  // The kernel's python, else venv-assay's when it is built (as the mod's rules named it).
-  const venvPython = `${env.ASSAY_VENV || VENV_ASSAY}/bin/python`
-  const named = python ?? (await access(venvPython).then(() => venvPython, () => undefined))
+  // The kernel's python, else Assay's venv's when it is built.
+  const named = python ?? (venvPython && (await access(venvPython).then(() => venvPython, () => undefined)))
   return addContext(promptContext({ python: named, ...(notice ? { notice } : {}), home, list, open }))
 }

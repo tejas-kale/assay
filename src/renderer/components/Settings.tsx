@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 
-/** Sets the analysis folder. `onClose` is undefined while no folder is set, since the app cannot go on without one. */
+import { Doctor } from './Doctor.tsx'
+
+/** Sets the analysis folder and shows the Doctor. `onClose` is undefined while no folder is set, since the app cannot go on without one. */
 export function Settings({ root, onClose }: { root: string | undefined; onClose: (() => void) | undefined }) {
   const [input, setInput] = useState(root ?? '')
   const [message, setMessage] = useState<string>()
@@ -61,6 +63,7 @@ export function Settings({ root, onClose }: { root: string | undefined; onClose:
         </div>
         <div className="hint">Analyses live in its analyses/ subfolder; picking one analysis works too. Enter saves{onClose ? ', Escape cancels' : ''}.</div>
         {message && <div className="status warn">{message}</div>}
+        <Doctor />
       </div>
     </div>
   )

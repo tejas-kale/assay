@@ -16,7 +16,7 @@
     "lint:py": "mkdir -p coverage && scripts/py.sh ruff check python --exit-zero --quiet --output-format json --output-file coverage/ruff.json",
     "ratchet": "node scripts/ratchet.ts",
     "postinstall": "node scripts/postinstall.mjs && node scripts/build-server.mjs",
-    "package": "npm run build:server && electron-vite build && electron-builder --mac --dir",
+    "package": "electron-vite build && npm run build:server && electron-builder --mac --dir",
     "install-app": "npm run package && rm -rf /Applications/Assay.app && ditto dist/mac-arm64/Assay.app /Applications/Assay.app",
     "build:server": "node scripts/build-server.mjs",
     "migrate:root": "node scripts/migrate-root.ts",
@@ -81,7 +81,41 @@
       "identity": "-",
       "target": "dir",
       "hardenedRuntime": false
-    }
+    },
+    "extraResources": [
+      {
+        "from": "plugin",
+        "to": "backend/plugin",
+        "filter": [
+          "**/*",
+          ".claude-plugin/**",
+          ".mcp.json"
+        ]
+      },
+      {
+        "from": "out/server",
+        "to": "backend/out/server",
+        "filter": [
+          "index.mjs"
+        ]
+      },
+      {
+        "from": "out/hooks",
+        "to": "backend/out/hooks",
+        "filter": [
+          "*.mjs"
+        ]
+      },
+      {
+        "from": "python",
+        "to": "backend/python",
+        "filter": [
+          "analysis_*.py",
+          "pyproject.toml",
+          "uv.lock"
+        ]
+      }
+    ]
   },
   "allowScripts": {
     "node-pty@1.1.0": true

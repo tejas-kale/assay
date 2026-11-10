@@ -437,7 +437,9 @@ def test_serve_says_missing_when_ipykernel_is_not_installed(tmp_path: Path) -> N
     try:
         event = serve.event()
         assert event is not None and event["event"] == "missing"
-        assert event["message"] == "ipykernel is not installed. Run on the Mac: claude-pkg venv-assay"
+        assert event["message"] == (
+            "ipykernel is not installed in this Python. Assay's venv has it: open Settings and see the Doctor."
+        )
         assert serve.proc.wait(timeout=30) == 2
     finally:
         serve.stop()

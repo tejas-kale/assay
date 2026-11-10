@@ -29,6 +29,7 @@ import { CHANNELS } from '../shared/ipc.ts'
 import type { OpenResult, PtyExit, StripSide, StripView } from '../shared/ipc.ts'
 import { QUERIES, REPLIES_DIR, RUN_STATUS, THREADS, TRUST_DIR, fsPort, loadState, notesSignature, overviewSignature, rootOf, takeReplies, watchPort } from './files.ts'
 import { startSession } from './session.ts'
+import { launchPaths } from './runtime.ts'
 import { analysisRoot } from './settings.ts'
 import type { PtySession } from './session.ts'
 
@@ -604,15 +605,21 @@ export function retitle(ctx: WindowCtx) {
   void refreshStrip()
 }
 
-/** Spawns the wrapper at the renderer's size. Does nothing without an analysis or when already started. */
+/** Spawns Claude at the renderer's size, once this version's backend is installed. Does nothing without an analysis or when already started. */
 export async function startPty(ctx: WindowCtx, cols: number, rows: number) {
   if (!ctx.analysis || ctx.session || ctx.isStarting) return
   ctx.isStarting = true
   // The Settings folder is the root: Claude starts there, and an analysis sits two below it.
   const root = (await analysisRoot().catch(() => undefined)) ?? dirname(dirname(ctx.analysis.path))
+  const launch = await launchPaths().catch(() => undefined)
   ctx.isStarting = false
   if (!ctx.analysis || ctx.session || ctx.disposed) return
-  const spec = spawnSpec(ctx.analysis.path, process.env, root, nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
+  if (!launch) {
+    send(ctx, CHANNELS.ptyData, "\r\nAssay's backend is not installed: open Settings (⌘,) and see the Doctor.\r\n")
+    send(ctx, CHANNELS.ptyExit, { exitCode: 1 })
+    return
+  }
+  const spec = spawnSpec({ folder: ctx.analysis.path, env: process.env, root, mode: nativeTheme.shouldUseDarkColors ? 'dark' : 'light', ...launch })
   try {
     const session = startSession(spec, cols, rows, {
       onData: data => send(ctx, CHANNELS.ptyData, data),

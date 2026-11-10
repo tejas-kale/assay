@@ -13,11 +13,6 @@ export const toolName = (tool: string) => `mcp__plugin_assay_assay__${tool}`
 /** The one line every tool answers when Assay did not start the session (no ASSAY_ANALYSIS or ASSAY_ROOT). */
 export const NOT_ASSAY = 'Assay did not start this session: there is no analysis to work in. Open the analysis in the Assay app.'
 
-/** The venv the tools run with: a Podman volume built on the Mac. */
-export const VENV_ASSAY = '/opt/venv-assay'
-export const VENV_ASSAY_COMMAND = 'claude-pkg venv-assay'
-export const VENV_ASSAY_HINT = `venv-assay is not built. On the Mac, run: ${VENV_ASSAY_COMMAND}`
-
 /** The open analysis as the prompt names it: its title and its folder from the root (`analyses/<slug>`). */
 export type OpenAnalysis = { title: string; folder: string }
 
@@ -37,7 +32,7 @@ export const analysisRules = (python: string | undefined, folder: string) =>
     'Plot with matplotlib: each figure is saved as a PNG that you can Read to check the chart. Altair charts are not captured.',
     'Move reusable or long code to lib/<name>.py with docstrings and type hints, and pytest tests in tests/test_<name>.py. In the kernel: from lib.<name> import ... Edit lib/ and tests/ only when this prompt asks for it.',
     `Run the tests from the analysis folder: cd ${folder} && ${python ?? 'python'} -m pytest tests`,
-    `venv-assay is the only Python for the tools. If a package is missing, add it to the Assay repo's python/pyproject.toml and run ${VENV_ASSAY_COMMAND} on the Mac: never a Bash pip install and never another venv.`,
+    "Assay's venv is the only Python for the tools. If a package is missing, add it to python/pyproject.toml in the Assay repo, lock it, and tell the user; the next Assay release builds it. Never a Bash pip install and never another venv.",
   ].join('\n')
 
 export type UserRun = { number: number; language: 'sql' | 'python'; from?: number; replay?: number }

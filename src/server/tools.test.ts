@@ -97,6 +97,15 @@ test("a failed postgres query returns psql's error without its file prefix", asy
   await ws.done()
 })
 
+test('a postgres run where rds-psql is not on PATH fails with the launch contract', async () => {
+  const ws = await fake()
+  // What spawn says for a program it cannot find.
+  ws.setRun(() => ({ exitCode: 127, stderr: 'spawn rds-psql ENOENT' }))
+  const reply = await ws.call('sql', { sql: 'SELECT 1', slug: 'pg', engine: 'postgres' })
+  expect(reply).toBe('Query 001 failed (saved analyses/feature/queries/001_pg.sql):\nPostgres runs need a launcher that provides rds-psql (docs/process/launch-contract.md).')
+  await ws.done()
+})
+
 test('sql returns at most 50 rows and says how many there are', async () => {
   const ws = await fake()
   ws.setRun(answering(Array.from({ length: 60 }, (_, i) => [String(i + 1)]), ['n']))

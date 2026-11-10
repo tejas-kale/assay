@@ -13,6 +13,7 @@ import { analysisRoot, chooseRootPath, saveRoot } from './settings.ts'
 import { listFiles, openChart, openFile, previewFile } from './browse.ts'
 import { THREADS, editFile, fsPort, loadState, markOverviewRead, readPlot, readRun, readSearchContents, rootOf, writeRequest } from './files.ts'
 import { addRootNote, readCitedRun, readRootNote, saveRootNote } from './notes.ts'
+import { doctorView, openBlocker, recheck } from './runtime.ts'
 import { attachAnalysis, broadcast, contextFor, hostWindow, openPicker, pushState, requestClose, retitle, showAnalysis, startPty, toggleStripSide } from './windows.ts'
 import type { WindowCtx } from './windows.ts'
 
@@ -81,8 +82,13 @@ export function registerIpc() {
     return win ? chooseRootPath(win) : undefined
   })
 
+  handle(CHANNELS.doctorGet, () => doctorView())
+  handle(CHANNELS.doctorRecheck, () => recheck())
+
   handle(CHANNELS.analysesCreate, async (ctx, title): Promise<OpenResult> => {
     if (typeof title !== 'string' || title.length > 200) return { ok: false, message: 'Invalid title' }
+    const blocker = openBlocker()
+    if (blocker) return { ok: false, message: blocker }
     const root = await analysisRoot()
     if (!root) return { ok: false, message: NO_ROOT }
     try {
@@ -95,6 +101,8 @@ export function registerIpc() {
   // Only a folder that listAnalyses returns for the root is accepted; one without analysis.yaml is refused with a pointer to the migration.
   handle(CHANNELS.analysesOpen, async (ctx, path): Promise<OpenResult> => {
     if (typeof path !== 'string') return { ok: false, message: 'Invalid path' }
+    const blocker = openBlocker()
+    if (blocker) return { ok: false, message: blocker }
     const root = await analysisRoot()
     if (!root) return { ok: false, message: NO_ROOT }
     if (!analysisSlug(path, root)) return { ok: false, message: 'Not an analysis under the root folder' }

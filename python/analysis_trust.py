@@ -1,6 +1,6 @@
 """Assay's Python side of the data dictionary and trusted calculations.
 
-Assay's MCP server (``src/server``) runs it with venv-assay's python as ``python -m analysis_trust
+Assay's MCP server (``src/server``) runs it with Assay's venv's python as ``python -m analysis_trust
 <command> ...``; each command prints one JSON object on stdout. It parses SQL with sqlglot, reads the
 YAML files in ``<notes-src>/dictionaries/`` and, for trusted calculations, ``<notes-src>/trusted/``.
 

@@ -1,6 +1,6 @@
 """Assay's SQL rules: what makes Claude's multi-CTE and JOIN queries readable (docs/slice-9.md).
 
-Assay's MCP server runs it with venv-assay's python before a ``sql`` tool call runs:
+Assay's MCP server runs it with Assay's venv's python before a ``sql`` tool call runs:
 
     python -m analysis_sql lint <databricks|postgres> [<sql-file>]   (the SQL on stdin without a file)
 
