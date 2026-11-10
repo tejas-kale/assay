@@ -46,6 +46,9 @@ def test_the_skill_holds_one_example_per_kind() -> None:
         "lib/dictionaries/main.panel.surveys.yaml",
         "lib/trusted/completes_by_site.sql",
         "lib/trusted/completes_by_site.test.yaml",
+        "lib/trusted/site_surveys.rebuild.sql",
+        "lib/trusted/site_surveys.sql",
+        "lib/trusted/site_surveys.test.yaml",
         "lib/trusted/test_top_sites.py",
         "lib/trusted/top_sites.py",
     ]
@@ -85,3 +88,21 @@ def test_an_invalid_example_fails(analysis: Path, monkeypatch: pytest.MonkeyPatc
     sql.write_text(sql.read_text().replace(":status", ":state"))
     answer = check_without_live(monkeypatch, trust.check, sql.parent, "completes_by_site", analysis)
     assert answer["ok"] is False and ("transpile", False) in steps_before_live(answer)
+
+
+def test_the_block_passes_every_step_on_fixture_tables(analysis: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import analysis_db
+
+    tables = {
+        "main_.panel.surveys": "id,site_id,status,day\n1,10,C,2026-01-02\n2,11,S,2026-01-03\n3,10,C,2026-02-01\n",
+        "main_.panel.sites": "site_id,name\n10,North\n11,South\n",
+    }
+    monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: trust.fixture_engine(tables))
+    # DuckDB reserves the catalog main; the fixture engine names it main_, so the live SQL does too.
+    for name in ("site_surveys.sql", "site_surveys.rebuild.sql"):
+        path = analysis / "lib" / "trusted" / name
+        path.write_text(path.read_text().replace("main.panel", "main_.panel"))
+    answer = trust.check(analysis / "lib" / "trusted", "site_surveys", analysis)
+    assert [(step["step"], step["ok"]) for step in answer["steps"]] == [
+        ("form", True), ("transpile", True), ("rules", True), ("contract", True), ("live", True), ("grain", True), ("rebuild", True),
+    ]

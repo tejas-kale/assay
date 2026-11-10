@@ -109,6 +109,8 @@ export type Calculation = {
   parameters: Param[]
   /** A template's SQL, without its front matter. */
   sql?: string
+  /** A block's contract (docs/slice-10.md): the columns that identify one row, and every output column in order. */
+  block?: { grain: string[]; columns: string[] }
   /** The commit that last changed its file, 12 hex digits; '' when never committed. */
   commit: string
   /** Its file differs from that commit, or was never committed: not trusted until approved again. */
@@ -119,6 +121,10 @@ export type CalculationList = { calculations: Calculation[]; problems: string[] 
 /** A calculation as the per-prompt list names it: `name(start: date, status?: string)`. */
 export const signature = (calc: Pick<Calculation, 'name' | 'parameters'>) =>
   `${calc.name}(${calc.parameters.map(param => `${param.name}${param.required ? '' : '?'}: ${param.type}`).join(', ')})`
+
+/** A block as the per-prompt list names it: `name(start: date) -> grain session_id: session_id, buyer_id`. */
+export const blockSignature = (calc: Pick<Calculation, 'name' | 'parameters'> & { block: { grain: string[]; columns: string[] } }) =>
+  `${signature(calc)} -> grain ${calc.block.grain.join(', ') || 'one row'}: ${calc.block.columns.join(', ')}`
 
 /**
  * The arguments, checked against the declared parameters' types: none
@@ -200,7 +206,7 @@ export const PROPOSAL_NAME = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+){0,2}$/
 
 /** One line of `analysis_trust check --stream`. */
 export type CheckEvent =
-  | { event: 'start'; name: string; kind?: string; file?: string; description?: string; code?: string; files?: string[] }
+  | { event: 'start'; name: string; kind?: string; file?: string; description?: string; code?: string; files?: string[]; block?: { grain: string[]; columns: string[] } }
   | { event: 'step'; step: CheckStep }
   | { event: 'done'; answer: CheckAnswer | { error: string } }
 
@@ -232,7 +238,7 @@ export function splitCheckEvents(buffer: string): { events: CheckEvent[]; rest: 
 export type TrustFile = {
   name: string
   kind: 'calculation' | 'dictionary'
-  what: 'SQL template' | 'Python function' | 'dictionary entry'
+  what: 'SQL template' | 'SQL block' | 'Python function' | 'dictionary entry'
   language: 'sql' | 'python' | 'yaml'
   replaces: boolean
   state: TrustState

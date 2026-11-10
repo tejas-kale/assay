@@ -73,3 +73,13 @@ test('every pointer to approval names the Trust tab, never /an trust', () => {
     expect(text).not.toContain('/an')
   }
 })
+
+test('blocks are listed apart, with their contract', () => {
+  const block = { name: 'entry_sessions', kind: 'sql' as const, file: 'entry_sessions.sql', description: 'Entry sessions.', parameters: [{ name: 'start', type: 'date' as const, required: true }], commit: 'abc', dirty: false, block: { grain: ['session_id'], columns: ['session_id', 'buyer'] } }
+  const calc = { ...block, name: 'completes', description: 'Completes.', block: undefined }
+  const text = calculationRules({ calculations: [block, { ...calc }], problems: [] })
+  expect(text).toContain('Trusted blocks (params -> grain: columns)')
+  expect(text).toContain('- entry_sessions(start: date) -> grain session_id: session_id, buyer: Entry sessions.')
+  expect(text).toContain('- completes(start: date): Completes.')
+  expect(text).not.toContain('- entry_sessions(start: date): Entry sessions.')
+})

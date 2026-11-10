@@ -168,7 +168,7 @@ export class TrustReviews {
         ...(event.files ? { files: event.files } : {}),
       }
       if (event.kind === 'python') [review.what, review.language] = ['Python function', 'python']
-      else if (event.kind === 'sql') [review.what, review.language] = ['SQL template', 'sql']
+      else if (event.kind === 'sql') [review.what, review.language] = [event.block ? 'SQL block' : 'SQL template', 'sql']
     } else if (event.event === 'step') {
       review.answer ??= { name: review.name, ok: false, steps: [] }
       review.answer.steps = [...review.answer.steps, event.step]

@@ -1,7 +1,7 @@
 // The rules on each of the user's prompts, ported from the analysis mod's hooks/model.ts (analysisRules,
 // runNotice) and hooks/trust.ts (trustRules, calculationRules). The UserPromptSubmit hook sends them.
 import type { CalculationList } from './calculations.ts'
-import { DICTIONARIES, PROPOSE_SKILL, TRUST_TAB, TRUSTED, signature } from './calculations.ts'
+import { blockSignature, DICTIONARIES, PROPOSE_SKILL, TRUST_TAB, TRUSTED, signature } from './calculations.ts'
 import { queryLabel } from './pythonRuns.ts'
 
 /**
@@ -25,7 +25,8 @@ export type OpenAnalysis = { title: string; folder: string }
 export const analysisRules = (python: string | undefined, folder: string) =>
   [
     'Analysis reply rules: answer one concept per reply, in a few short lines.',
-    `If this prompt asks several questions, answer only the first; park each other one with ${toolName('park')} before replying.`,
+    'If this prompt asks several questions, answer only the first and name the others in one line at the end of the reply.',
+    `Park a thread with ${toolName('park')} only for a ruling a person must make, saying who must rule; questions about understanding go to the overview or the reply.`,
     `Before answering an open thread, ${toolName('focus')} it so it sits at the top of the list.`,
     `When the topic shifts, ${toolName('order')} the open threads so those related to it, or raised most recently, come first.`,
     'End the reply by asking whether that answer is clear. Take up the next question only after the user confirms.',
@@ -73,9 +74,11 @@ export function calculationRules(list: CalculationList | undefined): string {
   const lines = usable.length
     ? [
         `Trusted calculations: before writing your own SQL, run the one that fits with ${toolName('trusted')}. If you write your own SQL where one fits, say why in one line. A <table>:<name> is a dictionary definition: by lists columns to group (or show) by, filters names filter definitions of the same table.`,
-        ...usable.map(calc => `- ${signature(calc)}: ${calc.description}`),
+        ...usable.filter(calc => !calc.block).map(calc => `- ${signature(calc)}: ${calc.description}`),
       ]
     : []
+  const blocks = usable.flatMap(calc => (calc.block ? [{ ...calc, block: calc.block }] : []))
+  if (blocks.length > 0) lines.push('Trusted blocks (params -> grain: columns), each reviewed once with a grain check and an independent rebuild:', ...blocks.map(calc => `- ${blockSignature(calc)}: ${calc.description}`))
   lines.push(`Propose a trusted calculation or a dictionary entry with the ${PROPOSE_SKILL} skill; only the user promotes it, in ${TRUST_TAB}.`)
   return lines.join('\n')
 }

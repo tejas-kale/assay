@@ -215,9 +215,173 @@ def describe(folder: Path, name: str) -> dict[str, Any]:
         if not description:
             raise Problem(f"{name}.sql: the front matter has no description")
         params = parameters_of(front.get("parameters"))
-        return {"name": name, "kind": "sql", "file": sql.name, "description": description.splitlines()[0], "parameters": params, "sql": body}
+        found = {"name": name, "kind": "sql", "file": sql.name, "description": description.splitlines()[0], "parameters": params, "sql": body}
+        contract = block_contract(front)
+        if contract is not None:
+            found["block"] = {"grain": contract["grain"], "columns": list(contract["columns"])}
+        return found
     _, doc, params = python_function(py)
     return {"name": name, "kind": "python", "file": py.name, "description": doc.splitlines()[0], "parameters": params}
+
+
+# ---------------------------------------------------------------------------
+# Blocks (docs/slice-10.md, slice 10b): a SQL template whose front matter has a ``block:`` contract, params -> grain ->
+# columns. It joins tables at a fixed grain, is about 30 lines at most, and is checked once against an independent
+# rebuild, ``<name>.rebuild.sql``, written from the contract alone.
+
+BLOCK_LINES = 30
+REBUILDERS = ("codex", "copilot-opus")
+REBUILT_BY = re.compile(r"^--\s*rebuilt by:\s*(\S+)\s*$", re.MULTILINE | re.IGNORECASE)
+REBUILD_ROWS = 10
+
+
+def block_contract(front: dict[str, Any]) -> dict[str, Any] | None:
+    """The ``block:`` contract of a template's front matter, checked; None when the template is not a block.
+
+    ``grain`` is a list of column names (``[]`` for one row); ``columns`` maps each output column, in order, to what it
+    means.
+    """
+    if "block" not in front:
+        return None
+    block = front["block"]
+    if not isinstance(block, dict):
+        raise Problem("block: is a mapping with grain and columns")
+    grain, columns = block.get("grain"), block.get("columns")
+    if not isinstance(columns, dict) or not columns:
+        raise Problem("block: columns maps each output column to what it means")
+    for column, meaning in columns.items():
+        if not str(meaning or "").strip():
+            raise Problem(f"block: column {column} says nothing about what it means")
+    if grain == "none":
+        grain = []
+    if not isinstance(grain, list) or not all(isinstance(each, str) for each in grain):
+        raise Problem("block: grain is a list of columns, [] for one row")
+    names = [str(column) for column in columns]
+    missing = [column for column in grain if column.lower() not in {name.lower() for name in names}]
+    if missing:
+        raise Problem(f"block: grain column {', '.join(missing)} is not one of its columns")
+    return {"grain": grain, "columns": {str(k): str(v).strip() for k, v in columns.items()}}
+
+
+def output_columns(sql: str) -> list[str]:
+    """The output column names of a statement's final SELECT, in order; a Problem for ``*`` or an unnamed column."""
+    statements = [statement for statement in sqlglot.parse(sql, read=DIALECT) if statement is not None]
+    if len(statements) != 1:
+        raise Problem(f"is {len(statements)} statements, not one")
+    statement = statements[0]
+    if not isinstance(statement, exp.Query):
+        raise Problem("is not a query")
+    if any(isinstance(projection, exp.Star) or (isinstance(projection, exp.Column) and isinstance(projection.this, exp.Star)) for projection in statement.selects):
+        raise Problem("name every output column: no *")
+    names = statement.named_selects
+    if len(names) != len(statement.selects) or not all(names):
+        raise Problem("name every output column: give each expression an AS name")
+    return [str(name) for name in names]
+
+
+def contract_text(params: list[dict[str, Any]], contract: dict[str, Any]) -> str:
+    grain = ", ".join(contract["grain"]) or "one row"
+    said = ", ".join(param["name"] for param in params) or "none"
+    return f"params {said} -> grain {grain} -> {plural(len(contract['columns']), 'column')}"
+
+
+def contract_step(sql: str, params: list[dict[str, Any]], contract: dict[str, Any], step: Any) -> bool:
+    """The ``contract`` step: the SQL's output columns and grain line match the contract. Above 30 lines it warns."""
+    import analysis_sql
+
+    try:
+        columns = output_columns(sql)
+        wanted = list(contract["columns"])
+        if [c.lower() for c in columns] != [c.lower() for c in wanted]:
+            raise Problem(f"the SQL returns {', '.join(columns)}; the contract says {', '.join(wanted)}")
+        final = next((node for node in analysis_sql.lineage(sql, DIALECT, template=True).get("nodes", []) if node.get("kind") == "final"), None)
+        line = final.get("grain") if final else None
+        if line is not None and [c.lower() for c in line] != [c.lower() for c in contract["grain"]]:
+            raise Problem(f"the final SELECT's grain line says {', '.join(line) or 'none'}; the contract says {', '.join(contract['grain']) or 'none'}")
+    except Exception as error:
+        step({"step": "contract", "ok": False, "text": str(error)})
+        return False
+    text = contract_text(params, contract)
+    lines = len(sql.strip().splitlines())
+    if lines > BLOCK_LINES:
+        text += f"\nwarning: {lines} lines; a block is about {BLOCK_LINES} at most"
+    step({"step": "contract", "ok": True, "text": text})
+    return True
+
+
+def run_rows(sql: str, values: dict[str, Any], analysis: Path) -> tuple[list[str], list[tuple[Any, ...]]]:
+    """A template's columns and rows, values comparable (``_comparable``), on the analysis's warehouse."""
+    import analysis_db
+    from sqlalchemy import text
+
+    with analysis_db.engine(start=analysis).connect() as connection:
+        result = connection.execute(text(sql), values)
+        return [str(c) for c in result.keys()], [tuple(_comparable(v) for v in row) for row in result]
+
+
+def grain_step(columns: list[str], rows: list[tuple[Any, ...]], grain: list[str], step: Any) -> bool:
+    """The ``grain`` step on live rows: as many rows as distinct grain tuples (one row for grain ``[]``)."""
+    if not grain:
+        ok = len(rows) == 1
+        text = f"grain none (one row): {plural(len(rows), 'row')}"
+    else:
+        lower = [c.lower() for c in columns]
+        at = [lower.index(column.lower()) for column in grain]
+        distinct = len({tuple(row[i] for i in at) for row in rows})
+        ok = distinct == len(rows)
+        text = f"grain {', '.join(grain)}: {plural(len(rows), 'row')}, {distinct} distinct" if ok else f"grain {', '.join(grain)} has {plural(len(rows) - distinct, 'duplicate row')}"
+    step({"step": "grain", "ok": ok, "text": text})
+    return ok
+
+
+def rebuild_step(folder: Path, name: str, contract: dict[str, Any], params: list[dict[str, Any]], values: dict[str, Any], block: tuple[list[str], list[tuple[Any, ...]]], analysis: Path, step: Any) -> bool:
+    """The ``rebuild`` step: ``<name>.rebuild.sql``, signed by who wrote it, run on the same arguments; its rows and the
+    block's compared as multisets, both ways."""
+    from collections import Counter
+
+    path = folder / f"{name}.rebuild.sql"
+    wanted = list(contract["columns"])
+    try:
+        if not path.is_file():
+            raise Problem(f"no {path.name}: a rebuild written from the contract alone, by Codex (or an Opus model in Copilot)")
+        sql = path.read_text()
+        signed = REBUILT_BY.search(sql)
+        if not signed or signed.group(1).lower() not in REBUILDERS:
+            raise Problem(f"{path.name} has no '-- rebuilt by: {'|'.join(REBUILDERS)}' line")
+        declared = {param["name"] for param in params}
+        used = placeholders(sql)
+        if not used <= declared:
+            raise Problem(f"{path.name} uses :{', :'.join(sorted(used - declared))}, which the block does not declare")
+        columns, rows = run_rows(sql, {key: value for key, value in values.items() if key in used}, analysis)
+        lower = [c.lower() for c in columns]
+        if sorted(lower) != sorted(c.lower() for c in wanted):
+            raise Problem(f"{path.name} returns {', '.join(columns)}; the contract says {', '.join(wanted)}")
+    except Exception as error:
+        step({"step": "rebuild", "ok": False, "text": f"{type(error).__name__}: {error}" if not isinstance(error, Problem) else str(error)})
+        return False
+    who = signed.group(1).lower()
+
+    def ordered(cols: list[str], found: list[tuple[Any, ...]]) -> Counter:
+        at = [[c.lower() for c in cols].index(column.lower()) for column in wanted]
+        return Counter(tuple(row[i] for i in at) for row in found)
+
+    mine, theirs = ordered(*block), ordered(columns, rows)
+    only_block, only_rebuild = mine - theirs, theirs - mine
+    if not only_block and not only_rebuild:
+        step({"step": "rebuild", "ok": True, "text": f"block and rebuild ({who}) agree: {plural(sum(mine.values()), 'row')}"})
+        return True
+
+    def shown(value: Any) -> str:
+        return str(int(value)) if isinstance(value, float) and value.is_integer() else cell(value)
+
+    def sample(found: Counter) -> list[str]:
+        return [",".join(shown(v) for v in row) for row in list(found.elements())[:REBUILD_ROWS]]
+
+    lines = [f"{plural(sum(only_block.values()), 'row')} only in the block, {sum(only_rebuild.values())} only in the rebuild ({who})", ",".join(wanted)]
+    lines += [f"block only:   {row}" for row in sample(only_block)]
+    lines += [f"rebuild only: {row}" for row in sample(only_rebuild)]
+    step({"step": "rebuild", "ok": False, "text": "\n".join(lines)})
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -812,7 +976,7 @@ class Steps:
 
     def start(self, answer: dict[str, Any]) -> None:
         if self.emit is not None:
-            keys = ("name", "kind", "file", "description", "code", "files")
+            keys = ("name", "kind", "file", "description", "code", "files", "block")
             self.emit({"event": "start", **{key: answer[key] for key in keys if key in answer}})
 
     def tests(self, folder: Path, name: str) -> bool:
@@ -860,10 +1024,13 @@ def check(folder: Path, name: str, analysis: Path, emit: Any = None) -> dict[str
         step({"step": "form", "ok": False, "text": str(error)})
         return answer
     answer.update(kind=found["kind"], file=found["file"], description=found["description"], code=(folder / found["file"]).read_text())
-    files = [found["file"], *(f for f in (f"{name}.test.yaml", f"test_{name}.py") if (folder / f).is_file())]
+    files = [found["file"], *(f for f in (f"{name}.test.yaml", f"test_{name}.py", f"{name}.rebuild.sql") if (folder / f).is_file())]
     answer["files"] = files
+    contract = block_contract(split_template((folder / found["file"]).read_text())[0]) if "block" in found else None
+    if contract is not None:
+        answer["block"] = found["block"]
     step.start(answer)
-    what = "SQL template" if found["kind"] == "sql" else "Python function"
+    what = "SQL block" if contract is not None else "SQL template" if found["kind"] == "sql" else "Python function"
     step({"step": "form", "ok": True, "text": f"{what}, {plural(len(found['parameters']), 'parameter')}"})
     if found["kind"] == "sql":
         try:
@@ -877,12 +1044,18 @@ def check(folder: Path, name: str, analysis: Path, emit: Any = None) -> dict[str
             return answer
         if not rules_step(found["sql"], step):
             return answer
-    if not step.tests(folder, name):
+        if contract is not None and not contract_step(found["sql"], found["parameters"], contract, step):
+            return answer
+    tests = load_tests(folder, name)
+    # A block's fixture cases are optional: its live checks are the grain and the rebuild.
+    if (contract is None or tests.get("cases")) and not step.tests(folder, name):
         return answer
-    live_args = load_tests(folder, name).get("live")
-    if live_args is None and any(param["required"] for param in found["parameters"]):
+    live_args = tests.get("live")
+    if live_args is None and (contract is not None or any(param["required"] for param in found["parameters"])):
         step({"step": "live", "ok": False, "text": f"no live: arguments in {name}.test.yaml for the live run"})
         return answer
+    if contract is not None:
+        return check_block_live(folder, name, found, contract, live_args or {}, analysis, answer, step)
     try:
         table = run(folder, name, live_args or {}, analysis)
     except Exception as error:
@@ -891,6 +1064,23 @@ def check(folder: Path, name: str, analysis: Path, emit: Any = None) -> dict[str
     rows = table["rows"]
     step({"step": "live", "ok": True, "text": f"{plural(len(rows), 'row')} with {json.dumps(live_args or {}, default=str)}"})
     answer.update(ok=True, sample={"columns": table["columns"], "rows": rows[:SAMPLE_ROWS], "total": len(rows)})
+    return answer
+
+
+def check_block_live(folder: Path, name: str, found: dict[str, Any], contract: dict[str, Any], live_args: dict[str, Any], analysis: Path, answer: dict[str, Any], step: Any) -> dict[str, Any]:
+    """A block's live steps: the run, its grain, and the rebuild compared on the same arguments."""
+    try:
+        values = convert(found["parameters"], live_args)
+        columns, rows = run_rows(found["sql"], values, analysis)
+    except Exception as error:
+        step({"step": "live", "ok": False, "text": f"{type(error).__name__}: {error}"})
+        return answer
+    step({"step": "live", "ok": True, "text": f"{plural(len(rows), 'row')} with {json.dumps(live_args, default=str)}"})
+    if not grain_step(columns, rows, contract["grain"], step):
+        return answer
+    if not rebuild_step(folder, name, contract, found["parameters"], values, (columns, rows), analysis, step):
+        return answer
+    answer.update(ok=True, sample={"columns": columns, "rows": [[cell(v) for v in row] for row in rows[:SAMPLE_ROWS]], "total": len(rows)})
     return answer
 
 

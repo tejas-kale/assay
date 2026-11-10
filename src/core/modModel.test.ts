@@ -188,6 +188,9 @@ test('the rules are compact and carry the python path when known', () => {
   expect(analysisRules(undefined, 'analyses/a')).toContain('python -m pytest tests')
   for (const part of ['one concept', 'mcp__plugin_assay_assay__park', 'mcp__plugin_assay_assay__focus', 'mcp__plugin_assay_assay__order', 'mcp__plugin_assay_assay__python', 'q(N)', 'never through Bash', 'matplotlib', 'Altair', '.head()', 'lib/<name>.py', 'tests/test_<name>.py'])
     expect(analysisRules(undefined, 'analyses/a')).toContain(part)
+  // Threads hold only rulings a person must make (docs/slice-10.md).
+  expect(analysisRules(undefined, 'analyses/a')).toContain('only for a ruling a person must make')
+  expect(analysisRules(undefined, 'analyses/a')).not.toContain('park each other one')
 })
 
 test('a run result .json gives its status, or nothing when unreadable', () => {

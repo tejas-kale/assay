@@ -1,6 +1,6 @@
 # Slice 10 spec: overviews, blocks, include by name, retype check
 
-Status: spec, 2026-11-10. Written from the assay-root draft `2026-11-10-assay-review-workflow-changes.md` (the
+Status: spec, 2026-11-10. 10a and 10b built. Written from the assay-root draft `2026-11-10-assay-review-workflow-changes.md` (the
 review-workflow grilling of 2026-11-09 and 2026-11-10), after reading Assay's code.
 
 Four slices, each usable alone, built in this order:
@@ -145,17 +145,19 @@ the file has them, as today).
 3. `tests` (when the file has cases) and `live` (as today).
 4. `grain`: on live data with the `live:` arguments, `rows` = distinct grain tuples (the slice 9c counts). ✗
    `grain session_id has 3 duplicate rows`.
-5. `rebuild`: `<name>.rebuild.sql` exists, has a `-- rebuilt by: codex|copilot-opus` line, uses the same placeholders,
-   and returns the contract's columns. Both run on the same `live:` arguments in one query on the warehouse:
-   `SELECT <columns> FROM block EXCEPT ALL SELECT <columns> FROM rebuild` and the reverse, counted, with at most 10
-   rows of each side shown. ✓ `block and rebuild (codex) agree: 1,204 rows`; ✗ `12 rows only in the block, 3 only in
-   the rebuild` with the rows.
+5. `rebuild`: `<name>.rebuild.sql` exists, has a `-- rebuilt by: codex|copilot-opus` line, uses only the block's
+   placeholders, and returns the contract's columns (any order). It runs on the same `live:` arguments, and the two
+   results are compared as multisets of rows in the helper, both ways, with at most 10 rows of each side shown. ✓
+   `block and rebuild (codex) agree: 1204 rows`; ✗ `12 rows only in the block, 3 only in the rebuild (codex)` with the
+   rows. (As built: compared in Python rather than with `EXCEPT ALL` on the warehouse, so it is the same on DuckDB
+   fixtures and both engines; `live:` arguments should return a few thousand rows at most.)
 
 Approving copies `<name>.sql`, `<name>.test.yaml` and `<name>.rebuild.sql` into `trusted/` as today's files are.
 
 ### Listing and the rules
 
-- `analysis_trust list` marks a block: `kind: "block"` with `grain` and `columns` (names only).
+- `analysis_trust list` marks a block: it stays `kind: "sql"` (it runs as any template) and gains `block: {grain,
+  columns}` (names only). The check's `start` event carries the same `block`, and the Trust tab calls it `SQL block`.
 - The rules list blocks apart from calculations, each as `- client_entry_sessions(start: date, end: date) -> grain
   session_id: session_id, buyer_id, ...: <description>`.
 - The `trusted` tool still runs a block whole.
