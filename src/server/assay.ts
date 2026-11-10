@@ -101,6 +101,8 @@ export const SQL_RULES_REJECTED = 'Not run: the query breaks the SQL rules. Fix 
 export type Expansion = {
   sql: string
   lint_sql: string
+  /** The SQL as written with each definition read as TRUE and each block body a plain select: what the retype check reads. */
+  retype_sql: string
   built_from: { name: string; kind: string; commit: string }[]
   blocks: { cte: string; name: string }[]
 }
@@ -119,6 +121,9 @@ export const blocksLine = (expansion: Expansion) =>
   expansion.blocks.length === 0 ? '' : `-- blocks: ${expansion.blocks.map(block => `${block.cte}=${block.name}`).join(',')}\n`
 
 const BLOCKS_LINE = /^-- blocks: (\S+)\s*$/m
+
+/** A run's warnings (SQL rules and retypes), beside it in queries/, for the Code tab. */
+export const noticesFile = (number: number) => `${QUERIES}/${queryLabel(number)}.notices.json`
 
 /** A run's expanded SQL, beside it in queries/ (never a run: its number is followed by a dot). */
 export const expandedFile = (number: number) => `${QUERIES}/${queryLabel(number)}.expanded.sql`
@@ -389,7 +394,7 @@ export class Assay {
     const found = await this.helper<Expansion | { errors: string[] }>(['expand', engine, this.config.root], 30_000, 'analysis_sql', sql)
     if ('error' in found) return { errors: [`The included pieces could not be expanded: ${found.error}`] }
     if ('errors' in found && Array.isArray(found.errors)) return { errors: found.errors.map(String) }
-    if ('sql' in found && typeof found.sql === 'string' && typeof found.lint_sql === 'string' && Array.isArray(found.built_from) && Array.isArray(found.blocks)) return found
+    if ('sql' in found && typeof found.sql === 'string' && typeof found.lint_sql === 'string' && typeof found.retype_sql === 'string' && Array.isArray(found.built_from) && Array.isArray(found.blocks)) return found
     return { errors: ['analysis_sql expand printed no expanded SQL'] }
   }
 
@@ -560,12 +565,30 @@ export class Assay {
     if (linted && !('error' in linted) && linted.errors.length > 0) {
       return [SQL_RULES_REJECTED, ...linted.errors.map(line => `- ${line}`)].join('\n')
     }
-    const reply = await this.runSql(sql, slugText, engine, '', undefined, expansion)
-    if (!linted) return reply
+    const retyped = await this.retypeWarnings(expansion?.retype_sql ?? sql, engine)
+    let number: number | undefined
+    const reply = await this.runSql(sql, slugText, engine, '', claimed => (number = claimed), expansion)
+    const rules = linted && !('error' in linted) ? linted.warnings : []
+    if (number !== undefined && (rules.length > 0 || retyped.length > 0)) {
+      await this.writeAtomic(noticesFile(number), `${JSON.stringify({ rules, retype: retyped })}\n`).catch(() => undefined)
+    }
+    const parts = [reply]
     // A lint that cannot run does not block: the query ran, and the reply says why it was not checked.
-    if ('error' in linted) return `${reply}\n\nSQL rules not checked: ${linted.error}`
-    if (linted.warnings.length === 0) return reply
-    return [reply, '', 'SQL rule warnings:', ...linted.warnings.map(line => `- ${line}`)].join('\n')
+    if (linted && 'error' in linted) parts.push('', `SQL rules not checked: ${linted.error}`)
+    if (rules.length > 0) parts.push('', 'SQL rule warnings:', ...rules.map(line => `- ${line}`))
+    if (retyped.length > 0) parts.push('', 'Retyped trusted logic (include the piece, or add -- retype: <piece>: <why> above the statement):', ...retyped.map(line => `- ${line}`))
+    return parts.join('\n')
+  }
+
+  /**
+   * The retype check (docs/slice-10.md, slice 10d): SQL that writes out a trusted definition's or block's logic by hand.
+   * A check that cannot run says nothing: the lint already reports a missing venv. Postgres is not checked: the
+   * dictionary and trusted blocks describe Databricks tables.
+   */
+  async retypeWarnings(sql: string, engine: Engine): Promise<string[]> {
+    if (engine === 'postgres') return []
+    const found = await this.helper<{ warnings: string[] }>(['retype', engine, this.config.root], 30_000, 'analysis_sql', sql)
+    return 'warnings' in found && Array.isArray(found.warnings) ? found.warnings.map(String) : []
   }
 
   /** The dictionary text for the tables a saved query touches, the first time this session touches each. */

@@ -680,12 +680,16 @@ class Pieces:
             return None, f"{name} names definitions on several tables: write one of {', '.join(sorted(found))}"
         return None, None
 
-    def expression(self, full: str) -> str:
+    def item(self, full: str) -> dict[str, Any]:
+        """Definition ``full``'s entry item: its ``kind``, ``sql`` and description."""
         import analysis_trust
 
         table, _, name = full.partition(":")
         entry = analysis_trust.read_entry(self.root / analysis_trust.DICTIONARIES / f"{table}.yaml")
-        return str(next(item for item in analysis_trust.definitions_of(entry) if item["name"] == name)["sql"]).strip()
+        return next(item for item in analysis_trust.definitions_of(entry) if item["name"] == name)
+
+    def expression(self, full: str) -> str:
+        return str(self.item(full)["sql"]).strip()
 
 
 def expand(sql: str, dialect: str, root: Path | str, pieces: Pieces | None = None, inside_block: str | None = None) -> dict[str, Any]:
@@ -700,13 +704,14 @@ def expand(sql: str, dialect: str, root: Path | str, pieces: Pieces | None = Non
     if dialect not in DIALECTS:
         raise ValueError(f"dialect {dialect!r} is not one of {', '.join(DIALECTS)}")
     if "{{" not in sql:
-        return {"sql": sql, "lint_sql": sql, "built_from": [], "blocks": []}
+        return {"sql": sql, "lint_sql": sql, "retype_sql": sql, "built_from": [], "blocks": []}
     pieces = pieces or Pieces(Path(root))
     errors: list[str] = []
     built: dict[str, dict[str, Any]] = {}
     blocks: list[dict[str, str]] = []
     out: list[str] = []
     lint_out: list[str] = []
+    retype_out: list[str] = []
     at = 0
 
     def use(name: str, kind: str, calc: dict[str, Any]) -> bool:
@@ -721,8 +726,11 @@ def expand(sql: str, dialect: str, root: Path | str, pieces: Pieces | None = Non
         written = match.group(0)
         out.append(sql[at : match.start()])
         lint_out.append(sql[at : match.start()])
+        retype_out.append(sql[at : match.start()])
         at = match.end()
         replacement = lint_replacement = written
+        # The retype check reads an included definition as TRUE, so the include itself is never flagged.
+        retype_replacement = "TRUE"
         full, problem = pieces.definition(name)
         calc = pieces.calcs.get(name)
         if problem:
@@ -753,7 +761,7 @@ def expand(sql: str, dialect: str, root: Path | str, pieces: Pieces | None = Non
                         for piece in body["built_from"]:
                             built.setdefault(piece["name"], piece)
                         replacement = _bind(body["sql"], values, dialect)
-                        lint_replacement = f"SELECT {', '.join(calc['block']['columns'])} FROM {name}"
+                        lint_replacement = retype_replacement = f"SELECT {', '.join(calc['block']['columns'])} FROM {name}"
                         blocks.append({"cte": opened.group("cte"), "name": name})
         elif calc:
             errors.append(f"{written}: {name} is a calculation, not a block or definition: run it whole with the trusted tool, or propose a block.")
@@ -761,11 +769,155 @@ def expand(sql: str, dialect: str, root: Path | str, pieces: Pieces | None = Non
             errors.append(f"{written}: no trusted block or definition named {name}.")
         out.append(replacement)
         lint_out.append(lint_replacement)
+        retype_out.append(retype_replacement)
     out.append(sql[at:])
     lint_out.append(sql[at:])
+    retype_out.append(sql[at:])
     if errors:
         return {"errors": errors}
-    return {"sql": "".join(out), "lint_sql": "".join(lint_out), "built_from": list(built.values()), "blocks": blocks}
+    return {"sql": "".join(out), "lint_sql": "".join(lint_out), "retype_sql": "".join(retype_out), "built_from": list(built.values()), "blocks": blocks}
+
+
+# ---------------------------------------------------------------------------
+# The retype check (docs/slice-10.md, slice 10d): SQL that writes out a trusted piece's logic by hand.
+
+RETYPE_SILENCE = re.compile(r"--\s*retype:\s*([\w.:]+)\s*:", re.IGNORECASE)
+
+
+def _parts(table: exp.Table) -> list[str]:
+    return [part.name.lower() for part in table.parts]
+
+
+def _same_table(written: list[str], full: list[str]) -> bool:
+    """A table as written matches a full name when the parts it gives agree (``sessions`` matches ``c.s.sessions``)."""
+    k = min(len(written), len(full))
+    return k > 0 and written[-k:] == full[-k:]
+
+
+def _read_tables(select: exp.Select) -> dict[str, list[str]]:
+    """The tables a SELECT reads directly (FROM and JOINs), by alias (or name) lower-cased: their name parts."""
+    found: dict[str, list[str]] = {}
+    from_ = _arg(select, "from")
+    for node in [from_.this if from_ is not None else None, *[join.this for join in select.args.get("joins") or []]]:
+        if isinstance(node, exp.Table) and node.name:
+            found[(node.alias_or_name or node.name).lower()] = _parts(node)
+    return found
+
+
+def _norm(node: exp.Expression) -> str:
+    """An expression without column qualifiers, in a canonical form: ``=`` and ``<>`` sides sorted."""
+    node = node.copy()
+    for column in node.find_all(exp.Column):
+        column.set("table", None)
+    node = node.transform(lambda n: n.__class__(this=min(n.this, n.expression, key=lambda e: e.sql()), expression=max(n.this, n.expression, key=lambda e: e.sql())) if isinstance(n, (exp.EQ, exp.NEQ)) else n)
+    return node.sql(dialect="databricks", comments=False).lower()
+
+
+def _conjuncts(node: exp.Expression | None) -> list[exp.Expression]:
+    if node is None:
+        return []
+    node = node.unnest() if isinstance(node, exp.Paren) else node
+    if isinstance(node, exp.And):
+        return [*_conjuncts(node.this), *_conjuncts(node.expression)]
+    return [node]
+
+
+def _on_alias(node: exp.Expression, alias: str, only_source: bool) -> bool:
+    """Whether every column in ``node`` is qualified with ``alias``, or unqualified when the SELECT has one source."""
+    columns = list(node.find_all(exp.Column))
+    return bool(columns) and all(column.table.lower() == alias or (not column.table and only_source) for column in columns)
+
+
+def _key_pairs(select: exp.Select, sources: dict[str, list[str]]) -> set[frozenset[tuple[str, str]]]:
+    """The equality pairs of a SELECT's JOIN conditions, each between columns of two of its tables: by table name."""
+    pairs: set[frozenset[tuple[str, str]]] = set()
+    for join in select.args.get("joins") or []:
+        for conjunct in _conjuncts(join.args.get("on")):
+            if isinstance(conjunct, exp.EQ) and isinstance(conjunct.this, exp.Column) and isinstance(conjunct.expression, exp.Column):
+                left, right = conjunct.this, conjunct.expression
+                a, b = sources.get(left.table.lower()), sources.get(right.table.lower())
+                if a and b and a != b:
+                    pairs.add(frozenset({(a[-1], left.name.lower()), (b[-1], right.name.lower())}))
+    return pairs
+
+
+def _block_shape(sql: str) -> tuple[list[list[str]], set[frozenset[tuple[str, str]]], str] | None:
+    """A block's join: its tables, its key pairs and how to say it; None when its SQL joins nothing."""
+    statement = sqlglot.parse_one(bind_dummies(sql), read="databricks")
+    for select in statement.find_all(exp.Select):
+        sources = _read_tables(select)
+        pairs = _key_pairs(select, sources)
+        if len(sources) > 1 and pairs:
+            names = sorted({parts[-1] for parts in sources.values()})
+            keys = sorted({column for pair in pairs for _, column in pair})
+            return list(sources.values()), pairs, f"the join of {' and '.join(names)} on {', '.join(keys)}"
+    return None
+
+
+def retype(sql: str, dialect: str, root: Path | str, pieces: Pieces | None = None) -> dict[str, list[str]]:
+    """Warnings for SQL that writes out a trusted definition's or block's logic by hand (docs/slice-10.md).
+
+    ``sql`` is the SQL as written with its includes removed (``expand``'s ``retype_sql``). A ``-- retype: <piece>:
+    <reason>`` comment silences that piece.
+    """
+    statement, _ = _last_statement(sql, dialect, False)
+    if statement is None:
+        return {"warnings": []}
+    pieces = pieces or Pieces(Path(root))
+    silenced = {name.lower() for name in RETYPE_SILENCE.findall(sql)}
+    warnings: dict[str, str] = {}
+
+    definitions = []
+    for full in pieces.definitions:
+        table, _, short = full.partition(":")
+        try:
+            item = pieces.item(full)
+            expression = sqlglot.parse_one(str(item["sql"]).strip(), read="databricks")
+        except Exception:
+            continue
+        kind = item["kind"]
+        definitions.append((full, short, table.lower().split("."), kind, expression))
+    blocks = []
+    for name, calc in pieces.calcs.items():
+        if "block" not in calc or calc.get("dirty"):
+            continue
+        try:
+            body = expand(calc["sql"], "databricks", pieces.root, pieces, inside_block=name)
+            shape = None if body.get("errors") else _block_shape(body["sql"])
+        except Exception:
+            shape = None
+        if shape:
+            blocks.append((name, calc, *shape))
+
+    for select in statement.find_all(exp.Select):
+        sources = _read_tables(select)
+        conditions = [_arg(select, "where"), _arg(select, "having"), *[join.args.get("on") for join in select.args.get("joins") or []]]
+        conjuncts = [c for node in conditions for c in _conjuncts(node.this if isinstance(node, (exp.Where, exp.Having)) else node)]
+        projections = [projection.unalias() for projection in select.expressions]
+        for full, short, table, kind, expression in definitions:
+            if full.lower() in silenced or short.lower() in silenced or full in warnings:
+                continue
+            for alias, parts in sources.items():
+                if not _same_table(parts, table):
+                    continue
+                only = len(sources) == 1
+                if kind == "filter":
+                    wanted = {_norm(c) for c in _conjuncts(expression)}
+                    have = {_norm(c) for c in conjuncts if _on_alias(c, alias, only)}
+                    hit = wanted <= have
+                else:
+                    hit = any(_on_alias(p, alias, only) and _norm(p) == _norm(expression) for p in projections)
+                if hit:
+                    said = expression.sql(dialect="databricks")
+                    warnings[full] = f"retypes {full} ({said}): include {{{{ {short}({alias}) }}}}"
+                    break
+        for name, calc, tables, pairs, said in blocks:
+            if name.lower() in silenced or name in warnings:
+                continue
+            if all(any(_same_table(parts, table) for parts in sources.values()) for table in tables) and pairs <= _key_pairs(select, sources):
+                args = ", ".join(f"{param['name']} => ..." for param in calc["parameters"])
+                warnings[name] = f"retypes block {name} ({said}): include {{{{ {name}({args}) }}}} as a CTE"
+    return {"warnings": list(warnings.values())}
 
 
 PLACEHOLDER = re.compile(r"(?<![:\w]):([A-Za-z_]\w*)")
@@ -780,7 +932,8 @@ USAGE = (
     "usage: python -m analysis_sql lint <databricks|postgres> [<sql-file>]   (SQL on stdin without a file)\n"
     "       python -m analysis_sql lineage <databricks|postgres> [--template] [<sql-file>]\n"
     "       python -m analysis_sql steps <databricks|postgres> [--template] [--blocks cte=block,...] [<sql-file>]\n"
-    "       python -m analysis_sql expand <databricks|postgres> <root>   (SQL on stdin)"
+    "       python -m analysis_sql expand <databricks|postgres> <root>   (SQL on stdin)\n"
+    "       python -m analysis_sql retype <databricks|postgres> <root>   (SQL on stdin)"
 )
 
 
@@ -813,6 +966,8 @@ def main(argv: list[str]) -> int:
             answer: dict[str, Any] = lint(sql, args[0])
         elif command == "expand" and len(args) == 2:
             answer = expand(sys.stdin.read(), args[0], Path(args[1]))
+        elif command == "retype" and len(args) == 2:
+            answer = retype(sys.stdin.read(), args[0], Path(args[1]))
         elif command in ("lineage", "steps") and 1 <= len(_plain_args(args)) <= 2:
             template = "--template" in args
             blocks = _blocks_arg(args)

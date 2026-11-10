@@ -56,6 +56,17 @@ The Overview tab (`⌃⇧O`, docs/slice-10.md) shows the open analysis's `overvi
 it names on one of its first 5 lines (`System: systems/<name>.md`, in the root). `d` shows a diff against the text
 last marked read with `m` (kept in `.assay/overview-read/`); the header shows the line count, amber above 50.
 
+## Trusted pieces: blocks, definitions, includes
+
+Slice 10 (docs/slice-10.md). A **block** is a trusted SQL template whose front matter has a `block:` contract (grain and
+columns); the Trust tab's Check runs it live, checks its grain and compares it row by row with `<name>.rebuild.sql`, an
+independent rebuild by Codex (or an Opus model in Copilot). Claude's SQL **includes** blocks and dictionary definitions
+by name: `x AS ({{ block(p => 'v') }})`, `WHERE {{ client_entry(s) }}`. The server expands them (`analysis_sql
+expand`), keeps the SQL as written under a `-- built from:` line, saves the expanded SQL as `queries/NNN.expanded.sql`
+(first line `-- blocks: cte=block,...`) and runs that; Steps shows each block as one step. The **retype check**
+(`analysis_sql retype`) warns when Claude's SQL writes a piece's logic out by hand; a `-- retype: <piece>: <why>`
+comment silences it. A run's warnings are kept in `queries/NNN.notices.json` and shown above its code.
+
 ## Several analyses in one window
 
 One window holds up to nine analyses (`docs/multi-analysis-window.md`). Each is its own `WebContentsView` running the

@@ -275,3 +275,5 @@ table.grid th.cur-col { color: var(--accent); }
 .overview-block { border-left: 3px solid transparent; padding-left: 6px; margin-left: -9px; }
 .overview-block.added { border-left-color: var(--good); background: color-mix(in srgb, var(--good) 10%, transparent); }
 .overview-block.removed { border-left-color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); text-decoration: line-through; opacity: 0.8; }
+/* A run's SQL rule and retype warnings above its code (docs/slice-10.md). */
+.status.notices { color: var(--warn); opacity: 0.85; }

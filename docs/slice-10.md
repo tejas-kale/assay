@@ -1,6 +1,6 @@
 # Slice 10 spec: overviews, blocks, include by name, retype check
 
-Status: spec, 2026-11-10. 10a, 10b and 10c built. Written from the assay-root draft `2026-11-10-assay-review-workflow-changes.md` (the
+Status: 10a to 10d built, 2026-11-10. Not tried in the running app or against assay-root's runs yet. Written from the assay-root draft `2026-11-10-assay-review-workflow-changes.md` (the
 review-workflow grilling of 2026-11-09 and 2026-11-10), after reading Assay's code.
 
 Four slices, each usable alone, built in this order:
@@ -259,9 +259,12 @@ include is never flagged):
 
 ### Where it lives
 
-- `analysis_sql retype <dialect> <root>`: SQL on stdin, prints `{"warnings": [...]}`. The server runs it with the lint,
-  on `lint_sql` with definitions removed from it (`lint_sql` keeps the block stubs).
-- The reply lists the warnings under `Retyped trusted logic:`, after the SQL rule warnings.
+- `analysis_sql retype <dialect> <root>`: SQL on stdin, prints `{"warnings": [...]}`. The server runs it after the
+  lint passes, on `expand`'s `retype_sql`: the SQL as written with each included definition read as `TRUE` and each
+  block body the stub `lint_sql` has. Not run for Postgres (the pieces describe Databricks tables).
+- The reply lists the warnings under `Retyped trusted logic (include the piece, or add -- retype: <piece>: <why> above
+  the statement):`, after the SQL rule warnings. A block's join is flagged when a SELECT reads all the block's tables
+  and joins them on (at least) the block's key pairs.
 - The run's warnings (SQL rules and retypes) are saved as `queries/NNN.notices.json` (`{"rules": [...], "retype":
   [...]}`), and the Code tab shows them above the code, dim amber.
 

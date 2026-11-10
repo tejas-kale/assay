@@ -23,6 +23,7 @@ SELECT b.buyer_id, count(*) AS n FROM sessions s
 JOIN buyers b ON b.buyer_id = s.buyer_id
 GROUP BY b.buyer_id`
 const EXPANSION: Expansion = {
+  retype_sql: WRITTEN.replace(/\{\{ client_entry_sessions\([^)]*\) \}\}/, 'SELECT session_id, buyer_id FROM client_entry_sessions').replace('{{ all_buyers() }}', 'SELECT buyer_id FROM all_buyers'),
   sql: WRITTEN.replace(/\{\{ client_entry_sessions\([^)]*\) \}\}/, 'SELECT session_id, buyer_id FROM cint.mkt.sessions AS s WHERE (s.lk_responsestatusid = 3)').replace('{{ all_buyers() }}', 'SELECT buyer_id FROM cint.mkt.buyers'),
   lint_sql: WRITTEN.replace(/\{\{ client_entry_sessions\([^)]*\) \}\}/, 'SELECT session_id, buyer_id FROM client_entry_sessions').replace('{{ all_buyers() }}', 'SELECT buyer_id FROM all_buyers'),
   built_from: [
@@ -59,12 +60,13 @@ const fileOf = (argv: readonly string[]) => argv[argv.indexOf('--file') + 1] ?? 
 type Seen = { helper: { argv: readonly string[]; input?: string }[]; queried: string[] }
 
 /** Plays the helper (expand, lint, steps) and the warehouse. */
-function script(ws: Fake, expansion: object = EXPANSION, seen: Seen = { helper: [], queried: [] }) {
+function script(ws: Fake, expansion: object = EXPANSION, seen: Seen = { helper: [], queried: [] }, retypes: string[] = []) {
   ws.setRun((argv, options?: RunOptions) => {
     if (argv[2] === 'analysis_sql') {
       seen.helper.push({ argv, ...(options?.input === undefined ? {} : { input: options.input }) })
       if (argv[3] === 'expand') return { stdout: JSON.stringify(expansion) }
       if (argv[3] === 'lint') return { stdout: JSON.stringify({ errors: [], warnings: [] }) }
+      if (argv[3] === 'retype') return { stdout: JSON.stringify({ warnings: retypes }) }
       if (argv[3] === 'steps') return { stdout: JSON.stringify(PLAN) }
       return { stdout: '{}' }
     }
@@ -143,5 +145,28 @@ test('end to end: a query including two blocks lists both and steps through each
     ['buyers', 'all_buyers', 'ok', [['grain', true]]],
     ['final', undefined, 'ok', [['grain', true]]],
   ])
+  await ws.done()
+})
+
+test('a retyped piece is a warning: the query runs, the reply lists it, and the run keeps it in NNN.notices.json', async () => {
+  const ws = await fake(FILES)
+  const line = 'retypes cint.mkt.sessions:client_entry (lk_responsestatusid = 3): include {{ client_entry(s) }}'
+  const seen = script(ws, EXPANSION, { helper: [], queried: [] }, [line])
+  const sql = 'SELECT count(*) AS n FROM cint.mkt.sessions s WHERE s.lk_responsestatusid = 3'
+  const reply = await ws.call('sql', { sql, slug: 'n' })
+  expect(reply).toBe(`Query 001: 1 row. Columns: buyer_id, n\nbuyer_id  n\n10        2\n\nRetyped trusted logic (include the piece, or add -- retype: <piece>: <why> above the statement):\n- ${line}`)
+  const retype = seen.helper.find(call => call.argv[3] === 'retype')
+  expect(retype?.argv.slice(3)).toEqual(['retype', 'databricks', ws.root])
+  expect(retype?.input).toBe(sql)
+  expect(JSON.parse((await ws.file('queries/001.notices.json')) ?? 'null')).toEqual({ rules: [], retype: [line] })
+  await ws.done()
+})
+
+test('the retype check reads the SQL with its includes removed', async () => {
+  const ws = await fake(FILES)
+  const seen = script(ws)
+  await ws.call('sql', { sql: WRITTEN, slug: 'by-buyer' })
+  expect(seen.helper.find(call => call.argv[3] === 'retype')?.input).toBe(EXPANSION.retype_sql)
+  expect(await ws.file('queries/001.notices.json')).toBe(undefined)
   await ws.done()
 })

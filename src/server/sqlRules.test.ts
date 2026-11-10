@@ -14,6 +14,8 @@ const CTE_SQL = 'WITH ow AS (SELECT 1 AS x) SELECT x FROM ow'
 /** The lint answers `lint` (or exits as `lint` says); every other run is the query, answering one row. */
 function scripted(ws: Fake, lint: Partial<RunResult> | SqlLint, seen: { input?: string; argv?: readonly string[] } = {}) {
   ws.setRun((argv, options?: RunOptions) => {
+    // The retype check (docs/slice-10.md) finds nothing here; include.test.ts and retype.test.ts cover it.
+    if (argv[2] === 'analysis_sql' && argv[3] === 'retype') return { stdout: '{"warnings": []}' }
     if (argv[2] === 'analysis_sql') {
       seen.argv = argv
       if (options?.input !== undefined) seen.input = options.input
@@ -23,7 +25,7 @@ function scripted(ws: Fake, lint: Partial<RunResult> | SqlLint, seen: { input?: 
   })
 }
 
-const lintRuns = (ws: Fake) => ws.runs.filter(argv => argv[2] === 'analysis_sql')
+const lintRuns = (ws: Fake) => ws.runs.filter(argv => argv[2] === 'analysis_sql' && argv[3] === 'lint')
 
 test('a statement that breaks the rules is not run: no number claimed, no file, the reply lists each problem', async () => {
   const ws = await fake(FILES)

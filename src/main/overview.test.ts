@@ -50,3 +50,10 @@ test('mark read copies the shown text to the baseline, and refuses a text that c
   await writeFile(join(path, 'overview.md'), '# A\n')
   assert.deepEqual(await markOverviewRead(path, 'system', '# X\n'), { ok: false, reason: 'invalid', message: 'No such overview.' })
 })
+
+test('a run notices file is read safely', async () => {
+  const { parseNotices } = await import('./files.ts')
+  assert.deepEqual(parseNotices('{"rules": ["a"], "retype": ["b", 3]}'), { rules: ['a'], retype: ['b'] })
+  assert.equal(parseNotices(''), undefined)
+  assert.equal(parseNotices('{bad'), undefined)
+})

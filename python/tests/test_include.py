@@ -113,7 +113,7 @@ GROUP BY b.buyer_id
 
 
 def test_sql_without_includes_comes_back_unchanged(root: Path) -> None:
-    assert sql_.expand("SELECT 1", "databricks", root) == {"sql": "SELECT 1", "lint_sql": "SELECT 1", "built_from": [], "blocks": []}
+    assert sql_.expand("SELECT 1", "databricks", root) == {"sql": "SELECT 1", "lint_sql": "SELECT 1", "retype_sql": "SELECT 1", "built_from": [], "blocks": []}
 
 
 def test_blocks_expand_as_cte_bodies_with_their_definitions_and_list_what_the_query_is_built_from(root: Path) -> None:

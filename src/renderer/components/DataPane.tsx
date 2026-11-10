@@ -1013,6 +1013,13 @@ function CodeTab(props: {
       }}
     >
       {header}
+      {view?.notices && !edit && (
+        <div className="status notices">
+          {[...view.notices.retype.map(line => `retype: ${line}`), ...view.notices.rules.map(line => `rule: ${line}`)].map(line => (
+            <div key={line}>{line}</div>
+          ))}
+        </div>
+      )}
       {view?.expanded !== undefined && !edit && <div className="status dim">{showExpanded ? 'Expanded SQL, as it ran (x: as written)' : 'Includes trusted pieces (x: expanded SQL)'}</div>}
       {confirm && <div className="status warn">Discard edits? y / n</div>}
       {edit ? (

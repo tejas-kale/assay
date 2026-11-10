@@ -281,6 +281,22 @@ async function readHead(path: string, max: number): Promise<{ text: string; cut:
   }
 }
 
+/** `NNN.notices.json`: the run's SQL rule and retype warnings; undefined when missing or unreadable. */
+export function parseNotices(text: string): { rules: string[]; retype: string[] } | undefined {
+  if (!text) return undefined
+  try {
+    const parsed: unknown = JSON.parse(text)
+    if (!parsed || typeof parsed !== 'object') return undefined
+    const list = (key: string) => {
+      const value: unknown = Reflect.get(parsed, key)
+      return Array.isArray(value) ? value.filter((each): each is string => typeof each === 'string') : []
+    }
+    return { rules: list('rules'), retype: list('retype') }
+  } catch {
+    return undefined
+  }
+}
+
 /** One run's code and saved result. The number is looked up in the folder listing, so no renderer path is used. */
 export async function readRun(folder: string, number: number, options: { table?: number; step?: number } = {}): Promise<RunView | undefined> {
   const names = await readQueryNames(folder)
@@ -304,6 +320,8 @@ export async function readRun(folder: string, number: number, options: { table?:
     // A run with includes (docs/slice-10.md): the SQL that ran, saved beside it.
     const expanded = await readText(join(dir, `${run.label}.expanded.sql`))
     if (expanded) view.expanded = expanded
+    const notices = parseNotices(await readText(join(dir, `${run.label}.notices.json`)))
+    if (notices) view.notices = notices
     if (run.data) view.table = await readTable(run.data)
     if (options.step !== undefined) {
       // The last step is the final SELECT: its rows are the run's own.

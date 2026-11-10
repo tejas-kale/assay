@@ -61,6 +61,8 @@ export type RunView = {
   code?: string
   /** A run with includes: its expanded SQL, which ran (docs/slice-10.md). */
   expanded?: string
+  /** Claude's run's warnings: SQL rules and retyped trusted logic (docs/slice-10.md). */
+  notices?: { rules: string[]; retype: string[] }
   table?: Table
   tableIndex?: number
   result?: RunResult
