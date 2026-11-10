@@ -10,6 +10,7 @@ import { DATA_TABS, DataPane } from './DataPane.tsx'
 import type { DataCommand } from './DataPane.tsx'
 import { FilesTab } from './FilesTab.tsx'
 import { NotesTab } from './NotesTab.tsx'
+import { OverviewTab } from './OverviewTab.tsx'
 import { TerminalPane } from './TerminalPane.tsx'
 import { ThreadsTab } from './ThreadsTab.tsx'
 import type { DataTabName, NotesTabName, PaneName, Reveal } from './common.tsx'
@@ -79,9 +80,9 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
 
       <section className="pane" data-pane="notes" ref={notesRef} tabIndex={-1} aria-label="Notes and threads">
         <div className="tabs" role="tablist">
-          {(['threads', 'notes', 'files'] as const).map(id => (
+          {(['overview', 'threads', 'notes', 'files'] as const).map(id => (
             <button key={id} role="tab" tabIndex={-1} aria-selected={notesTab === id} onClick={() => onNotesTab(id)}>
-              {id === 'notes' ? notesTabLabel(noteGroups(state.rootNotes, state.noteLists)) : id === 'threads' ? (state.threads.open.length > 0 ? `Threads (${state.threads.open.length})` : 'Threads') : 'Files'}
+              {id === 'overview' ? 'Overview' : id === 'notes' ? notesTabLabel(noteGroups(state.rootNotes, state.noteLists)) : id === 'threads' ? (state.threads.open.length > 0 ? `Threads (${state.threads.open.length})` : 'Threads') : 'Files'}
             </button>
           ))}
           <span className="grow" />
@@ -89,10 +90,12 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
         </div>
         {hints && (
           <PaneHint>
-            {`${shortcutLabel('focus.notes')}  ·  Threads ${shortcutLabel('tab.threads')}  ·  Notes ${shortcutLabel('tab.notes')}  ·  Files ${shortcutLabel('tab.files')}`}
+            {`${shortcutLabel('focus.notes')}  ·  Overview ${shortcutLabel('tab.overview')}  ·  Threads ${shortcutLabel('tab.threads')}  ·  Notes ${shortcutLabel('tab.notes')}  ·  Files ${shortcutLabel('tab.files')}`}
           </PaneHint>
         )}
-        {notesTab === 'notes' ? (
+        {notesTab === 'overview' ? (
+          <OverviewTab key="overview" overview={state.overview} slug={state.analysis.name} />
+        ) : notesTab === 'notes' ? (
           <NotesTab key="notes" slug={state.analysis.name} rootNotes={state.rootNotes} noteLists={state.noteLists} runs={state.runs} onShowRun={onShowRun} reveal={revealFor('notes')} onRevealed={onRevealed} />
         ) : notesTab === 'threads' ? (
           <ThreadsTab key="threads" threads={state.threads} reveal={revealFor('threads')} onRevealed={onRevealed} />

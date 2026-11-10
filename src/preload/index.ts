@@ -43,6 +43,9 @@ const api: AppApi = {
     deleteClosed: (index, expected) => invoke(CHANNELS.threadsDeleteClosed, index, expected),
     moveOpen: (index, expected, delta) => invoke(CHANNELS.threadsMoveOpen, index, expected, delta),
   },
+  overview: {
+    markRead: (which, expectedText) => invoke(CHANNELS.overviewMarkRead, which, expectedText),
+  },
   notes: {
     read: name => invoke(CHANNELS.notesRead, name),
     add: (title, text) => invoke(CHANNELS.notesAdd, title, text),

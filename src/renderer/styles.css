@@ -270,3 +270,8 @@ table.grid th.cur-col { color: var(--accent); }
 .strip-run { color: var(--accent); font-variant-numeric: tabular-nums; }
 @keyframes strip-pulse { 50% { opacity: 0.4; } }
 @media (prefers-reduced-motion: reduce) { .strip-dot.working { animation: none; } }
+/* The Overview tab (docs/slice-10.md): the line count past its cap, and the diff's added and removed blocks. */
+.overview-lines.over { color: var(--warn); }
+.overview-block { border-left: 3px solid transparent; padding-left: 6px; margin-left: -9px; }
+.overview-block.added { border-left-color: var(--good); background: color-mix(in srgb, var(--good) 10%, transparent); }
+.overview-block.removed { border-left-color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); text-decoration: line-through; opacity: 0.8; }

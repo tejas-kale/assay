@@ -1,7 +1,7 @@
 # Assay
 
 A Mac desktop app for data analysis with Claude Code, laid out like RStudio: Claude Code in a terminal on the left,
-Threads / Notes / Files top right, and Data / Plots / Code / History / Steps / Trust bottom right. Its backend is this repo's
+Overview / Threads / Notes / Files top right, and Data / Plots / Code / History / Steps / Trust bottom right. Its backend is this repo's
 Claude Code plugin (`plugin/`): an MCP server, hooks and skills that Claude loads in the session the app starts. The
 files are the contract between the two, and the app keeps no database.
 
@@ -49,6 +49,12 @@ Ctrl+Shift+D Data, ...); Ctrl+0 zooms the terminal to the whole analysis and bac
 Cmd+1..9, Cmd+N, Cmd+W, the palette, search and Settings, plus Cmd+Enter, Cmd+E and Cmd+. on runs. In the app, the
 palette's Show Shortcuts lists them all. Holding left Cmd shows the Cmd shortcuts and the analysis numbers in the strip;
 holding left Ctrl shows the pane and tab hints.
+
+## Overviews
+
+The Overview tab (`⌃⇧O`, docs/slice-10.md) shows the open analysis's `overview.md` and, with `s`, the system overview
+it names on one of its first 5 lines (`System: systems/<name>.md`, in the root). `d` shows a diff against the text
+last marked read with `m` (kept in `.assay/overview-read/`); the header shows the line count, amber above 50.
 
 ## Several analyses in one window
 

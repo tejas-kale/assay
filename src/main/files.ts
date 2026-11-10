@@ -16,6 +16,8 @@ import type { ResultStatus, Run, RunHeader } from '../core/runs.ts'
 import { NOTES_DIR, parseNoteFileName, parseNoteLists, parseRootNote } from '../core/rootNotes.ts'
 import type { NoteLists, RootNote } from '../core/rootNotes.ts'
 import { parseThreads } from '../core/threads.ts'
+import { baselinePath, OVERVIEW_FILE, systemOf } from '../core/overview.ts'
+import type { OverviewDoc, OverviewState, OverviewWhich } from '../core/overview.ts'
 import { latestReview, parseTrustReview } from '../core/trust.ts'
 import type { TrustReview } from '../core/trust.ts'
 import { statSignature } from '../core/watch.ts'
@@ -96,13 +98,14 @@ async function writeAtomic(path: string, text: string): Promise<void> {
 
 export async function loadState(analysis: AnalysisRef): Promise<AnalysisState> {
   const root = rootOf(analysis.path)
-  const [threads, queries, status, rootNotes, noteLists, trust] = await Promise.all([
+  const [threads, queries, status, rootNotes, noteLists, trust, overview] = await Promise.all([
     readText(join(analysis.path, THREADS)),
     readQueryNames(analysis.path),
     readText(join(analysis.path, RUN_STATUS)).catch(() => ''),
     readRootNotes(root),
     readNoteLists(analysis.path),
     readLatestTrust(analysis.path),
+    readOverview(analysis.path),
   ])
   return {
     analysis,
@@ -112,7 +115,61 @@ export async function loadState(analysis: AnalysisRef): Promise<AnalysisState> {
     rootNotes,
     noteLists,
     ...(trust && { trust }),
+    overview,
   }
+}
+
+/** The file's text, or undefined when it does not exist or cannot be read. */
+const maybeText = (path: string) => readFile(path, 'utf8').catch(() => undefined)
+
+/**
+ * The analysis overview, the system overview it names, and the baseline of each (docs/slice-10.md, slice 10a). Paths
+ * in the state are from the root.
+ */
+export async function readOverview(analysisPath: string): Promise<OverviewState> {
+  const root = rootOf(analysisPath)
+  const slug = basename(analysisPath)
+  const text = await maybeText(join(analysisPath, OVERVIEW_FILE))
+  if (text === undefined) return {}
+  const doc = async (path: string, value: string, which: OverviewWhich, system?: string): Promise<OverviewDoc> => {
+    const base = baselinePath(which, system)
+    const baseline = base === undefined ? undefined : await maybeText(join(analysisPath, base))
+    return { path, text: value, ...(baseline === undefined ? {} : { baseline }) }
+  }
+  const state: OverviewState = { analysis: await doc(`analyses/${slug}/${OVERVIEW_FILE}`, text, 'analysis') }
+  const system = systemOf(text)
+  if (!system) return state
+  state.system = system
+  const systemText = await maybeText(join(root, system))
+  if (systemText !== undefined) state.systemDoc = await doc(system, systemText, 'system', system)
+  return state
+}
+
+/** A signature of the overview files and their baselines, so main pushes the state when any of them changes. */
+export async function overviewSignature(analysisPath: string): Promise<string> {
+  const text = (await maybeText(join(analysisPath, OVERVIEW_FILE))) ?? ''
+  const system = systemOf(text)
+  const paths = [join(analysisPath, OVERVIEW_FILE), join(analysisPath, baselinePath('analysis', undefined) ?? '')]
+  if (system) paths.push(join(rootOf(analysisPath), system), join(analysisPath, baselinePath('system', system) ?? ''))
+  const parts = await Promise.all(paths.map(async path => statSignature(await stat(path).catch(() => undefined))))
+  return parts.join('|')
+}
+
+/**
+ * "Mark read": the shown document's text becomes its baseline, when the file still holds `expectedText` (what the tab
+ * showed); else `stale`, so the user never marks read a text they did not see.
+ */
+export async function markOverviewRead(analysisPath: string, which: OverviewWhich, expectedText: string): Promise<EditResult> {
+  const text = (await maybeText(join(analysisPath, OVERVIEW_FILE))) ?? ''
+  const system = systemOf(text)
+  const current = which === 'analysis' ? text : system ? await maybeText(join(rootOf(analysisPath), system)) : undefined
+  const base = baselinePath(which, system)
+  if (current === undefined || base === undefined) return { ok: false, reason: 'invalid', message: 'No such overview.' }
+  if (current !== expectedText) return { ok: false, reason: 'stale', message: 'Changed on disk, reloaded' }
+  const path = join(analysisPath, base)
+  await mkdir(dirname(path), { recursive: true })
+  await writeAtomic(path, current)
+  return { ok: true }
 }
 
 /** The latest review in `.assay/trust/`; a missing folder, a half-written file or a bad one is skipped. */

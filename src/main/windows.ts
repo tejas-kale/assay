@@ -27,7 +27,7 @@ import type { TrustReview } from '../core/trust.ts'
 import { pollFiles, pollSignature } from '../core/watch.ts'
 import { CHANNELS } from '../shared/ipc.ts'
 import type { OpenResult, PtyExit, StripSide, StripView } from '../shared/ipc.ts'
-import { QUERIES, REPLIES_DIR, RUN_STATUS, THREADS, TRUST_DIR, fsPort, loadState, notesSignature, rootOf, takeReplies, watchPort } from './files.ts'
+import { QUERIES, REPLIES_DIR, RUN_STATUS, THREADS, TRUST_DIR, fsPort, loadState, notesSignature, overviewSignature, rootOf, takeReplies, watchPort } from './files.ts'
 import { startSession } from './session.ts'
 import { analysisRoot } from './settings.ts'
 import type { PtySession } from './session.ts'
@@ -586,11 +586,14 @@ export function attachAnalysis(ctx: WindowCtx, analysis: AnalysisRef): OpenResul
   deliverReplies()
   // A note edited in place leaves the folder's mtime alone, so the names, sizes and mtimes in `<root>/notes` are compared.
   const stopNotes = pollSignature(watchPort, () => notesSignature(rootOf(analysis.path)), () => void pushState(ctx))
+  // The overview, the system overview it names and their baselines (docs/slice-10.md); Claude's Edit writes in place.
+  const stopOverview = pollSignature(watchPort, () => overviewSignature(analysis.path), () => void pushState(ctx))
   const stopState = ctx.stopPoll
   ctx.stopPoll = () => {
     stopState()
     stopReplies()
     stopNotes()
+    stopOverview()
   }
   return { ok: true, outcome: 'opened', path: analysis.path }
 }

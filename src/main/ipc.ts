@@ -11,7 +11,7 @@ import { CHANNELS } from '../shared/ipc.ts'
 import type { EditResult, NoteCreateResult, NoteReadResult, OpenResult, PlotResult, RequestResult, SetRootResult, SettingsView } from '../shared/ipc.ts'
 import { analysisRoot, chooseRootPath, saveRoot } from './settings.ts'
 import { listFiles, openChart, openFile, previewFile } from './browse.ts'
-import { THREADS, editFile, fsPort, loadState, readPlot, readRun, readSearchContents, rootOf, writeRequest } from './files.ts'
+import { THREADS, editFile, fsPort, loadState, markOverviewRead, readPlot, readRun, readSearchContents, rootOf, writeRequest } from './files.ts'
 import { addRootNote, readCitedRun, readRootNote, saveRootNote } from './notes.ts'
 import { attachAnalysis, broadcast, contextFor, hostWindow, openPicker, pushState, requestClose, retitle, showAnalysis, startPty, toggleStripSide } from './windows.ts'
 import type { WindowCtx } from './windows.ts'
@@ -202,6 +202,12 @@ export function registerIpc() {
   handle(CHANNELS.notesAdd, async (ctx, title, text): Promise<NoteCreateResult> => {
     if (!ctx.analysis || !isText(title) || !isText(text)) return { ok: false, message: 'Invalid input' }
     const result = await addRootNote(rootOf(ctx.analysis.path), ctx.analysis, title, text)
+    await pushState(ctx)
+    return result
+  })
+  handle(CHANNELS.overviewMarkRead, async (ctx, which, expected): Promise<EditResult> => {
+    if (!ctx.analysis || (which !== 'analysis' && which !== 'system') || typeof expected !== 'string') return invalid('Invalid input')
+    const result = await markOverviewRead(ctx.analysis.path, which, expected)
     await pushState(ctx)
     return result
   })

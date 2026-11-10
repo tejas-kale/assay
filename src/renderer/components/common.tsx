@@ -7,7 +7,7 @@ import type { SearchTarget } from '../../core/search.ts'
 import type { EditResult } from '../../shared/ipc.ts'
 
 export type PaneName = 'terminal' | 'notes' | 'data'
-export type NotesTabName = 'threads' | 'notes' | 'files'
+export type NotesTabName = 'overview' | 'threads' | 'notes' | 'files'
 export type DataTabName = 'data' | 'plots' | 'code' | 'history' | 'steps' | 'trust'
 
 /** A universal-search hit for a tab to select. `n` makes a repeat of the same hit a new request. */

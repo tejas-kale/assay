@@ -16,6 +16,7 @@ export type CommandId =
   | 'tab.history'
   | 'tab.steps'
   | 'tab.trust'
+  | 'tab.overview'
   | 'tab.notes'
   | 'tab.threads'
   | 'tab.files'
@@ -70,6 +71,7 @@ export const COMMANDS: readonly Command[] = [
   { id: 'tab.history', title: 'Show History tab', accelerator: { code: 'KeyH', shift: true, ctrl: true } },
   { id: 'tab.steps', title: 'Show Steps tab', accelerator: { code: 'KeyS', shift: true, ctrl: true } },
   { id: 'tab.trust', title: 'Show Trust tab', accelerator: { code: 'KeyR', shift: true, ctrl: true } },
+  { id: 'tab.overview', title: 'Show Overview tab', accelerator: { code: 'KeyO', shift: true, ctrl: true } },
   { id: 'tab.threads', title: 'Show Threads tab', accelerator: { code: 'KeyT', shift: true, ctrl: true } },
   { id: 'tab.notes', title: 'Show Notes tab', accelerator: { code: 'KeyN', shift: true, ctrl: true } },
   { id: 'tab.files', title: 'Show Files tab', accelerator: { code: 'KeyF', shift: true, ctrl: true } },
@@ -113,6 +115,7 @@ export function shortcutLabel(id: CommandId): string {
 
 /** Single keys inside a pane, for the Show Shortcuts overlay. The panes no longer print them. */
 export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
+  { pane: 'Overview', keys: [['s', 'analysis / system overview'], ['d', 'diff since marked read, on / off'], ['m', 'mark read'], ['j / k', 'scroll'], ['g / G', 'top / bottom'], ['⌃2 again', 'switch to Threads']] },
   {
     pane: 'Threads',
     keys: [['⌃2 again', 'switch to Notes'], ['j / k', 'move'], ['/', 'search'], ['Tab', 'full text in a pop-up'], ['a', 'add'], ['e', 'edit'], ['c', 'close'], ['d', 'delete'], ['J / K', 'reorder'], ['z', 'show / hide closed threads']],
@@ -149,7 +152,7 @@ export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
   { pane: 'Trust', keys: [['J / K  ↑ / ↓', 'choose a proposal'], ['c / Enter', 'check it'], ['t / r', 'trust / reject, once every check passed'], ['l', 'list the proposals again'], ['j / k', 'scroll'], ['g / G', 'top / bottom'], ['⌘↩', 'run the selected SQL (opens in Data)']] },
   {
     pane: 'Files',
-    keys: [['j / k', 'move'], ['/', 'search'], ['Enter', 'open: text in Neovim, Mermaid chart in the browser, image preview'], ['Tab', 'preview in a pop-up'], ['r', 'refresh'], ['⌃2 again', 'switch to Threads']],
+    keys: [['j / k', 'move'], ['/', 'search'], ['Enter', 'open: text in Neovim, Mermaid chart in the browser, image preview'], ['Tab', 'preview in a pop-up'], ['r', 'refresh'], ['⌃2 again', 'switch to Overview']],
   },
   {
     pane: 'Search (⌘F)',

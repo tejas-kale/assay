@@ -20,8 +20,9 @@ import type { Engine, KernelState, Run, RunResult, RunStatus, Table } from '../c
 import type { SearchContents } from '../core/search.ts'
 import type { ClosedThread, Threads } from '../core/threads.ts'
 import type { TrustReview } from '../core/trust.ts'
+import type { OverviewState, OverviewWhich } from '../core/overview.ts'
 
-export type { CitationLabel, Analysis, AnalysisRef, ClosedThread, CloseState, CommandId, Engine, FileEntry, KernelState, NoteLists, Reply, RootNote, Run, RunRequest, RunResult, RunStatus, SearchContents, Table, Threads, TrustReview }
+export type { CitationLabel, Analysis, AnalysisRef, ClosedThread, CloseState, CommandId, Engine, FileEntry, KernelState, NoteLists, Reply, RootNote, Run, RunRequest, RunResult, RunStatus, SearchContents, Table, Threads, TrustReview, OverviewState, OverviewWhich }
 
 /** Call to stop listening. */
 export type Unsubscribe = () => void
@@ -47,6 +48,8 @@ export type AnalysisState = {
   noteLists: NoteLists
   /** The latest trust review from `.assay/trust/`, for the Trust tab. */
   trust?: TrustReview
+  /** The analysis overview, its system overview and their read baselines, for the Overview tab (docs/slice-10.md). */
+  overview: OverviewState
 }
 
 /**
@@ -142,6 +145,11 @@ export type AppApi = {
     deleteClosed(index: number, expected: ClosedThread): Promise<EditResult>
     /** delta -1 moves up, +1 down. */
     moveOpen(index: number, expected: string, delta: 1 | -1): Promise<EditResult>
+  }
+
+  overview: {
+    /** Marks the shown overview read: its text becomes the diff's baseline, if the file still holds `expectedText`. */
+    markRead(which: OverviewWhich, expectedText: string): Promise<EditResult>
   }
 
   files: {
@@ -245,6 +253,7 @@ export const CHANNELS = {
   runRead: 'run:read',
   plotRead: 'plot:read',
   runRequest: 'run:request',
+  overviewMarkRead: 'overview:markRead',
   filesList: 'files:list',
   filesOpen: 'files:open',
   filesPreview: 'files:preview',

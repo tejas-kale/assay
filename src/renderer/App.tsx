@@ -105,8 +105,8 @@ export function App() {
           focusPane('terminal')
           return true
         case 'focus.notes':
-          // Pressed again inside the pane, it switches between Threads and Notes.
-          if (paneOfActive() === 'notes') setNotesTab(tab => (tab === 'threads' ? 'notes' : tab === 'notes' ? 'files' : 'threads'))
+          // Pressed again inside the pane, it cycles Overview, Threads, Notes, Files.
+          if (paneOfActive() === 'notes') setNotesTab(tab => (tab === 'overview' ? 'threads' : tab === 'threads' ? 'notes' : tab === 'notes' ? 'files' : 'overview'))
           focusPane('notes')
           return true
         case 'shortcuts.show':
@@ -115,6 +115,7 @@ export function App() {
         case 'focus.data':
           focusPane('data')
           return true
+        case 'tab.overview':
         case 'tab.notes':
         case 'tab.threads':
         case 'tab.files':
