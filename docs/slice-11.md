@@ -1,6 +1,6 @@
 # Slice 11 spec: process, gates, backend in the app, CI/CD, auto-update, tab settings, audit
 
-Status: 11a and 11b built, 2026-11-10. Written from the grilling session of 2026-11-10, after reading Assay's
+Status: 11a and 11b built, 2026-11-10. 11c in progress: CI, release and backend integration tests built; the app smoke test waits on playwright-core. Written from the grilling session of 2026-11-10, after reading Assay's
 code.
 
 Seven slices, built in this order. Each ships, with CI green, before the next one starts:

@@ -1,7 +1,6 @@
 // The bundled server end to end: the SDK's MCP client over stdio starts out/server/index.mjs (built into a temp
-// folder) on a scratch analysis, with a stub `databricks` on PATH. With ASSAY_TEST_VENV naming a venv that has
-// ipykernel and the helpers (python/tests/test_venv.sh builds one), the kernel is real; without it the Python tools
-// must say Assay's venv is not built.
+// folder) on a scratch analysis, with a stub `databricks` on PATH and no venv, so the Python tools must say Assay's
+// venv is not built. The real kernel runs in tests/integration/backend.test.ts.
 import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -14,8 +13,6 @@ import { VENV_MISSING as VENV_ASSAY_HINT } from '../core/venv.ts'
 import { bundle } from '../testing/bundle.ts'
 import { expect } from '../testing/expect.ts'
 import { until } from './testing.ts'
-
-const VENV = process.env.ASSAY_TEST_VENV
 
 /** A Databricks CLI that answers every query with one row. */
 const STUB = `#!/bin/sh
@@ -45,7 +42,7 @@ async function session() {
       TMPDIR: dir,
       ASSAY_ANALYSIS: analysis,
       ASSAY_ROOT: root,
-      ASSAY_VENV: VENV ?? join(dir, 'no-venv'),
+      ASSAY_VENV: join(dir, 'no-venv'),
       ASSAY_KERNEL_RUNNER: resolve('python/analysis_kernel.py'),
     },
   })
@@ -75,15 +72,9 @@ test('the bundled server lists its tools and answers each once', { timeout: 120_
   // The server started with the cwd at the root, wrote under the analysis, and took the target from analysis.yaml.
   expect(await readFile(join(s.dir, 'last-args'), 'utf8')).toMatch(/--profile P1 --warehouse 455a178462311474 /)
   expect(await readFile(join(s.root, 'queries/001_one.csv'), 'utf8').catch(() => undefined)).toBeUndefined()
-  if (VENV) {
-    expect(await until(async () => (await s.kernel()) === 'idle', 60_000)).toBe(true)
-    expect(await s.call('python', { code: 'x = q(1)\nprint(int(x.n[0]) + 41)', slug: 'answer' })).toMatch(/^Run 002: ok \(\d+\.\d s\)\.\n42$/)
-    expect(await s.call('trusted', { name: 'nope' })).toBe('No trusted calculation nope. There are none yet.')
-  } else {
-    expect(await until(async () => (await s.kernel()) === 'missing')).toBe(true)
-    expect(await s.call('python', { code: '1', slug: 'x' })).toBe(`The Python kernel is not available: ${VENV_ASSAY_HINT}`)
-    expect(await s.call('trusted', { name: 'nope' })).toBe(`Cannot list the trusted calculations: ${VENV_ASSAY_HINT}`)
-  }
+  expect(await until(async () => (await s.kernel()) === 'missing')).toBe(true)
+  expect(await s.call('python', { code: '1', slug: 'x' })).toBe(`The Python kernel is not available: ${VENV_ASSAY_HINT}`)
+  expect(await s.call('trusted', { name: 'nope' })).toBe(`Cannot list the trusted calculations: ${VENV_ASSAY_HINT}`)
   expect(await s.call('park', { thread: 'Why is n 1?' })).toBe('Parked. 1 open thread.')
   expect(await s.call('park', { thread: 'Is it per site?' })).toBe('Parked. 2 open threads.')
   expect(await s.call('focus', { thread: '2' })).toBe('Focused: 1. Is it per site?')
@@ -126,26 +117,17 @@ test('each request type through the files, including the trust ones and an answe
   }
   expect(await ask({ kind: 'sql', sql: 'SELECT 1 AS n', engine: 'databricks', slug: 'mine' })).toMatchObject({ number: 1 })
   expect(await s.file('queries/001_mine.sql')).toBe('-- author: user\nSELECT 1 AS n\n')
-  if (VENV) {
-    await until(async () => (await s.kernel()) === 'idle', 60_000)
-    expect(await ask({ kind: 'python', code: 'y = 2', slug: 'py' })).toMatchObject({ number: 2 })
-    expect(await ask({ kind: 'interrupt' })).toMatchObject({ ok: true })
-    expect(await ask({ kind: 'restart' })).toMatchObject({ ok: true })
-    expect(await ask({ kind: 'replay', runs: [2] })).toMatchObject({ ok: true })
-    expect(await s.file('queries/003_py.py')).toBe('# author: user\n# replay: 002\ny = 2\n')
-  } else {
-    expect(await ask({ kind: 'python', code: 'y = 2', slug: 'py' })).toEqual({ id: expect_id(n), error: `The Python kernel is not available: ${VENV_ASSAY_HINT}` })
-    expect((await ask({ kind: 'interrupt' })).error).toBe('No kernel is running.')
-    expect((await ask({ kind: 'restart' })).error).toBe(VENV_ASSAY_HINT)
-    expect((await ask({ kind: 'replay', runs: [1] })).error).toBe('Run 001 is not a Python run.')
-  }
+  expect(await ask({ kind: 'python', code: 'y = 2', slug: 'py' })).toEqual({ id: expect_id(n), error: `The Python kernel is not available: ${VENV_ASSAY_HINT}` })
+  expect((await ask({ kind: 'interrupt' })).error).toBe('No kernel is running.')
+  expect((await ask({ kind: 'restart' })).error).toBe(VENV_ASSAY_HINT)
+  expect((await ask({ kind: 'replay', runs: [1] })).error).toBe('Run 001 is not a Python run.')
   expect(await ask({ kind: 'trust-list' })).toMatchObject({ proposals: [{ name: 'ones', kind: 'calculation', folder: 'lib/trusted' }] })
   expect(await ask({ kind: 'trust-answer', name: 'ones', answer: 'trust' })).toMatchObject({ error: 'No review of ones is waiting for an answer.' })
   expect(await ask({ kind: 'trust-check', name: 'ones' })).toMatchObject({ ok: true })
-  // The real helper checks it (with a venv) or cannot (without): either way the review ends, written to the trust file.
+  // Without a venv the helper cannot check it: the review ends in error, written to the trust file.
   const review = async () => JSON.parse((await s.file('.assay/trust/ones.json')) ?? '{}')
-  expect(await until(async () => ['asking', 'failed', 'error'].includes((await review()).state), 120_000)).toBe(true)
-  if ((await review()).state !== 'asking') expect(await ask({ kind: 'trust-answer', name: 'ones', answer: 'trust' })).toMatchObject({ error: 'No review of ones is waiting for an answer.' })
+  expect(await until(async () => ['failed', 'error'].includes((await review()).state), 120_000)).toBe(true)
+  expect(await ask({ kind: 'trust-answer', name: 'ones', answer: 'trust' })).toMatchObject({ error: 'No review of ones is waiting for an answer.' })
   // Nothing reached the shared trusted/ folder.
   expect(await readFile(join(s.root, 'trusted/ones.sql'), 'utf8').catch(() => undefined)).toBeUndefined()
   // The user's runs, for the next prompt's notice.

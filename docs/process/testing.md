@@ -18,10 +18,23 @@ the same checks, so `--no-verify` only delays a failure.
 - Python runs from `python/`'s locked project with its dev group (ruff, pytest-cov), synced by uv into the root
   `.venv`. `scripts/py.sh <command>` runs any command there.
 - Fakes: a stub `python` script stands in for the venv in the hook tests; the MCP SDK's client stands in for Claude.
-  With `ASSAY_TEST_VENV` naming a venv that has ipykernel (`python/tests/test_venv.sh <dir>` builds one in
-  `<dir>/src/.venv`), the MCP test runs a real kernel.
+  The unit tests never start a real kernel.
 - `src/renderer` and `src/main` have no unit tests. When a component or main holds a decision worth testing, move the
   decision into `src/core` as a pure function and test it there, as `dataTabs.ts` and `stepsRequests.ts` do.
+
+## Integration tests
+
+`npm run test:integration` runs `tests/integration/*.test.ts`, outside `npm run check` (CI runs them after the unit
+job, `docs/process/ci-release.md`). They need uv and PyPI; nothing reaches Databricks, Postgres or a real Claude.
+
+- `backend.test.ts`: the bundled server over MCP with a real kernel in a venv `python/tests/test_venv.sh` builds (or
+  the one `ASSAY_TEST_VENV` names), on a scratch root that is a git repository with trusted pieces committed. SQL and
+  Python runs, the app's requests, Steps, the include expansion, and the bundled hooks on real files.
+- `tests/integration/harness.ts` builds that world. `fixtures/bin/databricks`, first on PATH, answers queries with
+  rows chosen by the SQL's text. Trusted calculations reach the warehouse through the Python connector, which no fake
+  answers.
+- In the sandbox, esbuild's binary in `node_modules` is the Mac's: set `ESBUILD_BINARY_PATH` to a Linux esbuild of
+  the same version.
 
 ## Coverage
 

@@ -1,0 +1,99 @@
+# The pipeline (docs/process/ci-release.md): unit checks on every push and pull request, integration tests on every
+# push, and on main a signed release on macOS unless the push changed only docs, tests and CI config.
+# Every action is pinned by commit SHA; the comment names its tag.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      release: ${{ steps.paths.outputs.release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: npm ci
+      - run: uv sync --frozen --project python
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.venv
+      # The same gate as the pre-push hook: typecheck, ESLint, node tests, ruff, pytest, the ratchet.
+      - run: npm run check
+      - id: paths
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: node scripts/release-paths.ts "${{ github.event.before }}" "${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+  integration:
+    if: github.event_name == 'push'
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: npm ci
+      # The postinstall rebuilds node-pty for Electron only on the Mac; the app smoke test needs it here too.
+      - run: npx electron-rebuild -f -w node-pty
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - run: xvfb-run --auto-servernum npm run test:integration
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.unit.outputs.release == 'true'
+    needs: [unit, integration]
+    runs-on: macos-latest
+    timeout-minutes: 40
+    # One release at a time, so two quick pushes cannot both claim a version.
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - id: version
+        run: |
+          version=$(node scripts/next-version.ts)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          npm version --no-git-tag-version --allow-same-version "$version"
+          node scripts/next-version.ts --notes > "$RUNNER_TEMP/notes.md"
+      # Without the certificate electron-builder would ship an unsigned build; stop instead.
+      - run: test -n "$CSC_LINK" || { echo "::error::The CSC_LINK secret is not set (docs/process/ci-release.md)"; exit 1; }
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+      - run: npm run release:build
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          CSC_NAME: ${{ vars.CSC_NAME }}
+      # The tag and the release in one step: gh tags the pushed commit, not whatever main is by now.
+      - run: |
+          gh release create "v${{ steps.version.outputs.version }}" \
+            --target "${{ github.sha }}" \
+            --title "Assay ${{ steps.version.outputs.version }}" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            dist/*.dmg dist/*.zip dist/*.blockmap dist/latest-mac.yml
+        env:
+          GH_TOKEN: ${{ github.token }}

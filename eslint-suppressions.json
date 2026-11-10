@@ -1123,7 +1123,7 @@
       "count": 1
     },
     "@typescript-eslint/no-unsafe-member-access": {
-      "count": 7
+      "count": 6
     },
     "@typescript-eslint/no-unsafe-return": {
       "count": 2

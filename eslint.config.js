@@ -33,6 +33,12 @@ export default tseslint.config(
     // An error, not the plugin's warning: only errors can go in the baseline, and any warning fails the check.
     rules: { ...reactHooks.configs.flat.recommended.rules, 'react-hooks/exhaustive-deps': 'error' },
   },
+  {
+    // Build scripts and tests run git and the CLIs from PATH by design: the integration tests put their fakes first on
+    // it. The app's own code (src/) keeps the rule.
+    files: ['scripts/**/*.ts', 'tests/**/*.ts'],
+    rules: { 'sonarjs/no-os-command-from-path': 'off' },
+  },
   { files: ['**/*.{js,mjs,cjs}'], ...tseslint.configs.disableTypeChecked },
   {
     files: ['**/*.{js,mjs,cjs}'],

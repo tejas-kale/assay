@@ -1,0 +1,23 @@
+#!/usr/bin/env node
+// A stand-in for the Databricks CLI, first on PATH in the integration tests, so no test reaches Databricks. It answers
+// `experimental aitools tools query ... --file <sql> SELECT 1` as the real CLI does (one result per statement), with
+// rows chosen by the SQL's text: a step's counts query gets 3 for each `assay_` count it names, anything naming `sites` gets
+// two sites, and the rest gets one row with n = 1.
+import { readFileSync } from 'node:fs'
+
+const args = process.argv.slice(2)
+const file = args[args.indexOf('--file') + 1]
+if (!args.includes('query') || file === undefined) {
+  console.error(`fake databricks: unexpected call: ${args.join(' ')}`)
+  process.exit(2)
+}
+const sql = readFileSync(file, 'utf8')
+
+function answer() {
+  const counts = [...sql.matchAll(/\bAS\s+(assay_(?:rows|grain_rows|j\d+_\w+))\b/gi)].map((m) => m[1])
+  if (counts.length > 0) return { columns: counts, rows: [counts.map(() => '3')] }
+  if (/\bsites\b/i.test(sql)) return { columns: ['site', 'n'], rows: [['north', '2'], ['south', '5']] }
+  return { columns: ['n'], rows: [['1']] }
+}
+
+console.log(JSON.stringify([{ state: 'SUCCEEDED', ...answer() }, { state: 'SUCCEEDED', columns: ['1'], rows: [['1']] }]))

@@ -10,18 +10,20 @@
     "check": "npm run typecheck && npm run lint && npm run test:node && npm run lint:py && npm run test:py && npm run ratchet",
     "test": "npm run test:node && npm run test:py",
     "test:node": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-include='src/core/**' --test-coverage-include='src/server/**' --test-coverage-include='src/hooks/**' --test-coverage-exclude='**/*.test.ts' --test-reporter=dot --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"src/**/*.test.ts\" \"scripts/**/*.test.ts\"",
+    "test:integration": "node --test --test-concurrency=1 --test-reporter=spec \"tests/integration/**/*.test.ts\"",
     "test:py": "cd python && ../scripts/py.sh pytest -q -p no:cacheprovider -n auto --cov --cov-report=json:../coverage/python.json",
     "lint": "eslint --cache --cache-location node_modules/.cache/eslint/ --max-warnings 0 --no-error-on-unmatched-pattern src scripts tests",
     "lint:prune": "eslint --no-error-on-unmatched-pattern src scripts tests --prune-suppressions",
     "lint:py": "mkdir -p coverage && scripts/py.sh ruff check python --exit-zero --quiet --output-format json --output-file coverage/ruff.json",
     "ratchet": "node scripts/ratchet.ts",
     "postinstall": "node scripts/postinstall.mjs && node scripts/build-server.mjs",
-    "package": "electron-vite build && npm run build:server && electron-builder --mac --dir",
+    "package": "electron-vite build && npm run build:server && electron-builder --mac --dir --config.mac.identity=- --config.mac.hardenedRuntime=false",
     "install-app": "npm run package && rm -rf /Applications/Assay.app && ditto dist/mac-arm64/Assay.app /Applications/Assay.app",
     "build:server": "node scripts/build-server.mjs",
     "migrate:root": "node scripts/migrate-root.ts",
     "migrate:notes": "node scripts/migrate-notes.ts",
-    "import:denote": "node scripts/import-denote.ts"
+    "import:denote": "node scripts/import-denote.ts",
+    "release:build": "electron-vite build && npm run build:server && electron-builder --mac dmg zip --arm64 --publish never"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
@@ -78,9 +80,13 @@
     "mac": {
       "icon": "resources/icon.png",
       "category": "public.app-category.developer-tools",
-      "identity": "-",
-      "target": "dir",
-      "hardenedRuntime": false
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true,
+      "entitlements": "resources/entitlements.mac.plist",
+      "entitlementsInherit": "resources/entitlements.mac.plist"
     },
     "extraResources": [
       {
@@ -115,7 +121,20 @@
           "uv.lock"
         ]
       }
-    ]
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "tejas-kale",
+      "repo": "assay",
+      "private": true
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    }
   },
   "allowScripts": {
     "node-pty@1.1.0": true

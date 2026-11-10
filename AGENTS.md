@@ -20,6 +20,7 @@ one kernel the app shows. Protect this in every change.
 
 - `docs/process/coding-standards.md`: the code standard and the limits the linters enforce. Read it before writing code.
 - `docs/process/testing.md`: where tests live, the fakes, the coverage bar, the baselines, and how to run them.
+- `docs/process/ci-release.md`: the CI pipeline, the release filter, versions and `Release:` trailers, signing.
 - `docs/process/launch-contract.md`: how the app starts Claude, and what a launcher (the Podman wrapper) must provide.
 
 ## Where things are
