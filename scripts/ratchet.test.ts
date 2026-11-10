@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { checkCoverage, checkRuff, parseCoverageJson, parseLcov, ruffCounts, withUnmeasured } from './ratchet.ts'
+import { checkCoverage, checkRuff, parseCoverageJson, parseLcov, ruffCounts, staleSuppressions, withUnmeasured } from './ratchet.ts'
 
 const full = { lines: 100, branches: 100 }
 
@@ -45,8 +45,8 @@ test('coverage: a new file below 90% on lines or branches fails', () => {
 })
 
 test('coverage: a file in the baseline may not drop below its figures', () => {
-  const result = checkCoverage({ 'src/core/a.ts': { lines: 70, branches: 60 } }, { 'src/core/a.ts': { lines: 69.5, branches: 60 } })
-  assert.deepEqual(result.failures, ['src/core/a.ts: lines fell from 70% to 69.5%'])
+  const result = checkCoverage({ 'src/core/a.ts': { lines: 70, branches: 60 } }, { 'src/core/a.ts': { lines: 69, branches: 60 } })
+  assert.deepEqual(result.failures, ['src/core/a.ts: lines fell from 70% to 69%'])
   assert.deepEqual(result.updated, { 'src/core/a.ts': { lines: 70, branches: 60 } })
 })
 
@@ -88,4 +88,24 @@ test("coverage.py's JSON: per file, under the folder it ran in", () => {
 test('a file in scope that no test loads counts as 0%', () => {
   const measured = { 'src/core/a.ts': full }
   assert.deepEqual(withUnmeasured(measured, ['src/core/a.ts', 'src/hooks/io.ts']), { 'src/core/a.ts': full, 'src/hooks/io.ts': { lines: 0, branches: 0 } })
+})
+
+test('coverage: a file leaves the baseline only on its own figures, never on the better of old and new', () => {
+  const result = checkCoverage({ 'src/core/a.ts': { lines: 95, branches: 80 } }, { 'src/core/a.ts': { lines: 85, branches: 95 } })
+  assert.deepEqual(result.failures, ['src/core/a.ts: lines fell from 95% to 85%'])
+  assert.deepEqual(result.updated, { 'src/core/a.ts': { lines: 95, branches: 95 } })
+})
+
+test("eslint: a deleted file's suppressions are stale, since ESLint only checks the files it lints", () => {
+  const suppressions = { 'src/core/a.ts': { 'max-params': { count: 1 } }, 'src/core/gone.ts': { 'max-params': { count: 2 } } }
+  assert.deepEqual(staleSuppressions(suppressions, file => file === 'src/core/a.ts'), {
+    stale: ['src/core/gone.ts: deleted, its suppressions leave the baseline'],
+    updated: { 'src/core/a.ts': { 'max-params': { count: 1 } } },
+  })
+})
+
+test('coverage: a dip of up to half a point below a recorded floor passes, since some tests race; the floor stays', () => {
+  const baseline = { 'src/core/a.ts': { lines: 70, branches: 89.6 } }
+  assert.deepEqual(checkCoverage(baseline, { 'src/core/a.ts': { lines: 70, branches: 89.55 } }), { failures: [], stale: [], updated: baseline })
+  assert.deepEqual(checkCoverage(baseline, { 'src/core/a.ts': { lines: 69.4, branches: 89.6 } }).failures, ['src/core/a.ts: lines fell from 70% to 69.4%'])
 })

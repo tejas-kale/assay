@@ -61,6 +61,10 @@ max-statements = 40
 # coverage follows subprocesses.
 [tool.coverage.run]
 source = ["."]
-omit = ["tests/*"]
+omit = ["tests/*", "*/tests/*"]
 branch = true
 patch = ["subprocess"]
+
+[tool.coverage.report]
+# A helper in a folder without __init__.py still counts, at 0% if no test runs it.
+include_namespace_packages = true

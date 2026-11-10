@@ -60,10 +60,14 @@ function checkNewFile(file: string, now: Coverage): string[] {
   return METRICS.filter(m => now[m] < BAR).map(m => `${file}: ${m} ${String(now[m])}% is below ${String(BAR)}%`)
 }
 
+/** How far a figure may dip below its recorded floor: a test that races can miss a branch in one run of many. */
+export const JITTER = 0.5
+
 function checkKnownFile(file: string, was: Coverage, now: Coverage) {
-  const failures = METRICS.filter(m => now[m] < was[m]).map(m => `${file}: ${m} fell from ${String(was[m])}% to ${String(now[m])}%`)
+  const failures = METRICS.filter(m => now[m] < was[m] - JITTER).map(m => `${file}: ${m} fell from ${String(was[m])}% to ${String(now[m])}%`)
   const better = { lines: Math.max(was.lines, now.lines), branches: Math.max(was.branches, now.branches) }
-  if (atBar(better)) return { failures, stale: [`${file}: reached ${String(BAR)}%, leaves the baseline`], kept: undefined }
+  // On its own figures: leaving on `better` would drop the floor of a metric that just fell.
+  if (atBar(now) && failures.length === 0) return { failures, stale: [`${file}: reached ${String(BAR)}%, leaves the baseline`], kept: undefined }
   const stale = METRICS.filter(m => now[m] > was[m]).map(m => `${file}: ${m} rose from ${String(was[m])}% to ${String(now[m])}%`)
   return { failures, stale, kept: better }
 }
@@ -120,12 +124,24 @@ export function parseCoverageJson(report: CoverageReport, folder: string): Cover
   return files
 }
 
+type Suppressions = Record<string, Record<string, { count: number }>>
+
+/** ESLint prunes the suppressions of the files it lints, so a deleted file's would stay, ready for a new file there. */
+export function staleSuppressions(suppressions: Suppressions, exists: (file: string) => boolean) {
+  const files = Object.keys(suppressions)
+  return {
+    stale: files.filter(f => !exists(f)).map(f => `${f}: deleted, its suppressions leave the baseline`),
+    updated: Object.fromEntries(files.filter(exists).map(f => [f, suppressions[f]])) as Suppressions,
+  }
+}
+
 // The CLI. Paths are relative to the repo root, where npm runs it.
 
 /** The TypeScript under the bar; python/ is listed whole by coverage.py itself. */
 const TS_SCOPE = ['src/core', 'src/server', 'src/hooks']
 const RUFF_BASELINE = 'python/ruff-baseline.json'
 const COVERAGE_BASELINE = 'coverage-baseline.json'
+const ESLINT_BASELINE = 'eslint-suppressions.json'
 
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, 'utf8'))
 const writeJson = (path: string, value: unknown) => {
@@ -162,11 +178,13 @@ function main(args: string[]): number {
   const update = args.includes('--update')
   const ruffVerdict = checkRuff(readJson(RUFF_BASELINE) as RuffCounts, ruff)
   const coverageVerdict = checkCoverage(readJson(COVERAGE_BASELINE) as CoverageByFile, coverage)
+  const eslintVerdict = { failures: [], ...staleSuppressions(readJson(ESLINT_BASELINE) as Suppressions, existsSync) }
   if (update) {
     writeJson(RUFF_BASELINE, ruffVerdict.updated)
     writeJson(COVERAGE_BASELINE, coverageVerdict.updated)
+    writeJson(ESLINT_BASELINE, eslintVerdict.updated)
   }
-  const ok = [report(ruffVerdict, update), report(coverageVerdict, update)].every(Boolean)
+  const ok = [ruffVerdict, coverageVerdict, eslintVerdict].map(v => report(v, update)).every(Boolean)
   if (!ok && !update && ruffVerdict.failures.length + coverageVerdict.failures.length === 0) {
     console.log('ratchet: the baselines are beaten; run `npm run ratchet -- --update` and commit them')
   }

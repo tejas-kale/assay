@@ -26,7 +26,7 @@ the same checks, so `--no-verify` only delays a failure.
 ## Coverage
 
 The bar is 90% of lines and of branches, per file, in `src/core`, `src/server`, `src/hooks` and `python/` (tests
-excluded). A file no test loads counts as 0%. Python coverage follows subprocesses, so the kernel's `serve` counts.
+excluded). A file no test loads counts as 0%, in a folder without `__init__.py` too. Python coverage follows subprocesses, so the kernel's `serve` counts.
 Reports land in `coverage/` (ignored by git).
 
 ## The baselines
@@ -34,11 +34,14 @@ Reports land in `coverage/` (ignored by git).
 Today's code is below the bar in places. Three committed files record where, and each may only shrink:
 
 - `eslint-suppressions.json`: ESLint's bulk suppressions. A new violation fails. When a count falls, ESLint fails
-  until `npm run lint:prune` writes the smaller file.
+  until `npm run lint:prune` writes the smaller file. ESLint only checks the files it lints, so the ratchet flags the
+  suppressions of a deleted file.
 - `python/ruff-baseline.json`: ruff's counts per file and rule, kept by `scripts/ratchet.ts`. A count that grows, or
   a new file or rule, fails.
 - `coverage-baseline.json`: line and branch percentages of the files below the bar, kept by `scripts/ratchet.ts`. A
-  file in it may not fall below its figures; a file not in it must reach 90% on both; a file reaching 90% leaves it.
+  file in it may not fall more than half a point below its figures (a test that races can miss a branch in one run of
+  many; the figures themselves never move down); a file not in it must reach 90% on both; a file reaching 90% on its
+  own figures leaves it.
 
 A baseline the code has beaten fails the check too, until `npm run ratchet -- --update` (or `npm run lint:prune`)
 writes the better figures, so no file can slide back to an old low. Commit the smaller baseline with the change.
