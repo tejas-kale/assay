@@ -3,7 +3,7 @@
 // them. No Electron here, so the tests run it on a temp folder.
 import { randomUUID } from 'node:crypto'
 import { cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { staleEntries, TEMP_PREFIX } from '../core/backendLayout.ts'
 import { parseVenvBuild, venvStatusPath } from '../core/venv.ts'
@@ -47,11 +47,11 @@ export type VenvOptions = {
   /** The Python project (`<backend>/python`). */
   project: string
   venv: string
-  /** The dev venv installs the helpers editable, so edits to python/ apply at once; a version's never does. */
-  isEditable: boolean
   runUv: UvRun
   onState?: (build: VenvBuild) => void
 }
+
+const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
 async function writeStatus(venv: string, build: VenvBuild) {
   const path = venvStatusPath(venv)
@@ -61,24 +61,38 @@ async function writeStatus(venv: string, build: VenvBuild) {
 }
 
 /**
- * Builds the venv with `uv sync` unless this version's is already built, writing its state beside it for the server
- * (`<venv>.status.json`). A version's venv holds that version's helpers, so it is built once; the dev venv syncs at
- * every launch, so a changed uv.lock reaches it (uv's cache makes an unchanged one take a second).
+ * `uv sync` into the venv, its state written beside it for the server (`<venv>.status.json`). Every failure, uv's or
+ * the file system's, comes back as the failed state, never as an exception: the Doctor shows it and Recheck retries.
  */
-export async function buildVenv({ project, venv, isEditable, runUv, onState }: VenvOptions): Promise<VenvBuild> {
-  const current = parseVenvBuild(await readFile(venvStatusPath(venv), 'utf8').catch(() => undefined))
-  if (!isEditable && current?.state === 'ready' && (await exists(join(venv, 'bin/python')))) {
-    onState?.(current)
-    return current
-  }
-  const set = async (build: VenvBuild) => {
-    await writeStatus(venv, build)
+async function syncVenv({ project, venv, runUv, onState }: VenvOptions, flags: readonly string[]): Promise<VenvBuild> {
+  const settle = async (build: VenvBuild) => {
+    await writeStatus(venv, build).catch(() => undefined)
     onState?.(build)
     return build
   }
-  await mkdir(join(venv, '..'), { recursive: true })
-  await set({ state: 'building' })
-  const args = ['sync', '--frozen', ...(isEditable ? [] : ['--no-editable']), '--project', project]
-  const ran = await runUv(args, { UV_PROJECT_ENVIRONMENT: venv }).catch((error: unknown) => ({ error: error instanceof Error ? error.message : String(error) }))
-  return set(ran.error === undefined ? { state: 'ready' } : { state: 'failed', error: ran.error })
+  try {
+    await mkdir(dirname(venv), { recursive: true })
+    await writeStatus(venv, { state: 'building' })
+    onState?.({ state: 'building' })
+    const ran = await runUv(['sync', '--frozen', ...flags, '--project', project], { UV_PROJECT_ENVIRONMENT: venv })
+    return await settle(ran.error === undefined ? { state: 'ready' } : { state: 'failed', error: ran.error })
+  } catch (error) {
+    return settle({ state: 'failed', error: messageOf(error) })
+  }
 }
+
+/**
+ * A version's venv, built once: the project installs into it non-editable, so it holds that version's helpers and
+ * never changes after it is ready.
+ */
+export async function buildReleaseVenv(options: VenvOptions): Promise<VenvBuild> {
+  const current = parseVenvBuild(await readFile(venvStatusPath(options.venv), 'utf8').catch(() => undefined))
+  if (current?.state === 'ready' && (await exists(join(options.venv, 'bin/python')))) {
+    options.onState?.(current)
+    return current
+  }
+  return syncVenv(options, ['--no-editable'])
+}
+
+/** The dev venv, synced editable at every launch, so edits to python/ and a changed uv.lock reach it. */
+export const syncDevVenv = (options: VenvOptions): Promise<VenvBuild> => syncVenv(options, [])

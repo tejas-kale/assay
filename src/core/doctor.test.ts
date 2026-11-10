@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 
 import { expect } from '../testing/expect.ts'
-import { blocksOpening, doctorChecks, parseProbes, probeScript } from './doctor.ts'
+import { blocksOpening, doctorChecks, parseLoginEnv, parseProbes, probeScript } from './doctor.ts'
 import type { Probes } from './doctor.ts'
 
 const ALL: Probes = {
@@ -96,4 +96,14 @@ test('the probe script, run by sh, prints a line per tool that parseProbes reads
 
 test('parseProbes counts a tool it never heard about as missing', () => {
   expect(parseProbes('node\t/usr/bin/node\tv22.1.0\n').uv).toEqual({})
+})
+
+test("the login shell's env gives the PATH and the launcher, past any greeting the shell prints", () => {
+  const printed = ['Welcome to fish', 'HOME=/Users/me', 'PATH=/opt/homebrew/bin:/usr/bin', 'ASSAY_CLAUDE_BIN=/Users/me/bin/claude-podman', 'X=PATH=no', ''].join('\n')
+  expect(parseLoginEnv(printed)).toEqual({ PATH: '/opt/homebrew/bin:/usr/bin', ASSAY_CLAUDE_BIN: '/Users/me/bin/claude-podman' })
+})
+
+test('a login shell without the launcher gives only its PATH; one that printed nothing gives nothing', () => {
+  expect(parseLoginEnv('PATH=/usr/bin\n')).toEqual({ PATH: '/usr/bin' })
+  expect(parseLoginEnv('')).toEqual({})
 })

@@ -59,6 +59,28 @@ test("while the app builds Assay's venv, the python and trusted tools say it is 
   await ws.done()
 })
 
+test("a venv uv is still filling is not used, though its python already exists", async () => {
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay/bin/python': '', '/opt/venv-assay.status.json': '{"state":"building"}' })
+  await ws.assay.startKernel()
+  expect((await ws.status())?.kernel).toEqual({ state: 'missing', message: VENV_BUILDING })
+  expect(ws.serves).toEqual([])
+  expect(await ws.call('trusted', { name: 'nope' })).toBe(`Cannot list the trusted calculations: ${VENV_BUILDING}`)
+  await ws.done()
+})
+
+test('a failed build that left its python behind is not used', async () => {
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay/bin/python': '', '/opt/venv-assay.status.json': '{"state":"failed","error":"uv: no network"}' })
+  expect(await ws.call('python', { code: '1', slug: 'x' })).toBe('The Python kernel is not available: Assay could not build its Python environment: uv: no network')
+  await ws.done()
+})
+
+test("a launcher's venv has no status file: its python is enough", async () => {
+  const ws = await fake({ 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay/bin/python': '' })
+  await ws.assay.startKernel()
+  expect(ws.serves[0]?.argv[0]).toBe(`${ws.venv}/bin/python`)
+  await ws.done()
+})
+
 test("a failed build of Assay's venv: the tools return the build's error", async () => {
   const ws = await fake({ 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay.status.json': '{"state":"failed","error":"uv: no network"}' })
   await ws.assay.startKernel()

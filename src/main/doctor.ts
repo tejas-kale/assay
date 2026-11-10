@@ -1,10 +1,10 @@
 // The programs Assay runs from the user's PATH, found as a terminal would find them. A GUI app has a thin PATH, so
-// the login shell is asked for its PATH once per check and the programs run with it.
+// the login shell is asked for its environment once per check and the programs run with it.
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
-import { parseProbes, probeScript } from '../core/doctor.ts'
-import type { Probes } from '../core/doctor.ts'
+import { parseLoginEnv, parseProbes, probeScript } from '../core/doctor.ts'
+import type { LoginEnv, Probes } from '../core/doctor.ts'
 import type { UvRun } from './backend.ts'
 
 const run = promisify(execFile)
@@ -13,19 +13,19 @@ const SHELL_MS = 15_000
 const UV_MS = 15 * 60_000
 
 /**
- * The PATH of the user's login, interactive shell. `printenv` is a program, so the same command works in zsh, bash
- * and fish; an interactive shell may print a greeting first, so the PATH is its last line.
+ * The user's login, interactive shell's PATH and launcher (`ASSAY_CLAUDE_BIN`, which a `.zshrc` may set), as the
+ * launch sees them. `env` is a program, so the same command works in zsh, bash and fish.
  */
-export async function loginPath(): Promise<string> {
-  const shell = process.env.SHELL || '/bin/zsh'
-  const fallback = process.env.PATH ?? '/usr/bin:/bin'
-  const ran = await run(shell, ['-lic', 'printenv PATH'], { timeout: SHELL_MS }).catch(() => undefined)
-  return ran?.stdout.trim().split('\n').at(-1)?.trim() || fallback
+export async function loginEnv(): Promise<LoginEnv & { PATH: string }> {
+  const ran = await run(process.env.SHELL || '/bin/zsh', ['-lic', 'env'], { timeout: SHELL_MS }).catch(() => undefined)
+  const found = parseLoginEnv(ran?.stdout ?? '')
+  const launcher = found.ASSAY_CLAUDE_BIN ?? process.env.ASSAY_CLAUDE_BIN
+  return { PATH: found.PATH ?? process.env.PATH ?? '/usr/bin:/bin', ...(launcher ? { ASSAY_CLAUDE_BIN: launcher } : {}) }
 }
 
-/** What `command -v` and `--version` say for each tool the Doctor checks. */
-export async function probeTools(path: string): Promise<Probes> {
-  const ran = await run('/bin/sh', ['-c', probeScript()], { env: { ...process.env, PATH: path }, timeout: SHELL_MS }).catch(
+/** What `command -v` and `--version` say for each tool the Doctor checks, in the login shell's environment. */
+export async function probeTools(login: LoginEnv): Promise<Probes> {
+  const ran = await run('/bin/sh', ['-c', probeScript()], { env: { ...process.env, ...login }, timeout: SHELL_MS }).catch(
     (error: unknown) => ({ stdout: typeof error === 'object' && error !== null && 'stdout' in error ? String(error.stdout) : '' }),
   )
   return parseProbes(ran.stdout)

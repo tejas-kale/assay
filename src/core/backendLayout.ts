@@ -25,9 +25,3 @@ export function staleEntries(names: readonly string[], current: string): string[
     return SEMVER.test(version) && version !== current && version !== previous
   })
 }
-
-export type PreparePhase = 'backend' | 'venv'
-
-/** The line the app shows while it prepares this version's backend or venv. */
-export const preparingLine = (version: string, phase: PreparePhase) =>
-  `Preparing Assay ${version}: ${phase === 'backend' ? 'copying the backend' : 'Python environment'}...`

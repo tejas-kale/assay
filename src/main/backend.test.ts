@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
-import { buildVenv, installBackend, pruneVersions } from './backend.ts'
+import { buildReleaseVenv, installBackend, pruneVersions, syncDevVenv } from './backend.ts'
 import type { UvRun } from './backend.ts'
 
 /** A shipped backend (Resources/backend) and an empty app data folder. */
@@ -71,7 +71,7 @@ test('the venv is built frozen and non-editable into venvs/<version>, and marked
   const uv = fakeUv()
   const venv = join(home, 'venvs/0.4.3')
   const states: string[] = []
-  const built = await buildVenv({ project: '/b/python', venv, isEditable: false, runUv: uv.run, onState: state => states.push(state.state) })
+  const built = await buildReleaseVenv({ project: '/b/python', venv, runUv: uv.run, onState: state => states.push(state.state) })
   assert.deepEqual(built, { state: 'ready' })
   assert.deepEqual(uv.calls, [{ args: ['sync', '--frozen', '--no-editable', '--project', '/b/python'], env: { UV_PROJECT_ENVIRONMENT: venv } }])
   assert.deepEqual(states, ['building', 'ready'])
@@ -82,8 +82,8 @@ test("a version's built venv is not built again", async () => {
   const { home } = await scratch()
   const uv = fakeUv()
   const venv = join(home, 'venvs/0.4.3')
-  await buildVenv({ project: '/b/python', venv, isEditable: false, runUv: uv.run })
-  await buildVenv({ project: '/b/python', venv, isEditable: false, runUv: uv.run })
+  await buildReleaseVenv({ project: '/b/python', venv, runUv: uv.run })
+  await buildReleaseVenv({ project: '/b/python', venv, runUv: uv.run })
   assert.equal(uv.calls.length, 1)
 })
 
@@ -91,8 +91,8 @@ test('the dev venv is editable and synced at every launch, so a changed lock rea
   const { home } = await scratch()
   const uv = fakeUv()
   const venv = join(home, 'venvs/dev')
-  await buildVenv({ project: '/repo/python', venv, isEditable: true, runUv: uv.run })
-  await buildVenv({ project: '/repo/python', venv, isEditable: true, runUv: uv.run })
+  await syncDevVenv({ project: '/repo/python', venv, runUv: uv.run })
+  await syncDevVenv({ project: '/repo/python', venv, runUv: uv.run })
   assert.equal(uv.calls.length, 2)
   assert.deepEqual(uv.calls[0]?.args, ['sync', '--frozen', '--project', '/repo/python'])
 })
@@ -102,9 +102,20 @@ test('a failed build is written with its error, and the next launch tries again'
   const venv = join(home, 'venvs/0.4.3')
   await mkdir(join(home, 'venvs'), { recursive: true })
   const failing = fakeUv('error: Failed to fetch numpy')
-  assert.deepEqual(await buildVenv({ project: '/b/python', venv, isEditable: false, runUv: failing.run }), { state: 'failed', error: 'error: Failed to fetch numpy' })
+  assert.deepEqual(await buildReleaseVenv({ project: '/b/python', venv, runUv: failing.run }), { state: 'failed', error: 'error: Failed to fetch numpy' })
   assert.equal(await readFile(`${venv}.status.json`, 'utf8'), '{"state":"failed","error":"error: Failed to fetch numpy"}\n')
   const working = fakeUv()
-  assert.deepEqual(await buildVenv({ project: '/b/python', venv, isEditable: false, runUv: working.run }), { state: 'ready' })
+  assert.deepEqual(await buildReleaseVenv({ project: '/b/python', venv, runUv: working.run }), { state: 'ready' })
   assert.equal(working.calls.length, 1)
+})
+
+test('a venv whose folder cannot be made fails as a value, with the reason, and says so', async () => {
+  const { home } = await scratch()
+  await mkdir(home, { recursive: true })
+  // venvs/ is a file, so nothing can be written under it.
+  await writeFile(join(home, 'venvs'), '')
+  const states: string[] = []
+  const built = await buildReleaseVenv({ project: '/b/python', venv: join(home, 'venvs/0.4.3'), runUv: fakeUv().run, onState: state => states.push(state.state) })
+  assert.ok(built.state === 'failed' && built.error.includes('venvs'), JSON.stringify(built))
+  assert.deepEqual(states, ['failed'])
 })

@@ -411,13 +411,23 @@ export class Assay {
   // -------------------------------------------------------------------------
   // The helpers: `python -m analysis_trust <command>` with Assay's venv's python.
 
+  /**
+   * The tools' python, once the venv is built. uv makes `bin/python` before it installs the packages, and a failed
+   * build leaves it behind, so the app's status file decides; a launcher's venv has none, and its python is enough.
+   */
   async toolsPython(): Promise<string | undefined> {
+    const build = await this.venvBuild()
+    if (build && build.state !== 'ready') return undefined
     return (await this.exists(this.python)) ? this.python : undefined
+  }
+
+  private async venvBuild() {
+    return parseVenvBuild(await readFile(venvStatusPath(this.config.venv), 'utf8').catch(() => undefined))
   }
 
   /** Why the tools' python is missing: the venv is still building, its build failed, or it was never built. */
   async venvHint(): Promise<string> {
-    return venvHint(parseVenvBuild(await readFile(venvStatusPath(this.config.venv), 'utf8').catch(() => undefined)))
+    return venvHint(await this.venvBuild())
   }
 
   async helper<T>(args: readonly string[], timeoutMs = 30_000, module = 'analysis_trust', input?: string): Promise<T | { error: string }> {

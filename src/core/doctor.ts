@@ -33,6 +33,19 @@ export function probeScript(): string {
   }).join('\n')
 }
 
+/** What the launch takes from the login shell's environment: where programs are, and the launcher if one is set. */
+export type LoginEnv = { PATH?: string; ASSAY_CLAUDE_BIN?: string }
+const LOGIN_VARIABLES = ['PATH', 'ASSAY_CLAUDE_BIN'] as const
+
+/** `env` as the login shell printed it; the last line of each variable counts (a greeting can come first). */
+export function parseLoginEnv(stdout: string): LoginEnv {
+  const found: LoginEnv = {}
+  for (const line of stdout.split('\n')) {
+    for (const name of LOGIN_VARIABLES) if (line.startsWith(`${name}=`) && line.length > name.length + 1) found[name] = line.slice(name.length + 1)
+  }
+  return found
+}
+
 /** The probe script's output as a probe per tool; a tool it printed nothing for is missing. */
 export function parseProbes(stdout: string): Probes {
   const probes = Object.fromEntries(TOOLS.map(tool => [tool, {}])) as Probes

@@ -186,6 +186,12 @@ test('the rules are compact and carry the python path when known', () => {
   expect(analysisRules(undefined, 'analyses/a').length).toBeLessThan(2900)
   expect(analysisRules('/w/.venv/bin/python', 'analyses/a')).toContain('cd analyses/a && /w/.venv/bin/python -m pytest tests')
   expect(analysisRules(undefined, 'analyses/a')).toContain('python -m pytest tests')
+})
+
+test("the test line quotes a python whose path has a space, as Assay's venv does", () => {
+  const python = '/Users/me/Library/Application Support/Assay/venvs/0.4.3/bin/python'
+  expect(analysisRules(python, 'analyses/a')).toContain(`cd analyses/a && '${python}' -m pytest tests`)
+  expect(analysisRules("/w/it's/bin/python", 'analyses/a')).toContain(`cd analyses/a && '/w/it'\\''s/bin/python' -m pytest tests`)
   for (const part of ['one concept', 'mcp__plugin_assay_assay__park', 'mcp__plugin_assay_assay__focus', 'mcp__plugin_assay_assay__order', 'mcp__plugin_assay_assay__python', 'q(N)', 'never through Bash', 'matplotlib', 'Altair', '.head()', 'lib/<name>.py', 'tests/test_<name>.py'])
     expect(analysisRules(undefined, 'analyses/a')).toContain(part)
   // Threads hold only rulings a person must make (docs/slice-10.md).
@@ -340,6 +346,7 @@ test('the Bash guard refuses commands that run Python code, and lets pytest, pip
     'python -m pytest tests',
     'python3 -m pytest -q',
     '/work/.venv/bin/python -m pytest tests',
+    "cd analyses/a && '/Users/me/Library/Application Support/Assay/venvs/0.4.3/bin/python' -m pytest tests",
     'python -mpytest',
     'python -m pip install x',
     'python --version',

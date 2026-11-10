@@ -3,6 +3,7 @@
 import type { CalculationList } from './calculations.ts'
 import { blockSignature, DICTIONARIES, PROPOSE_SKILL, TRUST_TAB, TRUSTED, signature } from './calculations.ts'
 import { queryLabel } from './pythonRuns.ts'
+import { shellQuote } from './text.ts'
 
 /**
  * The name Claude sees for one of the server's tools. Claude Code names a plugin's MCP tools
@@ -31,7 +32,7 @@ export const analysisRules = (python: string | undefined, folder: string) =>
     'Keep it lean: show summaries, .head(), counts or charts. Never full frames or long prints.',
     'Plot with matplotlib: each figure is saved as a PNG that you can Read to check the chart. Altair charts are not captured.',
     'Move reusable or long code to lib/<name>.py with docstrings and type hints, and pytest tests in tests/test_<name>.py. In the kernel: from lib.<name> import ... Edit lib/ and tests/ only when this prompt asks for it.',
-    `Run the tests from the analysis folder: cd ${folder} && ${python ?? 'python'} -m pytest tests`,
+    `Run the tests from the analysis folder: cd ${folder} && ${python ? shellQuote(python) : 'python'} -m pytest tests`,
     "Assay's venv is the only Python for the tools. If a package is missing, add it to python/pyproject.toml in the Assay repo, lock it, and tell the user; the next Assay release builds it. Never a Bash pip install and never another venv.",
   ].join('\n')
 
