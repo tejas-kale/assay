@@ -36,3 +36,31 @@ build-backend = "setuptools.build_meta"
 py-modules = ["analysis_db", "analysis_trust", "analysis_sql"]
 packages = []
 
+
+# The check's tools (npm run check): ruff for lint, pytest-cov for coverage, pytest-xdist to run the tests in
+# parallel. Not shipped with the app.
+[dependency-groups]
+dev = ["ruff", "pytest-cov", "pytest-xdist"]
+
+# The smell gate (docs/process/coding-standards.md). Today's violations are counted in ruff-baseline.json, which the
+# ratchet (scripts/ratchet.ts) lets only shrink.
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "C90", "PL", "SIM", "RUF", "UP", "N"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.pylint]
+max-args = 4
+max-statements = 40
+
+# Coverage of the helpers, not the tests. The kernel and `python -m analysis_*` run as subprocesses in the tests, so
+# coverage follows subprocesses.
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*"]
+branch = true
+patch = ["subprocess"]

@@ -1,3 +1,4 @@
+// Everywhere: points git at .githooks, so `git push` runs `npm run check` first (docs/process/testing.md).
 // Mac only (the Linux container has no Electron):
 // 1. Repairs Electron's unpack. On Node 26, electron's install.js exits 0 having unpacked only part of the zip
 //    and written no path.txt (extract-zip 2.0.1 is the likely cause). Unpacks the same verified zip with ditto.
@@ -41,6 +42,12 @@ async function repairElectron() {
   writeFileSync(pathTxt, ELECTRON_BIN)
   if (!ok()) throw new Error(`postinstall: Electron still does not run after unpacking ${zip}`)
   console.log(`postinstall: Electron ${version} unpacked`)
+}
+
+try {
+  execFileSync('git', ['config', 'core.hooksPath', '.githooks'], { stdio: 'ignore' })
+} catch {
+  // Not a git checkout (an installed tarball): no hooks to set.
 }
 
 if (process.platform === 'darwin') {

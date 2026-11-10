@@ -1,0 +1,93 @@
+{
+  "python/analysis_db.py": {
+    "E501": 1,
+    "PLC0415": 3
+  },
+  "python/analysis_kernel.py": {
+    "E501": 9,
+    "PLR0915": 2,
+    "PLC0415": 2,
+    "SIM105": 3,
+    "B905": 1,
+    "C901": 1,
+    "PLR0913": 1,
+    "PLR0917": 1,
+    "PLR0912": 1,
+    "PLR2004": 1
+  },
+  "python/analysis_sql.py": {
+    "E501": 29,
+    "C901": 3,
+    "PLR0912": 4,
+    "PLR2004": 7,
+    "PLR0911": 1,
+    "PLR0915": 3,
+    "E731": 1,
+    "PLC0415": 4,
+    "PLR0913": 1,
+    "PLR0917": 1
+  },
+  "python/analysis_trust.py": {
+    "PLR2004": 14,
+    "E501": 29,
+    "N818": 2,
+    "PLC0415": 26,
+    "I001": 1,
+    "SIM118": 1,
+    "PLR0913": 2,
+    "PLR0917": 2,
+    "PLW1510": 1,
+    "SIM115": 1,
+    "PLR0915": 3,
+    "PLW2901": 1,
+    "PLR0911": 2
+  },
+  "python/tests/test_analysis_db.py": {
+    "RUF100": 1,
+    "RUF012": 1,
+    "PLC0415": 2,
+    "E501": 3,
+    "PLR2004": 2
+  },
+  "python/tests/test_analysis_kernel.py": {
+    "UP035": 1,
+    "PLW1510": 4,
+    "E501": 7,
+    "PLR2004": 9,
+    "SIM105": 1
+  },
+  "python/tests/test_analysis_sql.py": {
+    "RUF100": 1,
+    "E501": 26
+  },
+  "python/tests/test_analysis_trust.py": {
+    "RUF100": 1,
+    "E501": 30,
+    "PLC0415": 7,
+    "PLR2004": 4,
+    "PLC0207": 2
+  },
+  "python/tests/test_blocks.py": {
+    "RUF100": 1,
+    "E501": 10,
+    "PLC0415": 2,
+    "PLR2004": 1
+  },
+  "python/tests/test_include.py": {
+    "RUF100": 2,
+    "E501": 13,
+    "PLR2004": 1,
+    "PLC0415": 2
+  },
+  "python/tests/test_retype.py": {
+    "I001": 1,
+    "RUF100": 2,
+    "E501": 13,
+    "PLC0415": 2
+  },
+  "python/tests/test_skill_examples.py": {
+    "RUF100": 1,
+    "E501": 3,
+    "PLC0415": 1
+  }
+}

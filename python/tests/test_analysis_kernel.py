@@ -366,6 +366,17 @@ def test_serve_with_a_closed_stdin_stays_up_and_runs_code(fresh: Analysis) -> No
     assert fresh.run("print(6 * 7)")["stdout"].strip() == "42"
 
 
+def running(pid: int) -> bool:
+    """Whether the process runs. A zombie has stopped: where PID 1 does not reap orphans (a container started
+    without an init), the stopped serve stays one."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    stat = Path(f"/proc/{pid}/stat")
+    return not (stat.exists() and stat.read_text().rsplit(")", 1)[1].split()[0] == "Z")
+
+
 def test_serve_stops_when_its_parent_dies(tmp_path: Path) -> None:
     out = tmp_path / "events.txt"
     launcher = (
@@ -380,9 +391,7 @@ def test_serve_stops_when_its_parent_dies(tmp_path: Path) -> None:
     deadline = time.monotonic() + DEADLINE
     try:
         while time.monotonic() < deadline:
-            try:
-                os.kill(pid, 0)
-            except ProcessLookupError:
+            if not running(pid):
                 break
             time.sleep(0.2)
         else:

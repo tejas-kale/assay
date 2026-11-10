@@ -108,7 +108,7 @@ test('the rules list the usable trusted calculations the helper lists', async ()
 test('the rules point once at the propose-trusted skill, and no longer carry the drafting rules', async () => {
   const { env } = await scratch()
   const rules = (await hook('prompt', { prompt: 'x' }, env))?.additionalContext ?? ''
-  const pointer = 'Propose a trusted calculation or a dictionary entry with the assay:propose-trusted skill; only the user promotes it, in the Trust tab in Assay.'
+  const pointer = 'Propose a trusted block, calculation or dictionary entry with the assay:propose-trusted skill; only the user promotes it, in the Trust tab in Assay.'
   expect(rules.split(pointer).length).toBe(2)
   expect(rules).not.toContain('Propose a new trusted calculation')
   expect(rules).not.toContain('Draft dictionary entries')
