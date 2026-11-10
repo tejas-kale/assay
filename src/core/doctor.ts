@@ -23,13 +23,14 @@ const FIXES: Record<Exclude<Tool, 'rds-psql'>, string> = {
 }
 
 /**
- * A POSIX sh script that prints one line per tool: its name, its path and the first line of its `--version`, split
- * by tabs. The path or version is empty when the tool is missing. Claude is `$ASSAY_CLAUDE_BIN` when that is set.
+ * A POSIX sh script that prints one line per tool: its name, its path and its version, split
+ * by tabs. The version is the last line of `--version` with a number in it, since a launcher may print a banner
+ * first. The path or version is empty when the tool is missing. Claude is `$ASSAY_CLAUDE_BIN` when that is set.
  */
 export function probeScript(): string {
   return TOOLS.map(tool => {
     const command = tool === 'claude' ? '"${ASSAY_CLAUDE_BIN:-claude}"' : tool
-    return `p=$(command -v ${command} 2>/dev/null); v=; [ -n "$p" ] && v=$("$p" --version 2>&1 | head -n 1); printf '%s\\t%s\\t%s\\n' ${tool} "$p" "$v"`
+    return `p=$(command -v ${command} 2>/dev/null); v=; [ -n "$p" ] && v=$("$p" --version 2>&1 | grep -E '[0-9]+\\.[0-9]+' | tail -n 1); printf '%s\\t%s\\t%s\\n' ${tool} "$p" "$v"`
   }).join('\n')
 }
 

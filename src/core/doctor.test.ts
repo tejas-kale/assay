@@ -1,3 +1,7 @@
+import { execFileSync } from 'node:child_process'
+import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 
 import { expect } from '../testing/expect.ts'
@@ -106,4 +110,12 @@ test("the login shell's env gives the PATH and the launcher, past any greeting t
 test('a login shell without the launcher gives only its PATH; one that printed nothing gives nothing', () => {
   expect(parseLoginEnv('PATH=/usr/bin\n')).toEqual({ PATH: '/usr/bin' })
   expect(parseLoginEnv('')).toEqual({})
+})
+
+test('a launcher that prints a banner before its version shows the version line', () => {
+  const bin = mkdtempSync(join(tmpdir(), 'assay-doctor-'))
+  writeFileSync(join(bin, 'claude-podman'), '#!/bin/sh\necho "DAILY: open internet (--strict for the proxy)"\necho "2.1.4 (Claude Code)"\n')
+  chmodSync(join(bin, 'claude-podman'), 0o755)
+  const printed = execFileSync('/bin/sh', ['-c', probeScript()], { env: { PATH: `${bin}:/usr/bin:/bin`, ASSAY_CLAUDE_BIN: 'claude-podman' }, encoding: 'utf8' })
+  expect(parseProbes(printed).claude).toEqual({ path: join(bin, 'claude-podman'), version: '2.1.4 (Claude Code)' })
 })
