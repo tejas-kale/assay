@@ -83,10 +83,12 @@ const venvBuild = async (userData: string) => {
   return JSON.parse(text) as { state?: string; error?: string }
 }
 
-// Linux needs a display: CI gives one with xvfb-run. A container without one (Claude's sandbox) skips the test.
-const NO_DISPLAY = process.platform === 'linux' && !process.env.DISPLAY ? 'no display: run under xvfb-run' : false
+// Linux only: there XDG_CONFIG_HOME moves user data to the scratch folder. On a Mac the app would start with the real
+// settings, and could reopen real analyses, before the user data check below could stop it. Linux needs a display: CI
+// gives one with xvfb-run; a container without one (Claude's sandbox) skips the test.
+const SKIP = process.platform === 'linux' ? !process.env.DISPLAY && 'no display: run under xvfb-run' : 'Linux only: on a Mac the app would read the real settings'
 
-test('the built app opens an analysis, runs SQL from the Code tab, and shows it in Data, History and Steps', { timeout: 600_000, skip: NO_DISPLAY }, async (t) => {
+test('the built app opens an analysis, runs SQL from the Code tab, and shows it in Data, History and Steps', { timeout: 600_000, skip: SKIP }, async (t) => {
   await run('npx', ['electron-vite', 'build'], { cwd: REPO })
   await run('npm', ['run', 'build:server'], { cwd: REPO })
   const s = await scratch()

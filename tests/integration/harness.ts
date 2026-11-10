@@ -1,4 +1,4 @@
-// The integration tests' world (docs/process/testing.md): a real venv, the bundled server and hooks, a scratch root
+// The integration tests' world (docs/process/testing.md): a real venv from the lockfile, the bundled server and hooks, a scratch root
 // that is a git repository with a trusted block committed, and the fake `databricks` first on PATH. Nothing here
 // reaches Databricks, Postgres or a real Claude.
 import { execFile, execFileSync } from 'node:child_process'
@@ -41,13 +41,16 @@ SELECT sum(n) AS total FROM cint.mkt.sites WHERE site = :site
 
 let venv: Promise<string> | undefined
 
-/** A venv with ipykernel and the helpers: ASSAY_TEST_VENV when set, else built once by python/tests/test_venv.sh. */
+/**
+ * A venv with ipykernel and the helpers: ASSAY_TEST_VENV when set, else built once from python/'s lockfile as the
+ * packaged app builds its own (backend.ts's buildReleaseVenv), so the tests run the locked dependencies the app ships.
+ */
 export function testVenv(): Promise<string> {
   venv ??= (async () => {
     if (process.env.ASSAY_TEST_VENV) return process.env.ASSAY_TEST_VENV
-    const work = await mkdtemp(join(tmpdir(), 'assay-venv-'))
-    await run('bash', [resolve('python/tests/test_venv.sh'), work])
-    return join(work, 'src/.venv')
+    const dir = join(await mkdtemp(join(tmpdir(), 'assay-venv-')), 'venv')
+    await run('uv', ['sync', '--quiet', '--frozen', '--no-editable', '--project', resolve('python')], { env: { ...process.env, UV_PROJECT_ENVIRONMENT: dir } })
+    return dir
   })()
   return venv
 }

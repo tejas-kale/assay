@@ -8,23 +8,23 @@ import { test } from 'node:test'
 import { nextVersion, notesFromGit, versionFromGit } from './next-version.ts'
 
 test('no tag yet: the first release is 0.1.0', () => {
-  assert.equal(nextVersion(null, ['Add the Steps tab']), '0.1.0')
+  assert.equal(nextVersion(null, ['major']), '0.1.0')
 })
 
-test('commits without a trailer bump the patch', () => {
-  assert.equal(nextVersion('v0.4.2', ['Fix the strip', 'Faster search']), '0.4.3')
+test('no Release trailer bumps the patch', () => {
+  assert.equal(nextVersion('v0.4.2', []), '0.4.3')
 })
 
 test('a minor trailer bumps the minor and resets the patch', () => {
-  assert.equal(nextVersion('v0.4.2', ['Fix the strip', 'Add tab settings\n\nRelease: minor\nCo-Authored-By: x']), '0.5.0')
+  assert.equal(nextVersion('v0.4.2', ['minor']), '0.5.0')
 })
 
-test('a major trailer wins over a minor one', () => {
-  assert.equal(nextVersion('v0.4.2', ['A\n\nRelease: minor', 'B\n\nRelease: major', 'C']), '1.0.0')
+test('a major trailer wins over a minor one, in any case', () => {
+  assert.equal(nextVersion('v0.4.2', ['minor', 'Major', 'minor']), '1.0.0')
 })
 
-test('"Release: minor" in the subject or prose is not a trailer', () => {
-  assert.equal(nextVersion('v0.4.2', ['Release: minor is now documented\n\nWe say Release: major in prose.']), '0.4.3')
+test('an unknown trailer value is a patch', () => {
+  assert.equal(nextVersion('v0.4.2', ['huge']), '0.4.3')
 })
 
 function scratchRepo(): { dir: string; commit: (message: string) => void; tag: (name: string) => void } {
@@ -65,4 +65,20 @@ test('from git: the release notes are the subjects since the last tag, newest fi
   repo.commit('Search finds notes\n\nLong body.')
   repo.commit('The strip moves left\n\nRelease: minor')
   assert.equal(notesFromGit(repo.dir), '- The strip moves left\n- Search finds notes\n')
+})
+
+test('from git: a subject that reads like a trailer is not one', () => {
+  const repo = scratchRepo()
+  repo.commit('Start')
+  repo.tag('v0.4.2')
+  repo.commit('Release: minor is now documented')
+  assert.equal(versionFromGit(repo.dir), '0.4.3')
+})
+
+test('from git: a "Release: major" line in the body, with prose after it, is not a trailer', () => {
+  const repo = scratchRepo()
+  repo.commit('Start')
+  repo.tag('v0.4.2')
+  repo.commit('Document trailers\n\nWrite it like this:\n\nRelease: major\n\nand CI bumps the major.')
+  assert.equal(versionFromGit(repo.dir), '0.4.3')
 })

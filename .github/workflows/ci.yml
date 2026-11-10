@@ -72,24 +72,43 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - run: npm ci
+      # A newer push may have reached main while this one waited. When the commits after this one release, their
+      # release holds this commit, and this commit's version (from the tags it can reach) could collide with theirs.
+      # When they change only docs and tests, they release nothing, so this commit still must.
+      - id: tip
+        run: |
+          git fetch --quiet origin main
+          newer=$(node scripts/release-paths.ts "$GITHUB_SHA" origin/main)
+          if [ "$(git rev-parse origin/main)" = "$GITHUB_SHA" ] || [ "$newer" = "release=false" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::A newer push to main releases this commit"
+          fi
+      - if: steps.tip.outputs.current == 'true'
+        run: npm ci
       - id: version
+        if: steps.tip.outputs.current == 'true'
         run: |
           version=$(node scripts/next-version.ts)
           echo "version=$version" >> "$GITHUB_OUTPUT"
           npm version --no-git-tag-version --allow-same-version "$version"
           node scripts/next-version.ts --notes > "$RUNNER_TEMP/notes.md"
-      # Without the certificate electron-builder would ship an unsigned build; stop instead.
-      - run: test -n "$CSC_LINK" || { echo "::error::The CSC_LINK secret is not set (docs/process/ci-release.md)"; exit 1; }
+      # Without the certificate, or with one it cannot use, electron-builder would ship an unsigned build; stop
+      # instead (here, and with forceCodeSigning in release:build).
+      - if: steps.tip.outputs.current == 'true'
+        run: test -n "$CSC_LINK" || { echo "::error::The CSC_LINK secret is not set (docs/process/ci-release.md)"; exit 1; }
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
-      - run: npm run release:build
+      - if: steps.tip.outputs.current == 'true'
+        run: npm run release:build
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           CSC_NAME: ${{ vars.CSC_NAME }}
       # The tag and the release in one step: gh tags the pushed commit, not whatever main is by now.
-      - run: |
+      - if: steps.tip.outputs.current == 'true'
+        run: |
           gh release create "v${{ steps.version.outputs.version }}" \
             --target "${{ github.sha }}" \
             --title "Assay ${{ steps.version.outputs.version }}" \

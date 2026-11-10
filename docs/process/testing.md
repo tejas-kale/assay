@@ -27,13 +27,14 @@ the same checks, so `--no-verify` only delays a failure.
 `npm run test:integration` runs `tests/integration/*.test.ts`, outside `npm run check` (CI runs them after the unit
 job, `docs/process/ci-release.md`). They need uv and PyPI; nothing reaches Databricks, Postgres or a real Claude.
 
-- `backend.test.ts`: the bundled server over MCP with a real kernel in a venv `python/tests/test_venv.sh` builds (or
-  the one `ASSAY_TEST_VENV` names), on a scratch root that is a git repository with trusted pieces committed. SQL and
+- `backend.test.ts`: the bundled server over MCP with a real kernel in a venv built from `python/uv.lock` as the
+  packaged app builds its own (or the one `ASSAY_TEST_VENV` names), on a scratch root that is a git repository with trusted pieces committed. SQL and
   Python runs, the app's requests, Steps, the include expansion, and the bundled hooks on real files.
 - `app.test.ts`: the built app under playwright-core's Electron driver, on a scratch user data folder and root, with
   `fixtures/stub-claude.mjs` as Claude (it starts the real server and keeps it open). It opens the analysis, runs SQL
   from the Code tab with Cmd+Enter (sent through main, since CDP keys never reach `before-input-event`), and checks
-  Data, History and Steps. On Linux it needs a display (`xvfb-run`); without one it is skipped.
+  Data, History and Steps. Linux only, since only there can it move the app's user data to a scratch folder before
+  launch; it needs a display (`xvfb-run`), and is skipped without one and on a Mac.
 - `tests/integration/harness.ts` builds the backend's world. `fixtures/bin/databricks`, first on PATH, answers queries with
   rows chosen by the SQL's text. Trusted calculations reach the warehouse through the Python connector, which no fake
   answers.

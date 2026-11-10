@@ -6,3 +6,4 @@ dist
 coverage
 .venv
 .coverage*
+python/build

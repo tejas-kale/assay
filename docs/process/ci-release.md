@@ -23,14 +23,16 @@ releases.
 ## Versions and trailers
 
 `scripts/next-version.ts` takes the latest `v*` tag and bumps its patch, or its minor or major when a commit since the
-tag carries a `Release: minor` or `Release: major` trailer; the largest wins. With no tag yet, the version is 0.1.0.
+tag carries a `Release: minor` or `Release: major` trailer; the largest wins. A trailer is what git parses as one
+(`%(trailers:key=Release)`): a line in the message's last paragraph, never the subject or a line in the prose. With no tag yet, the version is 0.1.0.
 CI writes it into `package.json` on the runner only (`npm version --no-git-tag-version`); the repo's `package.json`
 keeps 0.1.0. `node scripts/next-version.ts` prints the next version; `--notes` prints the release notes, one line per
 commit subject since the last tag.
 
 ## Build, sign, publish
 
-- `npm run release:build`: `electron-builder --mac dmg zip --arm64 --publish never`. The DMG is for a first install;
+- `npm run release:build`: `electron-builder --mac dmg zip --arm64 --publish never --config.forceCodeSigning=true`,
+  so a build electron-builder cannot sign fails instead of shipping unsigned. The DMG is for a first install;
   the zip and `latest-mac.yml` are what the updater (slice 11d) reads.
 - Hardened runtime, with `resources/entitlements.mac.plist` (`allow-jit`, `allow-unsigned-executable-memory`).
 - Fuses (`build.electronFuses`): `runAsNode`, `enableNodeOptionsEnvironmentVariable` and
@@ -41,6 +43,13 @@ commit subject since the last tag.
   makes a draft, and the tag must name the commit CI tested.
 - `npm run install-app` still builds and installs a local copy, ad-hoc signed and without the hardened runtime.
 
+## Two pushes close together
+
+The release job runs one at a time (`concurrency: release`), but not always in push order. When main has moved past
+the commit by the time its job starts, and the commits after it will release, the job does nothing: the newer release
+holds this commit, and this commit's version, computed from the tags it can reach, could collide with the newer one.
+When the commits after it change only docs and tests, they release nothing, so it releases.
+
 ## Secrets
 
 | Name | Kind | What |
@@ -49,12 +58,14 @@ commit subject since the last tag.
 | `CSC_KEY_PASSWORD` | secret | the .p12's password |
 | `CSC_NAME` | variable | the certificate's common name, when electron-builder does not find the identity by itself |
 
-The release job stops when `CSC_LINK` is empty, so an unsigned build never ships. `scripts/ci-release-setup.sh` walks
+The release job stops when `CSC_LINK` is empty, and electron-builder fails when it cannot sign, so an unsigned build
+never ships. `scripts/ci-release-setup.sh` walks
 through making the certificate and adding these.
 
 ## The certificate switch
 
-Today the certificate is self-signed. The Developer ID, later, changes only these secrets, plus notarization's. A
+Today the certificate is self-signed. The Developer ID, later, changes these secrets, plus notarization's, and
+`CSC_NAME`: set it to the Developer ID's name or delete it, or it keeps choosing the old certificate's name. A
 build signed by a new identity is a different app to macOS: install the first Developer ID build by hand once, from
 its DMG, and allow it in System Settings > Privacy & Security, as with the first self-signed build.
 

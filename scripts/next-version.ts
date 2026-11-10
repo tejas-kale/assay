@@ -9,21 +9,17 @@ type Bump = 'patch' | 'minor' | 'major'
 
 const RANK: Record<Bump, number> = { patch: 0, minor: 1, major: 2 }
 
-/** The commit's `Release:` trailer: a whole line of its body, never the subject. */
-function bumpOf(message: string): Bump {
-  const body = message.split('\n').slice(1).join('\n')
-  const trailer = /^Release:[ \t]*(minor|major)[ \t]*$/im.exec(body)?.[1]?.toLowerCase()
-  return trailer === 'minor' || trailer === 'major' ? trailer : 'patch'
+const bumpOf = (trailer: string): Bump => {
+  const value = trailer.trim().toLowerCase()
+  return value === 'minor' || value === 'major' ? value : 'patch'
 }
 
-function largestBump(messages: string[]): Bump {
-  return messages.map(bumpOf).reduce<Bump>((a, b) => (RANK[b] > RANK[a] ? b : a), 'patch')
-}
-
-export function nextVersion(lastTag: string | null, messages: string[]): string {
+/** The version after `lastTag`, given the values of the `Release:` trailers of the commits since it. */
+export function nextVersion(lastTag: string | null, releaseTrailers: string[]): string {
   if (lastTag === null) return FIRST_VERSION
   const [major = 0, minor = 0, patch = 0] = lastTag.replace(/^v/, '').split('.').map(Number)
-  switch (largestBump(messages)) {
+  const bump = releaseTrailers.map(bumpOf).reduce<Bump>((a, b) => (RANK[b] > RANK[a] ? b : a), 'patch')
+  switch (bump) {
     case 'major':
       return `${String(major + 1)}.0.0`
     case 'minor':
@@ -49,11 +45,11 @@ function sinceLastRelease(tag: string | null): string {
   return tag === null ? 'HEAD' : `${tag}..HEAD`
 }
 
-/** The next version for the repo at `cwd`: its latest `v*` tag and the commit messages since. */
+/** The next version for the repo at `cwd`: its latest `v*` tag and the `Release:` trailers since, as git parses them. */
 export function versionFromGit(cwd: string): string {
   const tag = latestReleaseTag(cwd)
-  const log = git(cwd, 'log', '--format=%B%x00', sinceLastRelease(tag))
-  return nextVersion(tag, log.split('\0').map((m) => m.trim()).filter(Boolean))
+  const trailers = git(cwd, 'log', '--format=%(trailers:key=Release,valueonly)', sinceLastRelease(tag))
+  return nextVersion(tag, trailers.split('\n').filter((line) => line.trim() !== ''))
 }
 
 /** The release notes: one line per commit subject since the last `v*` tag, newest first. */

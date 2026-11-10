@@ -23,7 +23,7 @@
     "migrate:root": "node scripts/migrate-root.ts",
     "migrate:notes": "node scripts/migrate-notes.ts",
     "import:denote": "node scripts/import-denote.ts",
-    "release:build": "electron-vite build && npm run build:server && electron-builder --mac dmg zip --arm64 --publish never"
+    "release:build": "electron-vite build && npm run build:server && electron-builder --mac dmg zip --arm64 --publish never --config.forceCodeSigning=true"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
