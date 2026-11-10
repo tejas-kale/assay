@@ -273,7 +273,10 @@ def _join_edge(table: exp.Table) -> dict[str, Any] | None:
     return {"cardinality": match.group(1).lower(), "keys": keys}
 
 
-def lineage_statement(statement: exp.Expression) -> dict[str, Any]:
+def lineage_statement(statement: exp.Expression, blocks: dict[str, str] | None = None) -> dict[str, Any]:
+    """The CTE graph. A CTE in ``blocks`` (lower-cased CTE name -> block) holds an included block (docs/slice-10.md): its
+    node says which, and the tables inside it are not drawn."""
+    blocks = blocks or {}
     ctes = [cte for cte in statement.find_all(exp.CTE) if cte.find_ancestor(exp.CTE) is None]
     cte_names = {cte.alias.lower() for cte in ctes}
     final_id = "final_select" if "final" in cte_names else "final"
@@ -282,6 +285,8 @@ def lineage_statement(statement: exp.Expression) -> dict[str, Any]:
     tables: dict[str, dict[str, Any]] = {}
     edges: list[dict[str, Any]] = []
     for target, cte in readers:
+        if target in blocks and cte is not None:
+            continue
         for table in (cte.this if cte is not None else statement).find_all(exp.Table):
             # The final SELECT reads what is outside the CTEs.
             if not table.name or (cte is None and table.find_ancestor(exp.CTE) is not None):
@@ -301,6 +306,8 @@ def lineage_statement(statement: exp.Expression) -> dict[str, Any]:
     nodes: list[dict[str, Any]] = list(tables.values())
     for cte in ctes:
         node: dict[str, Any] = {"id": cte.alias.lower(), "kind": "cte", "name": cte.alias}
+        if cte.alias.lower() in blocks:
+            node["block"] = blocks[cte.alias.lower()]
         grain = _grain(_cte_comments(cte))
         if grain is not None:
             node["grain"] = grain
@@ -325,7 +332,7 @@ def _statement_note(count: int) -> dict[str, str]:
     return {"note": f"{count} statements; the lineage is of the last one."} if count > 1 else {}
 
 
-def lineage(sql: str, dialect: str = "databricks", template: bool = False) -> dict[str, Any]:
+def lineage(sql: str, dialect: str = "databricks", template: bool = False, blocks: dict[str, str] | None = None) -> dict[str, Any]:
     """The CTE graph of the last statement in ``sql`` (docs/slice-9.md, "analysis_sql lineage").
 
     ``template`` binds ``:name`` parameters first. Raises when ``sql`` does not parse.
@@ -333,7 +340,7 @@ def lineage(sql: str, dialect: str = "databricks", template: bool = False) -> di
     statement, count = _last_statement(sql, dialect, template)
     if statement is None:
         return {"nodes": [], "edges": [], "note": "There is no statement."}
-    return {**lineage_statement(statement), **_statement_note(count)}
+    return {**lineage_statement(statement, blocks), **_statement_note(count)}
 
 
 # ---------------------------------------------------------------------------
@@ -490,7 +497,7 @@ def _joins(select: exp.Expression) -> tuple[list[dict[str, Any]], list[tuple[str
     return listed, columns
 
 
-def steps(sql: str, dialect: str = "databricks", template: bool = False) -> dict[str, Any]:
+def steps(sql: str, dialect: str = "databricks", template: bool = False, blocks: dict[str, str] | None = None) -> dict[str, Any]:
     """The lineage and the step queries of the last statement in ``sql`` (docs/slice-9.md, "analysis_sql steps").
 
     One step per CTE in written order, then ``final``. Each has a ``counts`` query and, but for ``final``, a ``preview``.
@@ -499,7 +506,8 @@ def steps(sql: str, dialect: str = "databricks", template: bool = False) -> dict
     statement, count = _last_statement(sql, dialect, template)
     if statement is None:
         return {"lineage": {"nodes": [], "edges": []}, "steps": [], "note": "There is no statement."}
-    graph = {**lineage_statement(statement), **_statement_note(count)}
+    blocks = blocks or {}
+    graph = {**lineage_statement(statement, blocks), **_statement_note(count)}
     ctes = [cte for cte in statement.find_all(exp.CTE) if cte.find_ancestor(exp.CTE) is None]
     with_ = _arg(statement, "with")
     if not ctes:
@@ -529,7 +537,9 @@ def steps(sql: str, dialect: str = "databricks", template: bool = False) -> dict
             grain, outputs, own = _grain(_cte_comments(cte)), _outputs(cte.this, cte.args.get("alias")), cte.this
             needed = [*_needed(ctes, {name.lower()})]
             with_ctes = [item.copy() for item in needed]
-        listed, join_columns = _joins(own)
+        # An included block is one step: its joins were checked once, in the Trust tab.
+        block = None if is_final else blocks.get(cte.alias.lower())
+        listed, join_columns = ([], []) if block else _joins(own)
         selected: list[tuple[str, exp.Expression]] = [("assay_rows", _count(relation))]
         # `grain: none` is judged on assay_rows; a `*` output hides the columns to count.
         if grain and outputs is not None:
@@ -541,6 +551,8 @@ def steps(sql: str, dialect: str = "databricks", template: bool = False) -> dict
             step["preview"] = render(_with(exp.select("*").from_(relation.copy()).limit(PREVIEW_ROWS), [item.copy() for item in needed]))
         if grain is not None:
             step["grain"] = grain
+        if block:
+            step["block"] = block
         if listed:
             step["joins"] = listed
         planned.append(step)
@@ -548,6 +560,212 @@ def steps(sql: str, dialect: str = "databricks", template: bool = False) -> dict
     if isinstance(final, exp.SetOperation):
         answer["note"] = "The final SELECT is a set operation: its step counts rows only."
     return answer
+
+
+# ---------------------------------------------------------------------------
+# Include by name (docs/slice-10.md, slice 10c): Claude's SQL names trusted blocks and dictionary definitions, and
+# they are expanded here before the query runs.
+#
+#   sessions AS ({{ client_entry_sessions(start => '2026-11-01', end => '2026-11-08') }})   a block, as a CTE body
+#   WHERE {{ client_entry(s) }}                                                              a definition, on alias s
+
+INCLUDE = re.compile(r"\{\{\s*(?P<name>[A-Za-z_][\w.]*(?::[A-Za-z_]\w*)?)\s*\((?P<args>[^{}]*)\)\s*\}\}")
+CTE_OPEN = re.compile(r"(?P<cte>[A-Za-z_]\w*)\s+AS\s*\(\s*$", re.IGNORECASE)
+NAMED_ARG = re.compile(r"^\s*([A-Za-z_]\w*)\s*=>\s*(.*?)\s*$", re.DOTALL)
+
+
+def _split_args(text: str) -> list[str]:
+    """Arguments split at commas outside quotes."""
+    parts, current, quoted = [], "", False
+    for char in text:
+        if char == "'":
+            quoted = not quoted
+        if char == "," and not quoted:
+            parts.append(current)
+            current = ""
+        else:
+            current += char
+    if current.strip() or parts:
+        parts.append(current)
+    return [part.strip() for part in parts]
+
+
+def _literal(text: str) -> Any:
+    """An argument's value: a quoted string, a number, true, false or null."""
+    if len(text) >= 2 and text[0] == text[-1] == "'":
+        return text[1:-1].replace("''", "'")
+    lowered = text.lower()
+    if lowered in ("true", "false"):
+        return lowered == "true"
+    if lowered == "null":
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        return float(text)
+    except ValueError:
+        raise ValueError(f"{text!r} is not a literal: quote strings and dates ('2026-11-01')") from None
+
+
+def _block_args(params: list[dict[str, Any]], text: str) -> dict[str, Any]:
+    """A block's arguments by name, from ``p => value`` or values in declared order."""
+    given: dict[str, Any] = {}
+    for i, part in enumerate(_split_args(text)):
+        named = NAMED_ARG.match(part)
+        if named:
+            given[named.group(1)] = _literal(named.group(2))
+        elif given and any(NAMED_ARG.match(p) for p in _split_args(text)[:i]):
+            raise ValueError("a positional argument after a named one")
+        elif i < len(params):
+            given[params[i]["name"]] = _literal(part)
+        else:
+            raise ValueError(f"takes {len(params)} arguments")
+    return given
+
+
+def _value_node(value: Any) -> exp.Expression:
+    import datetime
+
+    if value is None:
+        return exp.Null()
+    if isinstance(value, bool):
+        return exp.Boolean(this=value)
+    if isinstance(value, datetime.date):
+        return exp.cast(exp.Literal.string(value.isoformat()), "DATE")
+    if isinstance(value, (int, float)):
+        return exp.Literal.number(value)
+    return exp.Literal.string(str(value))
+
+
+def _bind(sql: str, values: dict[str, Any], dialect: str) -> str:
+    """A Databricks template with each ``:name`` replaced by its value, rendered in ``dialect``."""
+    statement = sqlglot.parse_one(sql, read="databricks")
+    statement = statement.transform(lambda node: _value_node(values[node.name]) if isinstance(node, exp.Placeholder) and node.name in values else node)
+    return statement.sql(dialect=dialect, comments=False)
+
+
+def _qualified(expression: str, alias: str, dialect: str) -> str:
+    """A definition's expression, its unqualified columns qualified with ``alias``, in parentheses."""
+    node = sqlglot.parse_one(expression, read="databricks")
+    for column in node.find_all(exp.Column):
+        if not column.table:
+            column.set("table", exp.to_identifier(alias))
+    return f"({node.sql(dialect=dialect, comments=False)})"
+
+
+class Pieces:
+    """The trusted pieces under a root: blocks and other templates by name, definitions by full and short name."""
+
+    def __init__(self, root: Path) -> None:
+        import analysis_trust
+
+        self.root = root
+        listed = analysis_trust.list_calculations(root)
+        self.calcs = {calc["name"]: calc for calc in listed["calculations"] if calc["kind"] != "definition"}
+        self.definitions = {calc["name"]: calc for calc in listed["calculations"] if calc["kind"] == "definition"}
+        self.short: dict[str, list[str]] = {}
+        for full in self.definitions:
+            self.short.setdefault(full.partition(":")[2], []).append(full)
+
+    def definition(self, name: str) -> tuple[str | None, str | None]:
+        """The full name of definition ``name`` (full or short), or why there is none."""
+        if ":" in name:
+            return (name, None) if name in self.definitions else (None, f"no definition {name}")
+        found = self.short.get(name, [])
+        if len(found) == 1:
+            return found[0], None
+        if found:
+            return None, f"{name} names definitions on several tables: write one of {', '.join(sorted(found))}"
+        return None, None
+
+    def expression(self, full: str) -> str:
+        import analysis_trust
+
+        table, _, name = full.partition(":")
+        entry = analysis_trust.read_entry(self.root / analysis_trust.DICTIONARIES / f"{table}.yaml")
+        return str(next(item for item in analysis_trust.definitions_of(entry) if item["name"] == name)["sql"]).strip()
+
+
+def expand(sql: str, dialect: str, root: Path | str, pieces: Pieces | None = None, inside_block: str | None = None) -> dict[str, Any]:
+    """``sql`` with its included blocks and definitions expanded (docs/slice-10.md, "Expansion").
+
+    ``sql`` runs; ``lint_sql`` is the SQL as written with each block body replaced by ``SELECT <its columns> FROM
+    <block>`` and each definition expanded; ``built_from`` lists the pieces in order of first use, ``blocks`` which CTE
+    holds which block. ``{"errors": [...]}`` when a piece is unknown, misused or not trusted as committed.
+    """
+    import analysis_trust
+
+    if dialect not in DIALECTS:
+        raise ValueError(f"dialect {dialect!r} is not one of {', '.join(DIALECTS)}")
+    if "{{" not in sql:
+        return {"sql": sql, "lint_sql": sql, "built_from": [], "blocks": []}
+    pieces = pieces or Pieces(Path(root))
+    errors: list[str] = []
+    built: dict[str, dict[str, Any]] = {}
+    blocks: list[dict[str, str]] = []
+    out: list[str] = []
+    lint_out: list[str] = []
+    at = 0
+
+    def use(name: str, kind: str, calc: dict[str, Any]) -> bool:
+        if calc.get("dirty"):
+            errors.append(f"{name} differs from its last commit, or was never committed: it is not trusted until the user approves it again")
+            return False
+        built.setdefault(name, {"name": name, "kind": kind, "commit": calc.get("commit", "")})
+        return True
+
+    for match in INCLUDE.finditer(sql):
+        name, args = match.group("name"), match.group("args")
+        written = match.group(0)
+        out.append(sql[at : match.start()])
+        lint_out.append(sql[at : match.start()])
+        at = match.end()
+        replacement = lint_replacement = written
+        full, problem = pieces.definition(name)
+        calc = pieces.calcs.get(name)
+        if problem:
+            errors.append(f"{written}: {problem}.")
+        elif full:
+            alias = args.strip()
+            if not re.fullmatch(r"[A-Za-z_]\w*", alias):
+                errors.append(f"{written}: a definition takes the alias of its table, e.g. {{{{ {name}(s) }}}}.")
+            elif use(full, "definition", pieces.definitions[full]):
+                replacement = lint_replacement = _qualified(pieces.expression(full), alias, dialect)
+        elif calc and "block" in calc:
+            opened = CTE_OPEN.search(sql[: match.start()])
+            if inside_block:
+                errors.append(f"{written}: block {inside_block} includes block {name}; a block includes definitions only.")
+            elif not opened or not re.match(r"\s*\)", sql[match.end() :]):
+                errors.append(f"{written}: a block is the whole body of a CTE, e.g. sessions AS ({written}).")
+            else:
+                try:
+                    values = analysis_trust.convert(calc["parameters"], _block_args(calc["parameters"], args))
+                except Exception as error:
+                    errors.append(f"{written}: {error}; {name}({', '.join(p['name'] + ('' if p['required'] else '?') + ': ' + p['type'] for p in calc['parameters'])}).")
+                    values = None
+                if values is not None and use(name, "block", calc):
+                    body = expand(calc["sql"], "databricks", root, pieces, inside_block=name)
+                    if body.get("errors"):
+                        errors.extend(body["errors"])
+                    else:
+                        for piece in body["built_from"]:
+                            built.setdefault(piece["name"], piece)
+                        replacement = _bind(body["sql"], values, dialect)
+                        lint_replacement = f"SELECT {', '.join(calc['block']['columns'])} FROM {name}"
+                        blocks.append({"cte": opened.group("cte"), "name": name})
+        elif calc:
+            errors.append(f"{written}: {name} is a calculation, not a block or definition: run it whole with the trusted tool, or propose a block.")
+        else:
+            errors.append(f"{written}: no trusted block or definition named {name}.")
+        out.append(replacement)
+        lint_out.append(lint_replacement)
+    out.append(sql[at:])
+    lint_out.append(sql[at:])
+    if errors:
+        return {"errors": errors}
+    return {"sql": "".join(out), "lint_sql": "".join(lint_out), "built_from": list(built.values()), "blocks": blocks}
 
 
 PLACEHOLDER = re.compile(r"(?<![:\w]):([A-Za-z_]\w*)")
@@ -561,8 +779,30 @@ def bind_dummies(sql: str) -> str:
 USAGE = (
     "usage: python -m analysis_sql lint <databricks|postgres> [<sql-file>]   (SQL on stdin without a file)\n"
     "       python -m analysis_sql lineage <databricks|postgres> [--template] [<sql-file>]\n"
-    "       python -m analysis_sql steps <databricks|postgres> [--template] [<sql-file>]"
+    "       python -m analysis_sql steps <databricks|postgres> [--template] [--blocks cte=block,...] [<sql-file>]\n"
+    "       python -m analysis_sql expand <databricks|postgres> <root>   (SQL on stdin)"
 )
+
+
+def _plain_args(args: list[str]) -> list[str]:
+    """The arguments without ``--template`` and ``--blocks <value>``."""
+    plain, skip = [], False
+    for arg in args:
+        if skip:
+            skip = False
+        elif arg == "--blocks":
+            skip = True
+        elif arg != "--template":
+            plain.append(arg)
+    return plain
+
+
+def _blocks_arg(args: list[str]) -> dict[str, str]:
+    """``--blocks sessions=client_entry_sessions,...`` as ``{cte (lower case): block}``."""
+    if "--blocks" not in args or args.index("--blocks") + 1 >= len(args):
+        return {}
+    pairs = [pair.partition("=") for pair in args[args.index("--blocks") + 1].split(",") if pair]
+    return {cte.strip().lower(): block.strip() for cte, _, block in pairs if block}
 
 
 def main(argv: list[str]) -> int:
@@ -571,11 +811,14 @@ def main(argv: list[str]) -> int:
         if command == "lint" and len(args) in (1, 2):
             sql = Path(args[1]).read_text() if len(args) == 2 else sys.stdin.read()
             answer: dict[str, Any] = lint(sql, args[0])
-        elif command in ("lineage", "steps") and 1 <= len([arg for arg in args if arg != "--template"]) <= 2:
+        elif command == "expand" and len(args) == 2:
+            answer = expand(sys.stdin.read(), args[0], Path(args[1]))
+        elif command in ("lineage", "steps") and 1 <= len(_plain_args(args)) <= 2:
             template = "--template" in args
-            args = [arg for arg in args if arg != "--template"]
+            blocks = _blocks_arg(args)
+            args = _plain_args(args)
             sql = Path(args[1]).read_text() if len(args) == 2 else sys.stdin.read()
-            answer = (lineage if command == "lineage" else steps)(sql, args[0], template)
+            answer = (lineage if command == "lineage" else steps)(sql, args[0], template, blocks)
         else:
             answer = {"error": f"{USAGE}\ngot: {argv}"}
     except sqlglot.errors.ParseError as error:

@@ -5,7 +5,14 @@ import { stepMarks } from './steps.ts'
 import type { StepsFile } from './steps.ts'
 
 export type Cardinality = '1:1' | '1:many' | 'many:1' | 'many:many'
-export type LineageNode = { id: string; kind: 'table' | 'cte' | 'final'; name: string; grain?: string[] }
+export type LineageNode = {
+  id: string
+  kind: 'table' | 'cte' | 'final'
+  name: string
+  grain?: string[]
+  /** The trusted block this CTE includes (docs/slice-10.md): drawn as one node, without the tables inside it. */
+  block?: string
+}
 /** `join` is absent for a FROM source or a subquery's; `{}` for a JOIN with no (well-formed) `-- join:` line. */
 export type LineageEdge = { from: string; to: string; join?: { cardinality?: Cardinality; keys?: string[] } }
 export type Lineage = { nodes: LineageNode[]; edges: LineageEdge[]; note?: string }
@@ -25,7 +32,8 @@ function parseNode(raw: unknown): LineageNode[] {
   const name = field(raw, 'name')
   if (typeof id !== 'string' || typeof name !== 'string' || typeof kind !== 'string' || !KINDS.includes(kind)) return []
   const grain = field(raw, 'grain')
-  return [{ id, kind: kind as LineageNode['kind'], name, ...(Array.isArray(grain) && { grain: strings(grain) }) }]
+  const block = field(raw, 'block')
+  return [{ id, kind: kind as LineageNode['kind'], name, ...(Array.isArray(grain) && { grain: strings(grain) }), ...(typeof block === 'string' && block && { block }) }]
 }
 
 function parseEdge(raw: unknown, ids: ReadonlySet<string>): LineageEdge[] {
@@ -72,7 +80,7 @@ const quote = (text: string) => `"${text.replaceAll('"', '#quot;')}"`
 
 function label(node: LineageNode): string {
   const grain = node.grain === undefined || node.kind === 'table' ? [] : [node.grain.length === 0 ? 'grain: one row' : `grain: ${node.grain.join(', ')}`]
-  return quote([node.name, ...grain].join('<br/>'))
+  return quote([node.name, ...(node.block ? [`block ${node.block}`] : []), ...grain].join('<br/>'))
 }
 
 function edgeLabel(edge: LineageEdge): string | undefined {
@@ -87,7 +95,8 @@ function edgeLabel(edge: LineageEdge): string | undefined {
 export function lineageMermaid(lineage: Lineage, marks: Readonly<Record<number, LineageMark>> = {}, colors: MarkColors = { good: '#2e9e5b', bad: '#d95757', dim: '#828e9f' }): string {
   const index = new Map(lineage.nodes.map((node, i) => [node.id, i]))
   const lines = ['flowchart LR']
-  lineage.nodes.forEach((node, i) => lines.push(node.kind === 'table' ? `  n${i}([${label(node)}])` : `  n${i}[${label(node)}]`))
+  // Tables are stadiums, an included block a subroutine box, other CTEs and the final SELECT boxes.
+  lineage.nodes.forEach((node, i) => lines.push(node.kind === 'table' ? `  n${i}([${label(node)}])` : node.block ? `  n${i}[[${label(node)}]]` : `  n${i}[${label(node)}]`))
   for (const edge of lineage.edges) {
     const from = index.get(edge.from)
     const to = index.get(edge.to)

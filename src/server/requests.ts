@@ -88,8 +88,8 @@ export class Requests {
       case 'sql': {
         let number: number | undefined
         const header = `-- author: user\n${request.from ? `-- from: ${queryLabel(request.from)}\n` : ''}`
-        await assay.runSql(request.sql, request.slug, request.engine, header, claimed => (number = claimed)).catch(() => undefined)
-        if (number === undefined) return { error: 'The run could not start.' }
+        const said = await assay.runSql(request.sql, request.slug, request.engine, header, claimed => (number = claimed)).catch(() => undefined)
+        if (number === undefined) return { error: said?.startsWith('Not run:') ? said : 'The run could not start.' }
         await assay.recordUserRun({ number, language: 'sql', ...(request.from ? { from: request.from } : {}) })
         return { number }
       }

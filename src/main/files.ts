@@ -301,6 +301,9 @@ export async function readRun(folder: string, number: number, options: { table?:
     const steps = parseSteps(await readText(join(dir, `${run.label}.steps.json`)))
     if (steps) view.steps = steps
     if (run.code) view.code = (await readHead(join(dir, run.code), MAX_CODE_BYTES)).text
+    // A run with includes (docs/slice-10.md): the SQL that ran, saved beside it.
+    const expanded = await readText(join(dir, `${run.label}.expanded.sql`))
+    if (expanded) view.expanded = expanded
     if (run.data) view.table = await readTable(run.data)
     if (options.step !== undefined) {
       // The last step is the final SELECT: its rows are the run's own.

@@ -221,9 +221,17 @@ export function parseRunStatus(text: string): RunStatus {
   return status
 }
 
-export type RunHeader = { author: 'user' | 'claude'; from?: number; replay?: number; trusted?: string; engine: Engine }
+export type RunHeader = {
+  author: 'user' | 'claude'
+  from?: number
+  replay?: number
+  trusted?: string
+  engine: Engine
+  /** The trusted pieces a run with includes is built from, as `name@commit` (docs/slice-10.md). */
+  builtFrom?: string[]
+}
 
-const SQL_HEADER_LINE = /^-- (?:author: |from: |trusted: |commit: |args: |postgres\s*$)/
+const SQL_HEADER_LINE = /^-- (?:author: |from: |trusted: |commit: |args: |built from: |postgres\s*$)/
 const PYTHON_HEADER_LINE = /^# (?:author: |from: |replay: )/
 
 /** The mod's header lines, read from the leading comment lines only (`-- ` for SQL, `# ` for Python). A run with no `author:` line is Claude's. */
@@ -243,6 +251,8 @@ export function parseRunHeader(text: string, language: 'sql' | 'python' = 'sql')
     }
     const trusted = value('trusted')
     if (trusted) header.trusted = trusted.split(/\s/)[0] ?? trusted
+    const built = value('built from')
+    if (built) header.builtFrom = built.split(',').map(piece => piece.trim()).filter(Boolean)
     if (/^-- postgres\s*$/.test(line)) header.engine = 'postgres'
   }
   return header

@@ -179,3 +179,9 @@ test('citedLabel: unknown run unverified, SQL with data queried, Python ok compu
   const label = citedLabel([sql, { ...sql, number: 2, data: undefined }, { ...sql, number: 3, language: 'python', status: 'ok' }, { ...sql, number: 4, language: 'python', status: 'error' }])
   assert.deepEqual([1, 2, 3, 4, 9].map(label), ['queried', 'unverified', 'computed', 'unverified', 'unverified'])
 })
+
+test('a run with includes names what it is built from, and a re-run drops the line', () => {
+  const text = '-- author: user\n-- built from: client_entry_sessions@1a2b3c4d5e6f, a:b@ffff\n-- grain: x\nSELECT 1\n'
+  assert.deepEqual(parseRunHeader(text).builtFrom, ['client_entry_sessions@1a2b3c4d5e6f', 'a:b@ffff'])
+  assert.equal(codeBody(text, 'sql'), '-- grain: x\nSELECT 1\n')
+})

@@ -142,7 +142,7 @@ export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
   },
   {
     pane: 'Code',
-    keys: [['h j k l  w b', 'move'], ['g / G', 'top / bottom'], [', / .', 'earlier / later run'], ['o', 'original / formatted'], ['d', 'its Data'], ['i', 'edit'], ['n', 'new SQL query'], ['⌘E', 'edit from anywhere'], ['p', 'pin / follow latest'], ['⌘↩', 're-run as a new run; with SQL selected, run just that (opens in Data)']],
+    keys: [['h j k l  w b', 'move'], ['g / G', 'top / bottom'], [', / .', 'earlier / later run'], ['o', 'original / formatted'], ['x', 'expanded SQL of a run with includes'], ['d', 'its Data'], ['i', 'edit'], ['n', 'new SQL query'], ['⌘E', 'edit from anywhere'], ['p', 'pin / follow latest'], ['⌘↩', 're-run as a new run; with SQL selected, run just that (opens in Data)']],
   },
   { pane: 'Code editing', keys: [['Esc', 'leave (in Vim normal mode)'], ['⌘↩', 'run as a new run (a new query opens in Data); with SQL selected, run just that']] },
   {

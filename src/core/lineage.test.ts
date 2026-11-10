@@ -129,3 +129,10 @@ test('mermaidNodeIndex reads our node position from the element id mermaid gives
   assert.equal(mermaidNodeIndex('flowchart-nx-1'), undefined)
   assert.equal(mermaidNodeIndex(''), undefined)
 })
+
+test('an included block is drawn as a subroutine box labelled with its block', () => {
+  const lineage = parseLineage(JSON.stringify({ nodes: [{ id: 's', kind: 'cte', name: 'sessions', grain: ['session_id'], block: 'client_entry_sessions' }, { id: 'final', kind: 'final', name: 'Final SELECT' }], edges: [{ from: 's', to: 'final' }] }))
+  assert.ok(lineage && !('error' in lineage))
+  assert.equal(lineage.nodes[0]?.block, 'client_entry_sessions')
+  assert.match(lineageMermaid(lineage), /n0\[\["sessions<br\/>block client_entry_sessions<br\/>grain: session_id"\]\]/)
+})

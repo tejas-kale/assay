@@ -1,6 +1,6 @@
 # Slice 10 spec: overviews, blocks, include by name, retype check
 
-Status: spec, 2026-11-10. 10a and 10b built. Written from the assay-root draft `2026-11-10-assay-review-workflow-changes.md` (the
+Status: spec, 2026-11-10. 10a, 10b and 10c built. Written from the assay-root draft `2026-11-10-assay-review-workflow-changes.md` (the
 review-workflow grilling of 2026-11-09 and 2026-11-10), after reading Assay's code.
 
 Four slices, each usable alone, built in this order:
@@ -223,6 +223,12 @@ CTE (both Databricks and Postgres accept it).
   joins are not listed or checked (they were checked once in the Trust tab), and the lineage draws it as one node
   (`[[...]]`, labelled `block <name>` and its grain) without the tables inside it.
 - This replaces 9c's skip only for runs with includes; trusted runs keep their note.
+
+As built: `NNN.expanded.sql` starts with `-- blocks: sessions=client_entry_sessions,...` (which CTE holds which block),
+so Steps needs no second expansion; the server strips it before planning. A trusted template (block or calculation)
+may include definitions only: Check and the `trusted` tool expand them, and a block included in a template fails the
+`transpile` step. A user run whose expansion fails replies to the app with the same `Not run:` text. The rules list
+blocks, then definitions, then calculations, with the include syntax once.
 
 ### Tests
 

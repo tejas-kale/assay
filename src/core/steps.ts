@@ -22,6 +22,8 @@ export type Step = {
   /** The columns of the `-- grain:` line, `[]` for `none`; absent with no line. */
   grain?: string[]
   joins?: PlannedJoin[]
+  /** The trusted block this step's CTE includes (docs/slice-10.md): one step, its joins checked once in the Trust tab. */
+  block?: string
 }
 export type StepsFile = { run: number; status: 'running' | 'done' | 'error'; note?: string; steps: Step[] }
 
@@ -74,6 +76,7 @@ function parseStep(raw: unknown): Step[] {
   const checks = field(raw, 'checks')
   const grain = field(raw, 'grain')
   const joins = field(raw, 'joins')
+  const block = field(raw, 'block')
   return [
     {
       k,
@@ -86,6 +89,7 @@ function parseStep(raw: unknown): Step[] {
       ...(Array.isArray(checks) && { checks: (checks as unknown[]).flatMap(parseCheck) }),
       ...(Array.isArray(grain) && { grain: strings(grain) }),
       ...(Array.isArray(joins) && { joins: (joins as unknown[]).flatMap(parseJoin) }),
+      ...(typeof block === 'string' && block && { block }),
     },
   ]
 }

@@ -87,11 +87,41 @@ type Runner = {
   onClaim?: (number: number) => void
   hasTables: boolean
   named?: string
+  /** A line before the reply, e.g. what the query is built from. */
+  preface?: string
+  /** The file the dictionary text is read from, when not the saved run (the expanded SQL of a run with includes). */
+  dictionaryFile?: (number: number) => string
 }
 
 /** What `python -m analysis_sql lint` prints: rule breaks that stop the query, and warnings that do not. */
 export type SqlLint = { errors: string[]; warnings: string[] }
 export const SQL_RULES_REJECTED = 'Not run: the query breaks the SQL rules. Fix and send again:'
+
+/** What `python -m analysis_sql expand` prints (docs/slice-10.md, slice 10c). */
+export type Expansion = {
+  sql: string
+  lint_sql: string
+  built_from: { name: string; kind: string; commit: string }[]
+  blocks: { cte: string; name: string }[]
+}
+export const INCLUDES_REJECTED = 'Not run: the included trusted pieces cannot be used. Fix and send again:'
+
+/** The run's header line naming what it is built from: `-- built from: name@commit, ...`. */
+export const builtFromLine = (expansion: Expansion) =>
+  expansion.built_from.length === 0 ? '' : `-- built from: ${expansion.built_from.map(piece => `${piece.name}@${piece.commit}`).join(', ')}\n`
+
+/** The reply's line naming what the query is built from. */
+export const builtFromReply = (expansion: Expansion) =>
+  `Built from: ${expansion.built_from.map(piece => `${piece.name} (${piece.kind})`).join(', ')}.`
+
+/** The expanded SQL's first line: which CTE holds which block, for Steps (`-- blocks: sessions=client_entry_sessions`). */
+export const blocksLine = (expansion: Expansion) =>
+  expansion.blocks.length === 0 ? '' : `-- blocks: ${expansion.blocks.map(block => `${block.cte}=${block.name}`).join(',')}\n`
+
+const BLOCKS_LINE = /^-- blocks: (\S+)\s*$/m
+
+/** A run's expanded SQL, beside it in queries/ (never a run: its number is followed by a dot). */
+export const expandedFile = (number: number) => `${QUERIES}/${queryLabel(number)}.expanded.sql`
 
 export type PythonOutcome = { text: string; number?: number; status?: PythonRun['status'] }
 
@@ -108,7 +138,7 @@ function queue() {
 /** What `python -m analysis_sql steps` prints (docs/slice-9.md, slice 9c). */
 type StepPlan = {
   lineage: LineageFile
-  steps: { k: number; name: string; node: number; preview: string | null; counts: string; grain?: string[]; joins?: Step['joins'] }[]
+  steps: { k: number; name: string; node: number; preview: string | null; counts: string; grain?: string[]; joins?: Step['joins']; block?: string }[]
   note?: string
 }
 
@@ -292,8 +322,8 @@ export class Assay {
     else if ('columns' in outcome) await this.write(`${base}.csv`, outcome.columns.length === 0 ? '' : toCsv(outcome.columns, outcome.rows))
     await this.writeAppStatus(null)
     if ('reply' in outcome) return outcome.reply
-    const dictionary = runner.hasTables ? await this.dictionaryFor(`${base}.sql`).catch(() => undefined) : undefined
-    const withDictionary = (text: string) => (dictionary ? `${text}\n\n${dictionary}` : text)
+    const dictionary = runner.hasTables ? await this.dictionaryFor(runner.dictionaryFile?.(number) ?? `${base}.sql`).catch(() => undefined) : undefined
+    const withDictionary = (text: string) => `${runner.preface ? `${runner.preface}\n` : ''}${dictionary ? `${text}\n\n${dictionary}` : text}`
     const named = `${runner.noun ?? 'Query'} ${label}${runner.named ?? ''}`
     if ('error' in outcome) return withDictionary(`${named} failed (saved ${this.shown(`${base}.${ext}`)}):\n${outcome.error}`)
     if (outcome.columns.length === 0) return withDictionary(`${named}: ok, no result set.`)
@@ -322,14 +352,45 @@ export class Assay {
     }
   }
 
-  runSql(sql: string, slugText: string, engine: Engine, header = '', onClaim?: (number: number) => void): Promise<string> {
+  /**
+   * Runs SQL as a new run. SQL that includes trusted pieces (`{{ name(...) }}`, docs/slice-10.md) is expanded first
+   * (or `expansion` is the caller's): the run keeps the SQL as written under a `-- built from:` line, and the expanded
+   * SQL, saved beside it, is what runs. A failed expansion claims no number.
+   */
+  async runSql(sql: string, slugText: string, engine: Engine, header = '', onClaim?: (number: number) => void, expansion?: Expansion): Promise<string> {
+    if (!expansion) {
+      const expanded = await this.expandSql(sql, engine)
+      if (expanded && 'errors' in expanded) return [INCLUDES_REJECTED, ...expanded.errors.map(line => `- ${line}`)].join('\n')
+      expansion = expanded
+    }
+    const mark = engine === 'postgres' ? `${POSTGRES_MARK}\n` : ''
+    const used = expansion
     return this.runQuery({
       slug: runSlug(slugText),
-      saved: `${header}${engine === 'postgres' ? `${POSTGRES_MARK}\n` : ''}${sql.trim()}\n`,
+      saved: `${header}${used ? builtFromLine(used) : ''}${mark}${sql.trim()}\n`,
       ...(onClaim ? { onClaim } : {}),
       hasTables: engine === 'databricks',
-      run: sqlFile => this.queryFile(engine, sqlFile),
+      ...(used
+        ? {
+            preface: used.built_from.length > 0 ? builtFromReply(used) : undefined,
+            dictionaryFile: expandedFile,
+            run: async (_sqlFile: string, number: number) => {
+              await this.write(expandedFile(number), `${blocksLine(used)}${mark}${used.sql.trim()}\n`)
+              return this.queryFile(engine, expandedFile(number))
+            },
+          }
+        : { run: (sqlFile: string) => this.queryFile(engine, sqlFile) }),
     })
+  }
+
+  /** The SQL with its included trusted pieces expanded; undefined when it includes none, `errors` when it cannot be. */
+  async expandSql(sql: string, engine: Engine): Promise<Expansion | { errors: string[] } | undefined> {
+    if (!sql.includes('{{')) return undefined
+    const found = await this.helper<Expansion | { errors: string[] }>(['expand', engine, this.config.root], 30_000, 'analysis_sql', sql)
+    if ('error' in found) return { errors: [`The included pieces could not be expanded: ${found.error}`] }
+    if ('errors' in found && Array.isArray(found.errors)) return { errors: found.errors.map(String) }
+    if ('sql' in found && typeof found.sql === 'string' && typeof found.lint_sql === 'string' && Array.isArray(found.built_from) && Array.isArray(found.blocks)) return found
+    return { errors: ['analysis_sql expand printed no expanded SQL'] }
   }
 
   /** Runs a saved .sql file (a path from the analysis) on the engine; its rows, or the error. */
@@ -369,15 +430,20 @@ export class Assay {
     return Array.isArray(found.errors) && Array.isArray(found.warnings) ? found : { error: 'analysis_sql printed no errors and warnings' }
   }
 
-  /** Run `number`'s file, text and header; undefined when there is no such run. */
+  /**
+   * Run `number`'s file, text and header; undefined when there is no such run. A run with includes reads as its
+   * expanded SQL, with `blocks` (`sessions=client_entry_sessions,...`) naming the CTEs that hold a block.
+   */
   private async savedRun(number: number) {
     const run = parseRuns(await this.names(QUERIES)).find(each => each.number === number)
     if (run?.code === undefined) return undefined
     const text = await this.readText(`${QUERIES}/${run.code}`)
     const header = parseRunHeader(text, run.language)
-    const body = codeBody(text, run.language === 'python' ? 'python' : 'sql')
+    const expanded = run.language === 'python' ? '' : await this.readText(expandedFile(number))
+    const body = expanded ? codeBody(expanded.replace(BLOCKS_LINE, ''), 'sql').replace(/^\n/, '') : codeBody(text, run.language === 'python' ? 'python' : 'sql')
+    const blocks = BLOCKS_LINE.exec(expanded)?.[1]
     // A trusted run whose body is `-- python:` is a Python calculation.
-    return { header, body, python: run.language === 'python' || (header.trusted !== undefined && /^-- python:/m.test(body)) }
+    return { header, body, ...(blocks ? { blocks } : {}), python: run.language === 'python' || (header.trusted !== undefined && /^-- python:/m.test(body)) }
   }
 
   /**
@@ -393,7 +459,7 @@ export class Assay {
       return undefined
     }
     // A trusted run's body is the template, with its `:name` parameters.
-    const args = ['lineage', saved.header.engine, ...(saved.header.trusted ? ['--template'] : [])]
+    const args = ['lineage', saved.header.engine, ...(saved.header.trusted ? ['--template'] : []), ...(saved.blocks ? ['--blocks', saved.blocks] : [])]
     await write(await this.helper<LineageFile>(args, 30_000, 'analysis_sql', saved.body))
     return undefined
   }
@@ -422,7 +488,7 @@ export class Assay {
     }
 
     const engine = saved.header.engine
-    const plan = await this.helper<StepPlan>(['steps', engine], 30_000, 'analysis_sql', saved.body)
+    const plan = await this.helper<StepPlan>(['steps', engine, ...(saved.blocks ? ['--blocks', saved.blocks] : [])], 30_000, 'analysis_sql', saved.body)
     if ('error' in plan) {
       await this.writeAtomic(`${QUERIES}/${label}.lineage.json`, `${JSON.stringify({ error: plan.error })}\n`)
       await save({ run: number, status: 'error', note: plan.error, steps: [] })
@@ -433,7 +499,7 @@ export class Assay {
       run: number,
       status: plan.steps.length > 0 ? 'running' : 'done',
       ...(plan.note ? { note: plan.note } : {}),
-      steps: plan.steps.map(({ k, name, node, grain, joins }) => ({ k, name, node, status: 'pending', ...(grain ? { grain } : {}), ...(joins ? { joins } : {}) })),
+      steps: plan.steps.map(({ k, name, node, grain, joins, block }) => ({ k, name, node, status: 'pending', ...(grain ? { grain } : {}), ...(joins ? { joins } : {}), ...(block ? { block } : {}) })),
     }
     await save(file)
 
@@ -487,11 +553,14 @@ export class Assay {
 
   /** Claude's `sql` call: the rules first. A rejected statement claims no number and records no run. */
   async runClaudeSql(sql: string, slugText: string, engine: Engine): Promise<string> {
-    const linted = await this.lintSql(sql, engine)
+    const expansion = await this.expandSql(sql, engine)
+    if (expansion && 'errors' in expansion) return [INCLUDES_REJECTED, ...expansion.errors.map(line => `- ${line}`)].join('\n')
+    // The rules read the SQL as written, each block's body a plain select: its internals were checked in the Trust tab.
+    const linted = await this.lintSql(expansion?.lint_sql ?? sql, engine)
     if (linted && !('error' in linted) && linted.errors.length > 0) {
       return [SQL_RULES_REJECTED, ...linted.errors.map(line => `- ${line}`)].join('\n')
     }
-    const reply = await this.runSql(sql, slugText, engine)
+    const reply = await this.runSql(sql, slugText, engine, '', undefined, expansion)
     if (!linted) return reply
     // A lint that cannot run does not block: the query ran, and the reply says why it was not checked.
     if ('error' in linted) return `${reply}\n\nSQL rules not checked: ${linted.error}`

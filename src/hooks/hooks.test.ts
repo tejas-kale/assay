@@ -100,7 +100,7 @@ test('the rules list the usable trusted calculations the helper lists', async ()
   // A stand-in for venv-assay's python: `-m analysis_trust list <root>` prints the list.
   await writeFile(join(dir, 'venv/bin/python'), `#!/bin/sh\n[ "$3" = list ] && echo '${JSON.stringify(list)}'\n`, { mode: 0o755 })
   const rules = (await hook('prompt', { prompt: 'x' }, env))?.additionalContext ?? ''
-  expect(rules).toContain('run the one that fits with mcp__plugin_assay_assay__trusted. If you write your own SQL where one fits, say why in one line.')
+  expect(rules).toContain('Trusted calculations answer one question whole: run one with mcp__plugin_assay_assay__trusted when it is exactly the question')
   expect(rules).toContain('- completes_by_site(start: date): Completes per site.')
   expect(rules).not.toContain('top_sites')
 })

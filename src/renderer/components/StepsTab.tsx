@@ -176,7 +176,8 @@ function StepDetail({ step, count, table }: { step: Step; count: number; table: 
   return (
     <div className="step-detail">
       <div>
-        step {step.k} of {count}: <b>{step.name}</b> <span className="dim">· {STATUS_TEXT[step.status]}</span>
+        step {step.k} of {count}: <b>{step.name}</b>
+        {step.block && <span className="chip chip-trusted">{`block ${step.block}`}</span>} <span className="dim">· {STATUS_TEXT[step.status]}</span>
         {step.rows !== undefined && <span className="dim"> · {step.rows} {step.rows === 1 ? 'row' : 'rows'}</span>}
       </div>
       {step.error && <pre className="status warn">{step.error}</pre>}

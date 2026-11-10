@@ -56,7 +56,19 @@ export type AnalysisState = {
  * One run's code and saved result, for the Code and Data tabs. A Python run also carries its parsed `.json`
  * (`result`) and one table: `table` is table `tableIndex` (1-based) of `run.tables`.
  */
-export type RunView = { run: Run; code?: string; table?: Table; tableIndex?: number; result?: RunResult; lineage?: LineageFile; steps?: StepsFile; stepTable?: Table; error?: string }
+export type RunView = {
+  run: Run
+  code?: string
+  /** A run with includes: its expanded SQL, which ran (docs/slice-10.md). */
+  expanded?: string
+  table?: Table
+  tableIndex?: number
+  result?: RunResult
+  lineage?: LineageFile
+  steps?: StepsFile
+  stepTable?: Table
+  error?: string
+}
 
 
 /** A plot image as a data URL, or why it could not be read. */

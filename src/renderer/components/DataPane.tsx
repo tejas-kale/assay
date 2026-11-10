@@ -972,6 +972,9 @@ function CodeTab(props: {
 }) {
   const { header, view, run, edit, editText } = props
   const [confirm, setConfirm] = useState(false)
+  /** A run with includes shows the SQL as written; `x` switches to the expanded SQL that ran. */
+  const [isExpanded, setExpanded] = useState(false)
+  const showExpanded = isExpanded && view?.expanded !== undefined
 
   const leave = () => {
     if (editText.current === edit?.start) props.onLeave()
@@ -1004,11 +1007,13 @@ function CodeTab(props: {
         else if (e.key === ',' || e.key === '.') props.onStep(e.key === '.' ? 1 : -1)
         else if (e.key === 'i') props.onEdit()
         else if (e.key === 'n') props.onNew()
+        else if (e.key === 'x' && view?.expanded !== undefined) setExpanded(on => !on)
         else return
         e.preventDefault()
       }}
     >
       {header}
+      {view?.expanded !== undefined && !edit && <div className="status dim">{showExpanded ? 'Expanded SQL, as it ran (x: as written)' : 'Includes trusted pieces (x: expanded SQL)'}</div>}
       {confirm && <div className="status warn">Discard edits? y / n</div>}
       {edit ? (
         <EditorHost key={edit.id} language={edit.language} editText={editText} handleRef={props.editorRef} />
@@ -1020,9 +1025,9 @@ function CodeTab(props: {
         </div>
       ) : (
         <CodeView
-          code={view.code}
+          code={showExpanded ? (view.expanded ?? view.code) : view.code}
           language={run.language}
-          focusKey={String(run.number)}
+          focusKey={`${run.number}${showExpanded ? 'x' : ''}`}
           original={props.original}
           onToggleOriginal={props.onToggleOriginal}
           handleRef={props.selectionRef}

@@ -279,6 +279,19 @@ def output_columns(sql: str) -> list[str]:
     return [str(name) for name in names]
 
 
+def expand_template(sql: str, root: Path, name: str) -> str:
+    """A template with the definitions it includes expanded (docs/slice-10.md); a Problem when it includes a block, or
+    a piece that is unknown or not trusted as committed."""
+    import analysis_sql
+
+    if "{{" not in sql:
+        return sql
+    found = analysis_sql.expand(sql, DIALECT, root, inside_block=name)
+    if found.get("errors"):
+        raise Problem(" ".join(found["errors"]))
+    return found["sql"]
+
+
 def contract_text(params: list[dict[str, Any]], contract: dict[str, Any]) -> str:
     grain = ", ".join(contract["grain"]) or "one row"
     said = ", ".join(param["name"] for param in params) or "none"
@@ -617,7 +630,7 @@ def run(folder: Path, name: str, given: dict[str, Any], analysis: Path) -> dict[
     from sqlalchemy import text
 
     with engine.connect() as connection:
-        result = connection.execute(text(found["sql"]), values)
+        result = connection.execute(text(expand_template(found["sql"], folder.parent, name)), values)
         return {"columns": list(result.keys()), "rows": [[cell(v) for v in row] for row in result]}
 
 
@@ -1034,6 +1047,8 @@ def check(folder: Path, name: str, analysis: Path, emit: Any = None) -> dict[str
     step({"step": "form", "ok": True, "text": f"{what}, {plural(len(found['parameters']), 'parameter')}"})
     if found["kind"] == "sql":
         try:
+            # The analysis is <root>/analyses/<slug>: its root's trusted pieces are what the template may include.
+            found["sql"] = expand_template(found["sql"], analysis.resolve().parent.parent, name)
             declared = {param["name"] for param in found["parameters"]}
             used = placeholders(found["sql"])
             if used != declared:

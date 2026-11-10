@@ -71,15 +71,25 @@ export const trustRules = (home: string) =>
 /** The rule listing the trusted calculations, and how to propose one. */
 export function calculationRules(list: CalculationList | undefined): string {
   const usable = (list?.calculations ?? []).filter(calc => !calc.dirty)
-  const lines = usable.length
-    ? [
-        `Trusted calculations: before writing your own SQL, run the one that fits with ${toolName('trusted')}. If you write your own SQL where one fits, say why in one line. A <table>:<name> is a dictionary definition: by lists columns to group (or show) by, filters names filter definitions of the same table.`,
-        ...usable.filter(calc => !calc.block).map(calc => `- ${signature(calc)}: ${calc.description}`),
-      ]
-    : []
   const blocks = usable.flatMap(calc => (calc.block ? [{ ...calc, block: calc.block }] : []))
-  if (blocks.length > 0) lines.push('Trusted blocks (params -> grain: columns), each reviewed once with a grain check and an independent rebuild:', ...blocks.map(calc => `- ${blockSignature(calc)}: ${calc.description}`))
-  lines.push(`Propose a trusted calculation or a dictionary entry with the ${PROPOSE_SKILL} skill; only the user promotes it, in ${TRUST_TAB}.`)
+  const definitions = usable.filter(calc => calc.kind === 'definition')
+  const calculations = usable.filter(calc => !calc.block && calc.kind !== 'definition')
+  const lines: string[] = []
+  if (blocks.length > 0 || definitions.length > 0) {
+    lines.push(
+      "Trusted pieces: include blocks and definitions by name in your SQL, and Assay expands them and lists what the run is built from. A block is the whole body of a CTE: sessions AS ({{ client_entry_sessions(start => '2026-11-01', end => '2026-11-08') }}), with its -- grain: line above as usual. A definition goes where its expression fits, on the alias of its table: WHERE {{ client_entry(s) }}, or {{ <table>:<name>(s) }} when the short name is on several tables. Never retype their logic by hand; if you must, put -- retype: <piece>: <why> above the statement.",
+      'When you are about to write the same cross-table logic a second time, propose a block.',
+    )
+  }
+  if (blocks.length > 0) lines.push('Trusted blocks (params -> grain: columns):', ...blocks.map(calc => `- ${blockSignature(calc)}: ${calc.description}`))
+  if (definitions.length > 0) lines.push('Dictionary definitions (<table>:<name>):', ...definitions.map(calc => `- ${calc.name}: ${calc.description}`))
+  if (calculations.length > 0) {
+    lines.push(
+      `Trusted calculations answer one question whole: run one with ${toolName('trusted')} when it is exactly the question; they cannot be included. A <table>:<name> definition also runs with ${toolName('trusted')}: by lists columns to group (or show) by, filters names filter definitions of the same table.`,
+      ...calculations.map(calc => `- ${signature(calc)}: ${calc.description}`),
+    )
+  }
+  lines.push(`Propose a trusted block, calculation or dictionary entry with the ${PROPOSE_SKILL} skill; only the user promotes it, in ${TRUST_TAB}.`)
   return lines.join('\n')
 }
 
