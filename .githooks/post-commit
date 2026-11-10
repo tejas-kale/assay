@@ -1,0 +1,7 @@
+#!/bin/sh
+# core.hooksPath points here (scripts/postinstall.mjs), which makes git skip the repo's own .git/hooks. Run the
+# clone's own hook of the same name, if it has one, so a local hook (such as a sandbox's export of each commit) still
+# fires.
+own="$(git rev-parse --git-common-dir)/hooks/$(basename "$0")"
+[ -x "$own" ] && exec "$own" "$@"
+exit 0

@@ -1,7 +1,7 @@
 # Testing
 
 `npm run check` is the gate: typecheck, ESLint, the node tests with coverage, ruff, pytest with coverage, then the
-ratchet. `git push` runs it through `.githooks/pre-push` (`scripts/postinstall.mjs` sets `core.hooksPath`); CI runs
+ratchet. `git push` runs it through `.githooks/pre-push` (`scripts/postinstall.mjs` sets `core.hooksPath`; `.githooks/post-commit` and `post-rewrite` still run the clone's own hooks in `.git/hooks`); CI runs
 the same checks, so `--no-verify` only delays a failure.
 
 ## Unit tests
