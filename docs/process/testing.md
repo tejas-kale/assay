@@ -30,7 +30,11 @@ job, `docs/process/ci-release.md`). They need uv and PyPI; nothing reaches Datab
 - `backend.test.ts`: the bundled server over MCP with a real kernel in a venv `python/tests/test_venv.sh` builds (or
   the one `ASSAY_TEST_VENV` names), on a scratch root that is a git repository with trusted pieces committed. SQL and
   Python runs, the app's requests, Steps, the include expansion, and the bundled hooks on real files.
-- `tests/integration/harness.ts` builds that world. `fixtures/bin/databricks`, first on PATH, answers queries with
+- `app.test.ts`: the built app under playwright-core's Electron driver, on a scratch user data folder and root, with
+  `fixtures/stub-claude.mjs` as Claude (it starts the real server and keeps it open). It opens the analysis, runs SQL
+  from the Code tab with Cmd+Enter (sent through main, since CDP keys never reach `before-input-event`), and checks
+  Data, History and Steps. On Linux it needs a display (`xvfb-run`); without one it is skipped.
+- `tests/integration/harness.ts` builds the backend's world. `fixtures/bin/databricks`, first on PATH, answers queries with
   rows chosen by the SQL's text. Trusted calculations reach the warehouse through the Python connector, which no fake
   answers.
 - In the sandbox, esbuild's binary in `node_modules` is the Mac's: set `ESBUILD_BINARY_PATH` to a Linux esbuild of
