@@ -1,4 +1,4 @@
-import { NewQueryHeader, Placeholder } from '../components/DataPane.tsx'
+import { NewQueryHeader, Placeholder } from '../components/data/RunHeader.tsx'
 import type { DataTabProps } from './types.ts'
 
 export function Code({ pane }: Readonly<DataTabProps>) {

@@ -25,7 +25,7 @@ turned on.
 
 ```tsx
 // src/renderer/tabs/schema.tsx
-import { Placeholder } from '../components/DataPane.tsx'
+import { Placeholder } from '../components/data/RunHeader.tsx'
 import type { DataTabProps } from './types.ts'
 
 export function Schema({ pane }: Readonly<DataTabProps>) {

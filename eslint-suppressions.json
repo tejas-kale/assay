@@ -626,47 +626,6 @@
       "count": 2
     }
   },
-  "src/renderer/components/DataPane.tsx": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 33
-    },
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 8
-    },
-    "max-lines": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 5
-    },
-    "react-hooks/exhaustive-deps": {
-      "count": 7
-    },
-    "react-hooks/immutability": {
-      "count": 1
-    },
-    "react-hooks/purity": {
-      "count": 1
-    },
-    "react-hooks/refs": {
-      "count": 2
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 4
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 4
-    },
-    "sonarjs/no-nested-conditional": {
-      "count": 14
-    },
-    "sonarjs/no-redundant-optional": {
-      "count": 1
-    },
-    "sonarjs/prefer-read-only-props": {
-      "count": 14
-    }
-  },
   "src/renderer/components/FilesTab.tsx": {
     "@typescript-eslint/no-confusing-void-expression": {
       "count": 5

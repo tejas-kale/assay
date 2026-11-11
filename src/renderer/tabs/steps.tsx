@@ -1,4 +1,4 @@
-import { Placeholder } from '../components/DataPane.tsx'
+import { Placeholder } from '../components/data/RunHeader.tsx'
 import { StepsTab } from '../components/StepsTab.tsx'
 import type { DataTabProps } from './types.ts'
 

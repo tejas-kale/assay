@@ -1,6 +1,6 @@
 # Slice 11 spec: process, gates, backend in the app, CI/CD, auto-update, tab settings, audit
 
-Status: 11a and 11b built, 2026-11-10. 11c built and released: v0.1.0, signed with the Developer ID and notarized, 2026-11-11 (docs/process/ci-release.md). 11d built, 2026-11-11; its manual test on the Mac is still to run. 11e built, 2026-11-11; not yet tried in the running app. 11f in progress: `analysis_trust.py` done, 2026-11-11. Written from the grilling session of 2026-11-10, after reading Assay's
+Status: 11a and 11b built, 2026-11-10. 11c built and released: v0.1.0, signed with the Developer ID and notarized, 2026-11-11 (docs/process/ci-release.md). 11d built, 2026-11-11; its manual test on the Mac is still to run. 11e built, 2026-11-11; not yet tried in the running app. 11f in progress: `analysis_trust.py` and `DataPane.tsx` done, 2026-11-11. Written from the grilling session of 2026-11-10, after reading Assay's
 code.
 
 Seven slices, built in this order. Each ships, with CI green, before the next one starts:
@@ -438,7 +438,12 @@ until it is green).
   `analysis_library`, `analysis_runner`, `analysis_fixtures`, `analysis_pytest`, `analysis_blocks` and
   `analysis_review`. `list` and `dictionary` still load neither SQLAlchemy nor DuckDB; `analysis_trust.fixture_engine`
   still works for a calculation's own tests. `Problem` is now `TrustError` and `Mismatch` `MismatchError` (ruff's
-  N818); only a failing run's pytest summary line shows the new names. Next: `DataPane.tsx`.
+  N818); only a failing run's pytest summary line shows the new names.
+- Progress: `DataPane.tsx` (2026-11-11, 95 suppressions to none) is the pane only, built from hooks in
+  `components/data/` (`paneState`, `paneRequests`, `paneEdit`, `paneReplay`), with each tab in its own file there.
+  Its decisions (keys, toasts, the header note, the marker snapshot) are in `src/core/dataPane.ts`, under test.
+  State that reset when the run changed is now kept per run, and the command and marker effects use
+  `useEffectEvent`. Not yet tried in the running app. Next: `analysis_sql.py`.
 
 ## Slice 11g: security audit
 

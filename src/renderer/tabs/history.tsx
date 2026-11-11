@@ -1,4 +1,4 @@
-import { History as HistoryList } from '../components/DataPane.tsx'
+import { History as HistoryList } from '../components/data/History.tsx'
 import type { DataTabProps } from './types.ts'
 
 export function History({ pane }: Readonly<DataTabProps>) {
