@@ -82,6 +82,13 @@ const api: AppApi = {
     recheck: () => invoke(CHANNELS.doctorRecheck),
     onChange: cb => subscribe(CHANNELS.doctorChanged, cb),
   },
+  update: {
+    get: () => invoke(CHANNELS.updateGet),
+    setToken: input => invoke(CHANNELS.updateSetToken, input),
+    clearToken: () => invoke(CHANNELS.updateClearToken),
+    restart: () => invoke(CHANNELS.updateRestart),
+    onChange: cb => subscribe(CHANNELS.updateChanged, cb),
+  },
   onHints: cb => subscribe(CHANNELS.hints, cb),
   onCloseState: cb => subscribe(CHANNELS.closeState, cb),
 }

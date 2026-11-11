@@ -36,6 +36,7 @@
     "@lezer/highlight": "^1.2.5",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@replit/codemirror-vim": "^6.4.0",
+    "electron-updater": "^6.8.11",
     "ghostty-web": "^0.4.0",
     "mermaid": "^12.2.0",
     "node-pty": "^1.0.0",

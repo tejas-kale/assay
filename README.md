@@ -28,6 +28,9 @@ The code is the source of truth. `docs/slice-*.md` are the specs each slice was 
   `docs/process/testing.md`.
 - `npm run install-app` builds `Assay.app`, ad-hoc signed, into `/Applications`; run it again after pulling changes.
   `npm run package` only builds it, into `dist/mac-arm64/`.
+- A release (from its DMG, `docs/process/ci-release.md`) updates itself: paste a fine-grained GitHub token for
+  `tejas-kale/assay` (Contents read-only) into Settings > Updates. It checks at launch and hourly, downloads in the
+  background, and a banner offers `Restart`; otherwise the update installs when you quit.
 
 ## The backend in the app
 

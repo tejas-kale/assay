@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { COMMANDS, PANE_KEYS, commandForInput, shortcutLabel } from './keymap.ts'
+import { COMMANDS, PANE_KEYS, commandForInput, paletteCommands, shortcutLabel } from './keymap.ts'
 
 const input = (over: Partial<Parameters<typeof commandForInput>[0]>) => ({
   key: '',
@@ -163,4 +163,11 @@ test('Ctrl+0 zooms the terminal to the whole analysis and back; Cmd+0 stays free
   assert.equal(commandForInput(input({ code: 'Digit0', meta: true })), undefined)
   assert.equal(shortcutLabel('terminal.zoom'), '⌃0')
   assert.equal(COMMANDS.find(c => c.id === 'terminal.zoom')?.title, 'Zoom terminal / restore panes')
+})
+
+test('Restart to update is in the palette only while an update is ready', () => {
+  const titles = (isUpdateReady: boolean) => paletteCommands({ isUpdateReady }).map(c => c.title)
+  assert.ok(titles(true).includes('Restart to update'))
+  assert.ok(!titles(false).includes('Restart to update'))
+  assert.equal(titles(false).length, COMMANDS.length - 1)
 })

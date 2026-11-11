@@ -219,6 +219,9 @@ export function App() {
         case 'strip.side':
           void window.app.toggleStripSide()
           return false
+        case 'update.restart':
+          void window.app.update.restart()
+          return false
         default: {
           // Show analysis N, from the palette; the keys go straight to main.
           const n = analysisNumber(id)

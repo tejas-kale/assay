@@ -1,13 +1,15 @@
 import { useState } from 'react'
 
 import { fuzzyRank } from '../../core/fuzzy.ts'
-import { COMMANDS, shortcutLabel } from '../../core/keymap.ts'
+import { paletteCommands, shortcutLabel } from '../../core/keymap.ts'
 import type { CommandId } from '../../core/keymap.ts'
+import { useUpdate } from './Updates.tsx'
 
 export function Palette({ onRun, onClose }: { onRun: (id: CommandId) => void; onClose: () => void }) {
+  const [update] = useUpdate()
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
-  const shown = fuzzyRank(COMMANDS, query, c => c.title)
+  const shown = fuzzyRank(paletteCommands({ isUpdateReady: update?.ready !== undefined }), query, c => c.title)
   const index = Math.max(0, Math.min(selected, shown.length - 1))
 
   return (

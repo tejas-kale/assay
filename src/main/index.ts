@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { CHANNELS } from '../shared/ipc.ts'
 import { registerIpc } from './ipc.ts'
 import { onDoctorChange, prepareBackend } from './runtime.ts'
+import { installAndRelaunch, onUpdateChange, setOnRestart, startUpdater } from './update.ts'
 import { allContexts, broadcast, closeAll, ensureWindow, followSystemTheme, hostWindow, isLive, setOnClosed, setOnKeepWaiting } from './windows.ts'
 
 // Only standard roles. Shortcuts of the app's own commands (Cmd+W, Cmd+N, ...) live in core/keymap.ts
@@ -24,16 +25,26 @@ function buildMenu(): Menu {
   return Menu.buildFromTemplate(template)
 }
 
-// Cmd+Q: run the close flow in every analysis and quit when the last session has exited.
+// Cmd+Q: run the close flow in every analysis and quit when the last session has exited. Restart to update runs the
+// same flow and then installs the update instead of quitting; the open set is saved, so the relaunch reopens it.
 let quitPending = false
 let quitting = false
+let installPending = false
 
 function finishQuitIfDone() {
   if (!quitPending || quitting) return
   if (allContexts().some(isLive)) return
   quitting = true
-  app.quit()
+  if (installPending) installAndRelaunch()
+  else app.quit()
 }
+
+setOnRestart(() => {
+  installPending = true
+  quitPending = true
+  closeAll()
+  finishQuitIfDone()
+})
 
 app.on('before-quit', event => {
   if (quitting) return
@@ -54,10 +65,13 @@ setOnClosed(() => {
 // "Keep waiting" cancels the quit, so the next analysis close must not quit the app.
 setOnKeepWaiting(() => {
   quitPending = false
+  installPending = false
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin' || quitPending) app.quit()
+  // A pending quit or restart ends through finishQuitIfDone, so a restart installs the update rather than just quitting.
+  if (quitPending) finishQuitIfDone()
+  else if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('activate', () => {
@@ -76,6 +90,10 @@ void app.whenReady().then(() => {
   onDoctorChange(view => {
     broadcast(CHANNELS.doctorChanged, view)
   })
+  onUpdateChange(view => {
+    broadcast(CHANNELS.updateChanged, view)
+  })
+  void startUpdater()
   // Before any analysis starts Claude: startPty waits for the install.
   void prepareBackend().catch(() => undefined)
   followSystemTheme()

@@ -22,6 +22,7 @@ import type { ClosedThread, Threads } from '../core/threads.ts'
 import type { TrustReview } from '../core/trust.ts'
 import type { OverviewState, OverviewWhich } from '../core/overview.ts'
 import type { Check } from '../core/doctor.ts'
+import type { UpdateState } from '../core/update.ts'
 
 export type { CitationLabel, Analysis, AnalysisRef, ClosedThread, CloseState, CommandId, Engine, FileEntry, KernelState, NoteLists, Reply, RootNote, Run, RunRequest, RunResult, RunStatus, SearchContents, Table, Threads, TrustReview, OverviewState, OverviewWhich }
 
@@ -113,6 +114,14 @@ export type NoteCreateResult = { ok: true; name: string } | { ok: false; message
 export type SettingsView = { root: string | undefined }
 /** The Doctor in Settings: this version, what it is preparing, and the checks of the tools and the venv. */
 export type DoctorView = { version: string; checks: Check[]; isChecking: boolean; preparing?: string; error?: string }
+
+/**
+ * Settings > Updates and the ready banner: the updater's state. The token itself never leaves main; `hasToken` says
+ * whether one is kept. `isPackaged` is false under `npm run dev`, where the updater never runs.
+ */
+export type UpdateView = UpdateState & { hasToken: boolean; isPackaged: boolean }
+
+export type SetTokenResult = { ok: true } | { ok: false; message: string }
 
 export type SetRootResult = { ok: true; root: string } | { ok: false; message: string }
 
@@ -246,6 +255,18 @@ export type AppApi = {
     onChange(cb: (view: DoctorView) => void): Unsubscribe
   }
 
+  update: {
+    get(): Promise<UpdateView>
+    /** Keeps a fine-grained GitHub token, encrypted with the Keychain, and turns the updater on. */
+    setToken(input: string): Promise<SetTokenResult>
+    /** Forgets the token and turns the updater off. */
+    clearToken(): Promise<UpdateView>
+    /** Closes every analysis through the close flow, then installs the downloaded update and relaunches. */
+    restart(): Promise<void>
+    /** Fired in every window as the updater checks, downloads and fails. */
+    onChange(cb: (view: UpdateView) => void): Unsubscribe
+  }
+
   /** Which hints a long press shows: left Cmd the Cmd shortcuts and analysis numbers, left Ctrl the pane numbers. */
   onHints(cb: (kind: HoldKind | undefined) => void): Unsubscribe
 
@@ -294,6 +315,10 @@ export const CHANNELS = {
   settingsChooseRoot: 'settings:chooseRoot',
   doctorGet: 'doctor:get',
   doctorRecheck: 'doctor:recheck',
+  updateGet: 'update:get',
+  updateSetToken: 'update:setToken',
+  updateClearToken: 'update:clearToken',
+  updateRestart: 'update:restart',
   // renderer -> main, fire and forget (ipcRenderer.send / ipcMain.on)
   ptyWrite: 'pty:write',
   ptyResize: 'pty:resize',
@@ -306,6 +331,7 @@ export const CHANNELS = {
   closeState: 'close:state',
   settingsChanged: 'settings:changed',
   doctorChanged: 'doctor:changed',
+  updateChanged: 'update:changed',
   hints: 'hints',
   stripEntries: 'strip:entries',
 } as const

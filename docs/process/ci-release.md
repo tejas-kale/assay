@@ -75,6 +75,28 @@ A notarized build opens without a warning. The first Developer ID build replaces
 (`npm run install-app`'s ad-hoc build): install it by hand once, from its DMG. Later releases update it (slice 11d).
 `npm run install-app` still builds an ad-hoc signed local copy, which notarization skips.
 
+## Updates
+
+A release updates itself (`src/main/update.ts`, decisions in `src/core/update.ts`); `npm run dev` never does.
+
+- The token: a fine-grained GitHub token for `tejas-kale/assay`, Contents read-only, pasted in Settings > Updates.
+  Main encrypts it with `safeStorage` (the Keychain) into `update-token.bin` in the app's data folder; the renderer
+  only learns whether one is kept. electron-updater's private GitHub provider sends it as the `authorization` header on
+  every request, the release list and the downloads. Without a token the updater is off and Settings says so.
+- Checks: 10 seconds after launch, then an hour after the last one started; none while a download runs or one waits
+  to install. `autoDownload` and `autoInstallOnAppQuit` are on.
+- Ready: every analysis view shows `Assay <version> is ready. Restart`, and the palette lists `Restart to update`.
+  Restart runs the Cmd+Q close flow (each Claude exits, a launcher finishes its import), then `quitAndInstall`. The
+  open set is saved, so the relaunch reopens the same analyses, each with a new Claude session.
+- Errors never interrupt: Settings > Updates shows the version, what the updater is doing, the last check and the
+  last error. A downloaded update stays ready through later errors.
+
+### The manual test
+
+On the Mac, with release N installed from its DMG and a token saved: push a change that releases, wait for release
+N+1, and check that the banner appears within the hour (or relaunch to check at once), that Restart reopens the same
+analyses, and that Settings then shows N+1. Record each run here.
+
 ## When main is red
 
 Fix forward: nothing ships until main is green again. Do not revert to get a release out unless the fix will take

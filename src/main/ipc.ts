@@ -14,6 +14,7 @@ import { listFiles, openChart, openFile, previewFile } from './browse.ts'
 import { THREADS, editFile, fsPort, loadState, markOverviewRead, readPlot, readRun, readSearchContents, rootOf, writeRequest } from './files.ts'
 import { addRootNote, readCitedRun, readRootNote, saveRootNote } from './notes.ts'
 import { doctorView, openBlocker, recheck } from './runtime.ts'
+import { clearToken, requestRestart, saveToken, updateView } from './update.ts'
 import { attachAnalysis, broadcast, contextFor, hostWindow, openPicker, pushState, requestClose, retitle, showAnalysis, startPty, toggleStripSide } from './windows.ts'
 import type { WindowCtx } from './windows.ts'
 
@@ -84,6 +85,13 @@ export function registerIpc() {
 
   handle(CHANNELS.doctorGet, () => doctorView())
   handle(CHANNELS.doctorRecheck, () => recheck())
+
+  handle(CHANNELS.updateGet, () => updateView())
+  handle(CHANNELS.updateSetToken, (_ctx, input) => (isText(input) ? saveToken(input) : { ok: false, message: 'Invalid token' }))
+  handle(CHANNELS.updateClearToken, () => clearToken())
+  handle(CHANNELS.updateRestart, () => {
+    requestRestart()
+  })
 
   handle(CHANNELS.analysesCreate, async (ctx, title): Promise<OpenResult> => {
     if (typeof title !== 'string' || title.length > 200) return { ok: false, message: 'Invalid title' }

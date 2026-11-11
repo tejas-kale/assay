@@ -28,6 +28,7 @@ export type CommandId =
   | 'analysis.rename'
   | 'shortcuts.show'
   | 'strip.side'
+  | 'update.restart'
   | AnalysisSwitch
 
 /** Cmd+1 to Cmd+9: show that analysis in the window's set (core/analysisSet.ts). */
@@ -81,12 +82,18 @@ export const COMMANDS: readonly Command[] = [
   { id: 'replay.open', title: 'Replay' },
   { id: 'analysis.rename', title: 'Rename analysis' },
   { id: 'strip.side', title: 'Move analysis strip: bottom / left' },
+  { id: 'update.restart', title: 'Restart to update' },
   ...([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map(n => ({
     id: `analysis.${n}` as const,
     title: `Show analysis ${n}`,
     accelerator: { code: `Digit${n}` },
   })),
 ]
+
+/** The commands the palette lists: Restart to update only while a downloaded update waits (docs/slice-11.md, 11d). */
+export function paletteCommands({ isUpdateReady }: { isUpdateReady: boolean }): readonly Command[] {
+  return isUpdateReady ? COMMANDS : COMMANDS.filter(c => c.id !== 'update.restart')
+}
 
 /** The parts of Electron's `Input` that matter here. */
 export type KeyInput = { key: string; code: string; meta: boolean; shift: boolean; ctrl: boolean; alt: boolean }

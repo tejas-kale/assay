@@ -12,6 +12,7 @@ import { FilesTab } from './FilesTab.tsx'
 import { NotesTab } from './NotesTab.tsx'
 import { OverviewTab } from './OverviewTab.tsx'
 import { TerminalPane } from './TerminalPane.tsx'
+import { UpdateBanner } from './Updates.tsx'
 import { ThreadsTab } from './ThreadsTab.tsx'
 import type { DataTabName, NotesTabName, PaneName, Reveal } from './common.tsx'
 
@@ -116,6 +117,7 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
       <div className="float-status">
         {toast && <span className="toast">{toast}</span>}
         <Banners closeState={closeState} exit={exit} />
+        <UpdateBanner />
       </div>
     </div>
   )

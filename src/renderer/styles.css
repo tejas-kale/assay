@@ -88,6 +88,9 @@ input:focus { border-color: var(--accent); }
 .banner { padding: 3px 10px; border-radius: 3px; }
 .banner.closing { background: var(--closing); color: var(--text); }
 .banner.ended { background: var(--ended); color: var(--text); }
+.banner.update { pointer-events: auto; color: var(--text); }
+.banner.update button { background: var(--bg); border: 1px solid var(--accent); border-radius: 3px; padding: 0 10px; margin-left: 6px; cursor: pointer; }
+.updates { margin-top: 14px; }
 .toast { color: var(--warn); }
 .toast.floating { position: fixed; left: 12px; bottom: 12px; }
 
