@@ -1,9 +1,9 @@
 // The backend each version of the app ships (docs/slice-11.md, 11b), installed under the app's data folder at
 // launch: the plugin, server, hooks and Python project are copied once per version, and uv builds the venv from
 // them. No Electron here, so the tests run it on a temp folder.
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 
 import { staleEntries, TEMP_PREFIX } from '../core/backendLayout.ts'
 import { parseVenvBuild, venvStatusPath } from '../core/venv.ts'
@@ -12,23 +12,48 @@ import type { VenvBuild } from '../core/venv.ts'
 const exists = (path: string) => stat(path).then(() => true, () => false)
 const randomSuffix = () => randomUUID().slice(0, 8)
 
+/** The file in an installed backend, and in a built venv, that names the shipped content it came from. */
+const STAMP = '.assay-stamp'
+
+/** A hash of every file's path and content under a folder: the identity of a shipped backend. */
+export async function backendStamp(folder: string): Promise<string> {
+  const entries = await readdir(folder, { recursive: true, withFileTypes: true })
+  const files = entries
+    .filter(entry => entry.isFile() && entry.name !== STAMP)
+    .map(entry => relative(folder, join(entry.parentPath, entry.name)))
+    .sort((a, b) => a.localeCompare(b, 'en'))
+  const hash = createHash('sha256')
+  for (const file of files) hash.update(file).update('\0').update(await readFile(join(folder, file))).update('\0')
+  return hash.digest('hex')
+}
+
+/** The stamp an installed backend or a built venv was made from; undefined when it has none. */
+export const installedStamp = (folder: string) => readFile(join(folder, STAMP), 'utf8').then(text => text.trim(), () => undefined)
+
 /**
- * This version's backend folder, copied from the shipped one when it is missing. The copy goes to a temporary folder
+ * This version's backend folder, copied from the shipped one when it is missing or holds other content: every local
+ * build is the same version, so the version alone cannot tell two builds apart. The copy goes to a temporary folder
  * beside it and is renamed into place, so a crash mid-copy never leaves a backend that looks installed.
  */
 export async function installBackend({ shipped, home, version }: { shipped: string; home: string; version: string }): Promise<string> {
   const target = join(home, 'backend', version)
-  if (await exists(target)) return target
+  const stamp = await backendStamp(shipped)
+  if ((await installedStamp(target)) === stamp) return target
   await mkdir(join(home, 'backend'), { recursive: true })
   const temporary = join(home, 'backend', `${TEMP_PREFIX}${version}-${randomSuffix()}`)
   await cp(shipped, temporary, { recursive: true })
+  await writeFile(join(temporary, STAMP), `${stamp}\n`, 'utf8')
+  // The old copy moves aside under the temporary prefix, so pruning removes it if this launch crashes before rm.
+  const old = join(home, 'backend', `${TEMP_PREFIX}old-${version}-${randomSuffix()}`)
+  if (await exists(target)) await rename(target, old).catch(() => undefined)
   try {
     await rename(temporary, target)
   } catch (error) {
-    // Another instance of the same version won the rename: its copy is as good as this one.
+    // Another instance of the same build won the rename: its copy is as good as this one.
     await rm(temporary, { recursive: true, force: true })
-    if (!(await exists(target))) throw error
+    if ((await installedStamp(target)) !== stamp) throw error
   }
+  await rm(old, { recursive: true, force: true })
   return target
 }
 
@@ -82,16 +107,20 @@ async function syncVenv({ project, venv, runUv, onState }: VenvOptions, flags: r
 }
 
 /**
- * A version's venv, built once: the project installs into it non-editable, so it holds that version's helpers and
- * never changes after it is ready.
+ * A backend's venv, built once: the project installs into it non-editable, so it holds that backend's helpers. A
+ * venv built from other content (`stamp`, the backend's) is deleted and built again.
  */
-export async function buildReleaseVenv(options: VenvOptions): Promise<VenvBuild> {
+export async function buildReleaseVenv(options: VenvOptions & { stamp: string }): Promise<VenvBuild> {
   const current = parseVenvBuild(await readFile(venvStatusPath(options.venv), 'utf8').catch(() => undefined))
-  if (current?.state === 'ready' && (await exists(join(options.venv, 'bin/python')))) {
+  const sameBackend = (await installedStamp(options.venv)) === options.stamp
+  if (current?.state === 'ready' && sameBackend && (await exists(join(options.venv, 'bin/python')))) {
     options.onState?.(current)
     return current
   }
-  return syncVenv(options, ['--no-editable'])
+  if (!sameBackend) await rm(options.venv, { recursive: true, force: true }).catch(() => undefined)
+  const built = await syncVenv(options, ['--no-editable'])
+  if (built.state === 'ready') await writeFile(join(options.venv, STAMP), `${options.stamp}\n`, 'utf8').catch(() => undefined)
+  return built
 }
 
 /** The dev venv, synced editable at every launch, so edits to python/ and a changed uv.lock reach it. */

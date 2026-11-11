@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
-import { buildReleaseVenv, installBackend, pruneVersions, syncDevVenv } from './backend.ts'
+import { backendStamp, buildReleaseVenv, installBackend, installedStamp, pruneVersions, syncDevVenv } from './backend.ts'
 import type { UvRun } from './backend.ts'
 
 /** A shipped backend (Resources/backend) and an empty app data folder. */
@@ -26,12 +26,39 @@ test('install copies the shipped backend under backend/<version>, leaving no tem
   assert.deepEqual(await readdir(join(home, 'backend')), ['0.4.3'])
 })
 
-test('a second launch of the same version copies nothing', async () => {
+test('a second launch of the same version and content copies nothing', async () => {
+  const { shipped, home } = await scratch()
+  const backend = await installBackend({ shipped, home, version: '0.4.3' })
+  await writeFile(join(backend, 'python/marker'), 'kept\n')
+  await installBackend({ shipped, home, version: '0.4.3' })
+  assert.equal(await readFile(join(backend, 'python/marker'), 'utf8'), 'kept\n')
+})
+
+test('a launch whose shipped content changed under the same version replaces the backend', async () => {
+  // Every local build is 0.1.0: a reinstall must not keep running the first install's plugin and server.
   const { shipped, home } = await scratch()
   await installBackend({ shipped, home, version: '0.4.3' })
   await writeFile(join(shipped, 'python/pyproject.toml'), 'changed\n')
   const backend = await installBackend({ shipped, home, version: '0.4.3' })
+  assert.equal(await readFile(join(backend, 'python/pyproject.toml'), 'utf8'), 'changed\n')
+  assert.deepEqual(await readdir(join(home, 'backend')), ['0.4.3'])
+  assert.equal(await installedStamp(backend), await backendStamp(shipped))
+})
+
+test('a backend installed before stamps existed is replaced', async () => {
+  const { shipped, home } = await scratch()
+  await mkdir(join(home, 'backend/0.4.3/python'), { recursive: true })
+  await writeFile(join(home, 'backend/0.4.3/python/pyproject.toml'), 'old\n')
+  const backend = await installBackend({ shipped, home, version: '0.4.3' })
   assert.equal(await readFile(join(backend, 'python/pyproject.toml'), 'utf8'), '[project]\nname = "assay"\n')
+})
+
+test('the stamp follows file names and contents', async () => {
+  const { shipped } = await scratch()
+  const first = await backendStamp(shipped)
+  assert.equal(await backendStamp(shipped), first)
+  await writeFile(join(shipped, 'python/new.py'), '')
+  assert.notEqual(await backendStamp(shipped), first)
 })
 
 test('pruning deletes older versions and their venvs, and keeps this one and the one before', async () => {
@@ -71,7 +98,7 @@ test('the venv is built frozen and non-editable into venvs/<version>, and marked
   const uv = fakeUv()
   const venv = join(home, 'venvs/0.4.3')
   const states: string[] = []
-  const built = await buildReleaseVenv({ project: '/b/python', venv, runUv: uv.run, onState: state => states.push(state.state) })
+  const built = await buildReleaseVenv({ project: '/b/python', venv, runUv: uv.run, stamp: 's1', onState: state => states.push(state.state) })
   assert.deepEqual(built, { state: 'ready' })
   assert.deepEqual(uv.calls, [{ args: ['sync', '--frozen', '--no-editable', '--project', '/b/python'], env: { UV_PROJECT_ENVIRONMENT: venv } }])
   assert.deepEqual(states, ['building', 'ready'])
@@ -82,9 +109,20 @@ test("a version's built venv is not built again", async () => {
   const { home } = await scratch()
   const uv = fakeUv()
   const venv = join(home, 'venvs/0.4.3')
-  await buildReleaseVenv({ project: '/b/python', venv, runUv: uv.run })
-  await buildReleaseVenv({ project: '/b/python', venv, runUv: uv.run })
+  await buildReleaseVenv({ project: '/b/python', venv, runUv: uv.run, stamp: 's1' })
+  await buildReleaseVenv({ project: '/b/python', venv, runUv: uv.run, stamp: 's1' })
   assert.equal(uv.calls.length, 1)
+})
+
+test('a ready venv built from another backend is deleted and built again', async () => {
+  const { home } = await scratch()
+  const uv = fakeUv()
+  const venv = join(home, 'venvs/0.4.3')
+  await buildReleaseVenv({ project: '/b/python', venv, runUv: uv.run, stamp: 's1' })
+  await writeFile(join(venv, 'old-helper'), '')
+  assert.deepEqual(await buildReleaseVenv({ project: '/b/python', venv, runUv: uv.run, stamp: 's2' }), { state: 'ready' })
+  assert.equal(uv.calls.length, 2)
+  assert.deepEqual(await readdir(venv), ['.assay-stamp', 'bin'])
 })
 
 test('the dev venv is editable and synced at every launch, so a changed lock reaches it', async () => {
@@ -102,10 +140,10 @@ test('a failed build is written with its error, and the next launch tries again'
   const venv = join(home, 'venvs/0.4.3')
   await mkdir(join(home, 'venvs'), { recursive: true })
   const failing = fakeUv('error: Failed to fetch numpy')
-  assert.deepEqual(await buildReleaseVenv({ project: '/b/python', venv, runUv: failing.run }), { state: 'failed', error: 'error: Failed to fetch numpy' })
+  assert.deepEqual(await buildReleaseVenv({ project: '/b/python', venv, runUv: failing.run, stamp: 's1' }), { state: 'failed', error: 'error: Failed to fetch numpy' })
   assert.equal(await readFile(`${venv}.status.json`, 'utf8'), '{"state":"failed","error":"error: Failed to fetch numpy"}\n')
   const working = fakeUv()
-  assert.deepEqual(await buildReleaseVenv({ project: '/b/python', venv, runUv: working.run }), { state: 'ready' })
+  assert.deepEqual(await buildReleaseVenv({ project: '/b/python', venv, runUv: working.run, stamp: 's1' }), { state: 'ready' })
   assert.equal(working.calls.length, 1)
 })
 
@@ -115,7 +153,7 @@ test('a venv whose folder cannot be made fails as a value, with the reason, and 
   // venvs/ is a file, so nothing can be written under it.
   await writeFile(join(home, 'venvs'), '')
   const states: string[] = []
-  const built = await buildReleaseVenv({ project: '/b/python', venv: join(home, 'venvs/0.4.3'), runUv: fakeUv().run, onState: state => states.push(state.state) })
+  const built = await buildReleaseVenv({ project: '/b/python', venv: join(home, 'venvs/0.4.3'), runUv: fakeUv().run, stamp: 's1', onState: state => states.push(state.state) })
   assert.ok(built.state === 'failed' && built.error.includes('venvs'), JSON.stringify(built))
   assert.deepEqual(states, ['failed'])
 })

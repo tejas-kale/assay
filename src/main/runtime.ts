@@ -10,7 +10,7 @@ import type { Check, LoginEnv, Probes } from '../core/doctor.ts'
 import { mayStartVenvBuild, preparingNow } from '../core/preparation.ts'
 import type { VenvBuild } from '../core/venv.ts'
 import type { DoctorView } from '../shared/ipc.ts'
-import { buildReleaseVenv, installBackend, pruneVersions, syncDevVenv } from './backend.ts'
+import { buildReleaseVenv, installBackend, installedStamp, pruneVersions, syncDevVenv } from './backend.ts'
 import type { VenvOptions } from './backend.ts'
 import { loginEnv, probeTools, uvWith } from './doctor.ts'
 
@@ -79,7 +79,8 @@ async function buildVenvIfDue(launch: LaunchPaths, login: Promise<LoginEnv & { P
       changed()
     },
   }
-  await (app.isPackaged ? buildReleaseVenv(options) : syncDevVenv(options))
+  // A packaged backend always has its stamp; a missing one rebuilds the venv rather than trusting it.
+  await (app.isPackaged ? buildReleaseVenv({ ...options, stamp: (await installedStamp(launch.backend)) ?? 'none' }) : syncDevVenv(options))
   state.isBuilding = false
   changed()
 }
