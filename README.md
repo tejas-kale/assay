@@ -51,7 +51,7 @@ It keeps this version's and the previous one's folders and deletes older ones. A
   `--plugin-dir "$ASSAY_BACKEND/plugin"`. The variables the app sets, and what a launcher that runs Claude elsewhere
   must provide, are in `docs/process/launch-contract.md`.
 - Postgres runs need `rds-psql`, which only a launcher provides; without it they fail with a pointer to the contract.
-- Colours follow the macOS light or dark setting live (Ayu Light / Ayu Dark), all in `src/core/theme.ts`.
+- Colours follow the macOS light or dark setting live (Ayu Light / Ayu Dark) which are all in `src/core/theme.ts`.
 
 ## Keys
 
