@@ -14,7 +14,7 @@ import { listFiles, openChart, openFile, previewFile } from './browse.ts'
 import { THREADS, editFile, fsPort, loadState, markOverviewRead, readPlot, readRun, readSearchContents, rootOf, writeRequest } from './files.ts'
 import { addRootNote, readCitedRun, readRootNote, saveRootNote } from './notes.ts'
 import { doctorView, openBlocker, recheck } from './runtime.ts'
-import { clearToken, requestRestart, saveToken, updateView } from './update.ts'
+import { forgetToken, requestRestart, saveToken, updateView } from './update.ts'
 import { attachAnalysis, broadcast, contextFor, hostWindow, openPicker, pushState, requestClose, retitle, showAnalysis, startPty, toggleStripSide } from './windows.ts'
 import type { WindowCtx } from './windows.ts'
 
@@ -88,7 +88,7 @@ export function registerIpc() {
 
   handle(CHANNELS.updateGet, () => updateView())
   handle(CHANNELS.updateSetToken, (_ctx, input) => (isText(input) ? saveToken(input) : { ok: false, message: 'Invalid token' }))
-  handle(CHANNELS.updateClearToken, () => clearToken())
+  handle(CHANNELS.updateForgetToken, () => forgetToken())
   handle(CHANNELS.updateRestart, () => {
     requestRestart()
   })

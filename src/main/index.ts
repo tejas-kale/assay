@@ -2,11 +2,13 @@ import { Menu, app, session as electronSession } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 import { fileURLToPath } from 'node:url'
 
+import { RUNNING, shutdownOn } from '../core/shutdown.ts'
+import type { Shutdown, ShutdownAction, ShutdownEvent } from '../core/shutdown.ts'
 import { CHANNELS } from '../shared/ipc.ts'
 import { registerIpc } from './ipc.ts'
 import { onDoctorChange, prepareBackend } from './runtime.ts'
 import { installAndRelaunch, onUpdateChange, setOnRestart, startUpdater } from './update.ts'
-import { allContexts, broadcast, closeAll, ensureWindow, followSystemTheme, hostWindow, isLive, setOnClosed, setOnKeepWaiting } from './windows.ts'
+import { allContexts, broadcast, closeAll, ensureWindow, followSystemTheme, hostWindow, isLive, setOnClosed } from './windows.ts'
 
 // Only standard roles. Shortcuts of the app's own commands (Cmd+W, Cmd+N, ...) live in core/keymap.ts
 // and are caught in before-input-event; a duplicate accelerator here would fire twice.
@@ -25,57 +27,37 @@ function buildMenu(): Menu {
   return Menu.buildFromTemplate(template)
 }
 
-// Cmd+Q: run the close flow in every analysis and quit when the last session has exited. Restart to update runs the
-// same flow and then installs the update instead of quitting; the open set is saved, so the relaunch reopens it.
-let quitPending = false
-let quitting = false
-let installPending = false
+// Cmd+Q and Restart to update both close every analysis first, so each Claude exits and a launcher finishes its
+// import; then the app quits or installs. The decisions are in core/shutdown.ts. The open set is not saved while the
+// analyses close, so the next launch, or a failed install, reopens it.
+let shutdown: Shutdown = RUNNING
 
-function finishQuitIfDone() {
-  if (!quitPending || quitting) return
-  if (allContexts().some(isLive)) return
-  quitting = true
-  if (installPending) installAndRelaunch()
-  else app.quit()
+const isAnyLive = () => allContexts().some(isLive)
+
+function step(event: ShutdownEvent): ShutdownAction {
+  const next = shutdownOn(shutdown, event)
+  shutdown = next.state
+  if (next.action === 'close-all') closeAll()
+  else if (next.action === 'quit') app.quit()
+  else if (next.action === 'install') installAndRelaunch(() => step({ type: 'install-failed' }))
+  else if (next.action === 'reopen') ensureWindow(true)
+  return next.action
 }
 
-setOnRestart(() => {
-  installPending = true
-  quitPending = true
-  closeAll()
-  finishQuitIfDone()
-})
+setOnRestart(() => step({ type: 'restart', live: isAnyLive() }))
 
 app.on('before-quit', event => {
-  if (quitting) return
-  const live = allContexts().filter(isLive)
-  if (live.length === 0) {
-    quitting = true
-    return
-  }
-  event.preventDefault()
-  quitPending = true
-  closeAll()
+  if (step({ type: 'quit', live: isAnyLive() }) !== 'allow-quit') event.preventDefault()
 })
 
-setOnClosed(() => {
-  finishQuitIfDone()
-})
-
-// "Keep waiting" cancels the quit, so the next analysis close must not quit the app.
-setOnKeepWaiting(() => {
-  quitPending = false
-  installPending = false
-})
+setOnClosed(() => step({ type: 'closed', live: isAnyLive() }))
 
 app.on('window-all-closed', () => {
-  // A pending quit or restart ends through finishQuitIfDone, so a restart installs the update rather than just quitting.
-  if (quitPending) finishQuitIfDone()
-  else if (process.platform !== 'darwin') app.quit()
+  if (step({ type: 'closed', live: isAnyLive() }) === 'none' && shutdown.phase === 'running' && process.platform !== 'darwin') app.quit()
 })
 
 app.on('activate', () => {
-  if (!hostWindow() && !quitPending) ensureWindow(true)
+  if (!hostWindow() && shutdown.phase === 'running') ensureWindow(true)
 })
 
 void app.whenReady().then(() => {

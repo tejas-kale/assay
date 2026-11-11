@@ -3,28 +3,36 @@
 
 export type UpdateStatus = 'off' | 'idle' | 'checking' | 'downloading' | 'ready' | 'error'
 
-export type UpdateState = {
-  status: UpdateStatus
+type Common = {
   /** The version running now. */
   current: string
   /** When the last check started, in ms since the epoch. */
   lastCheck?: number
-  /** The version being downloaded. */
-  downloading?: string
-  /** The version downloaded and installed at the next restart or quit. */
-  ready?: string
-  /** The last check's or download's error; a later check that succeeds clears it. */
+  /** The last failure: a check, a download, an install, or a token that cannot be read. A good check clears it. */
   error?: string
 }
 
-/** What electron-updater reports, as main passes it on. */
+export type UpdateState = Common &
+  (
+    | { status: 'off' | 'idle' | 'checking' | 'error' }
+    /** `version` is being downloaded, by electron-updater and then by macOS's updater. */
+    | { status: 'downloading'; version: string }
+    /** `version` is downloaded and installs at the next restart or quit. */
+    | { status: 'ready'; version: string }
+  )
+
+/** What the updaters report, as main passes it on. */
 export type UpdateEvent =
-  | { type: 'token'; isSet: boolean }
+  /** A token was saved or forgotten; `error` when the saved one cannot be read. */
+  | { type: 'token'; isSet: boolean; error?: string }
   | { type: 'checking'; at: number }
   | { type: 'available'; version: string }
   | { type: 'not-available' }
-  | { type: 'downloaded'; version: string }
+  /** macOS's own updater has the download: electron-updater says downloaded before that, and it can still fail. */
+  | { type: 'downloaded' }
   | { type: 'error'; message: string }
+  /** The installer was called, but the app did not quit. */
+  | { type: 'install-failed' }
 
 export function initialUpdate({ current, hasToken }: { current: string; hasToken: boolean }): UpdateState {
   return { status: hasToken ? 'idle' : 'off', current }
@@ -40,42 +48,51 @@ export function updateText(state: UpdateState): string {
     case 'checking':
       return 'Checking for updates...'
     case 'downloading':
-      return `Downloading Assay ${state.downloading ?? ''}...`
+      return `Downloading Assay ${state.version}...`
     case 'ready':
-      return `Assay ${state.ready ?? ''} installs when you restart or quit.`
+      return `Assay ${state.version} installs when you restart or quit.`
     case 'error':
       return 'The last check failed.'
   }
 }
 
-function withoutError(state: UpdateState): UpdateState {
-  const { error, ...rest } = state
-  return error === undefined ? state : rest
+const common = ({ current, lastCheck }: UpdateState): Common => ({ current, ...(lastCheck === undefined ? {} : { lastCheck }) })
+
+function onToken(state: UpdateState, event: { isSet: boolean; error?: string }): UpdateState {
+  // A downloaded update still installs at quit, token or not.
+  if (state.status === 'ready') return state
+  return { ...common(state), status: event.isSet ? 'idle' : 'off', ...(event.error === undefined ? {} : { error: event.error }) }
+}
+
+/** What the updater reports once a check has started; ignored while off, since a forgotten token ends updates. */
+function onUpdater(state: UpdateState, event: Exclude<UpdateEvent, { type: 'token' }>): UpdateState {
+  const base = common(state)
+  switch (event.type) {
+    case 'checking':
+      return { ...base, status: 'checking', lastCheck: event.at }
+    case 'available':
+      return { ...base, status: 'downloading', version: event.version }
+    case 'not-available':
+      return { ...base, status: 'idle' }
+    case 'downloaded':
+      return state.status === 'downloading' ? { ...base, status: 'ready', version: state.version } : state
+    case 'error':
+      // A ready update still installs at the next restart, whatever a later check says.
+      return state.status === 'ready' ? { ...state, error: event.message } : { ...base, status: 'error', error: event.message }
+    case 'install-failed':
+      if (state.status !== 'ready') return state
+      return { ...base, status: 'error', error: `Assay ${state.version} did not install. The next check downloads it again.` }
+  }
 }
 
 export function updateOn(state: UpdateState, event: UpdateEvent): UpdateState {
-  switch (event.type) {
-    case 'token':
-      // A downloaded update still installs at quit, token or not.
-      if (state.ready !== undefined) return state
-      return { ...state, status: event.isSet ? 'idle' : 'off' }
-    case 'checking':
-      return { ...state, status: 'checking', lastCheck: event.at }
-    case 'available':
-      return { ...state, status: 'downloading', downloading: event.version }
-    case 'not-available':
-      return withoutError({ ...state, status: 'idle' })
-    case 'downloaded':
-      return withoutError({ ...state, status: 'ready', ready: event.version })
-    case 'error':
-      // A downloaded update still installs at the next restart, whatever a later check says.
-      return { ...state, status: state.ready === undefined ? 'error' : 'ready', error: event.message }
-  }
+  if (event.type === 'token') return onToken(state, event)
+  return state.status === 'off' ? state : onUpdater(state, event)
 }
 
 /** The banner every analysis view shows once an update is downloaded, beside its Restart button. */
 export function updateBanner(state: UpdateState): string | undefined {
-  return state.ready === undefined ? undefined : `Assay ${state.ready} is ready.`
+  return state.status === 'ready' ? `Assay ${state.version} is ready.` : undefined
 }
 
 const FIRST_CHECK_MS = 10_000

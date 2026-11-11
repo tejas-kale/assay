@@ -82,12 +82,19 @@ A release updates itself (`src/main/update.ts`, decisions in `src/core/update.ts
 - The token: a fine-grained GitHub token for `tejas-kale/assay`, Contents read-only, pasted in Settings > Updates.
   Main encrypts it with `safeStorage` (the Keychain) into `update-token.bin` in the app's data folder; the renderer
   only learns whether one is kept. electron-updater's private GitHub provider sends it as the `authorization` header on
-  every request, the release list and the downloads. Without a token the updater is off and Settings says so.
+  every request, the release list and the downloads. Without a token the updater is off and Settings says so; a
+  check still running when the token is forgotten changes nothing, and a later download does not install at quit.
+  A saved token the Keychain cannot decrypt shows as an error, not as no token.
 - Checks: 10 seconds after launch, then an hour after the last one started; none while a download runs or one waits
   to install. `autoDownload` and `autoInstallOnAppQuit` are on.
-- Ready: every analysis view shows `Assay <version> is ready. Restart`, and the palette lists `Restart to update`.
+- Ready only once macOS's own updater (Squirrel.Mac) has fetched and checked the zip: electron-updater reports a
+  download before that step, which can still fail. Then every analysis view shows `Assay <version> is ready. Restart`, and the palette lists `Restart to update`.
   Restart runs the Cmd+Q close flow (each Claude exits, a launcher finishes its import), then `quitAndInstall`. The
-  open set is saved, so the relaunch reopens the same analyses, each with a new Claude session.
+  open set is saved, so the relaunch reopens the same analyses, each with a new Claude session. If the app is still
+  running 30 seconds after `quitAndInstall`, the update is dropped with an error in Settings and the analyses reopen.
+  The decisions for Cmd+Q and Restart are in `src/core/shutdown.ts`.
+- Keep waiting, in the dialog that a second Cmd+W or Cmd+Q on a closing analysis shows, only keeps waiting: a quit or
+  restart under way still ends once that session exits, and the saved set stays whole.
 - Errors never interrupt: Settings > Updates shows the version, what the updater is doing, the last check and the
   last error. A downloaded update stays ready through later errors.
 

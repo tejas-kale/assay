@@ -85,7 +85,7 @@ const api: AppApi = {
   update: {
     get: () => invoke(CHANNELS.updateGet),
     setToken: input => invoke(CHANNELS.updateSetToken, input),
-    clearToken: () => invoke(CHANNELS.updateClearToken),
+    forgetToken: () => invoke(CHANNELS.updateForgetToken),
     restart: () => invoke(CHANNELS.updateRestart),
     onChange: cb => subscribe(CHANNELS.updateChanged, cb),
   },

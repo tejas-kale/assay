@@ -74,14 +74,9 @@ const here = fileURLToPath(new URL('.', import.meta.url))
 const contexts = new Map<number, WindowCtx>()
 let host: Host | undefined
 let onClosed: (() => void) | undefined
-let onKeepWaiting: (() => void) | undefined
 
 export const setOnClosed = (cb: () => void) => {
   onClosed = cb
-}
-/** Called when the user answers the force-quit dialog with "Keep waiting". */
-export const setOnKeepWaiting = (cb: () => void) => {
-  onKeepWaiting = cb
 }
 export const allContexts = () => [...contexts.values()]
 export const contextFor = (sender: WebContents) => contexts.get(sender.id)
@@ -426,13 +421,6 @@ export function closeAll() {
   for (const ctx of views) requestClose(ctx)
 }
 
-/** "Keep waiting" on Cmd+Q: the analyses still open stay, and the set is saved again. */
-function cancelCloseAll() {
-  if (!host) return
-  host.closingAll = false
-  saveSet(host.set)
-}
-
 /**
  * Cmd+W, the palette and closeAll end here. No live session: the view goes at once. Running: start the graceful
  * close and wait for the pty to exit. Already closing: ask.
@@ -475,10 +463,9 @@ async function confirmForce(ctx: WindowCtx, session: PtySession) {
       setTimeout(() => {
         if (session.flow.state() !== 'exited') closeNow(ctx)
       }, KILL_AFTER_MS + 1000)
-    } else if (response === 0) {
-      cancelCloseAll()
-      onKeepWaiting?.()
     }
+    // Keep waiting changes nothing: a quit or restart under way still ends once this session exits, and the open
+    // set stays as it was when it began, so the next launch reopens all of it.
   } finally {
     ctx.dialogOpen = false
   }

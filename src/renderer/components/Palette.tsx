@@ -9,7 +9,7 @@ export function Palette({ onRun, onClose }: { onRun: (id: CommandId) => void; on
   const [update] = useUpdate()
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
-  const shown = fuzzyRank(paletteCommands({ isUpdateReady: update?.ready !== undefined }), query, c => c.title)
+  const shown = fuzzyRank(paletteCommands({ isUpdateReady: update?.status === 'ready' }), query, c => c.title)
   const index = Math.max(0, Math.min(selected, shown.length - 1))
 
   return (

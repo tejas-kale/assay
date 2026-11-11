@@ -259,8 +259,8 @@ export type AppApi = {
     get(): Promise<UpdateView>
     /** Keeps a fine-grained GitHub token, encrypted with the Keychain, and turns the updater on. */
     setToken(input: string): Promise<SetTokenResult>
-    /** Forgets the token and turns the updater off. */
-    clearToken(): Promise<UpdateView>
+    /** Forgets the token and turns the updater off; onChange brings the new view. */
+    forgetToken(): Promise<void>
     /** Closes every analysis through the close flow, then installs the downloaded update and relaunches. */
     restart(): Promise<void>
     /** Fired in every window as the updater checks, downloads and fails. */
@@ -317,7 +317,7 @@ export const CHANNELS = {
   doctorRecheck: 'doctor:recheck',
   updateGet: 'update:get',
   updateSetToken: 'update:setToken',
-  updateClearToken: 'update:clearToken',
+  updateForgetToken: 'update:forgetToken',
   updateRestart: 'update:restart',
   // renderer -> main, fire and forget (ipcRenderer.send / ipcMain.on)
   ptyWrite: 'pty:write',

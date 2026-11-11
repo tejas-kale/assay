@@ -32,7 +32,7 @@ const timeOf = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-di
 
 /** Settings > Updates: the version, what the updater is doing, the last check and error, and the token. */
 export function Updates() {
-  const [view, setView] = useUpdate()
+  const [view] = useUpdate()
   if (!view) return null
   return (
     <section className="updates" aria-label="Updates">
@@ -42,7 +42,7 @@ export function Updates() {
         {view.lastCheck !== undefined && ` Last check ${timeOf(view.lastCheck)}.`}
       </div>
       {view.error && <div className="status warn">{view.error}</div>}
-      <TokenRow hasToken={view.hasToken} onForget={() => void window.app.update.clearToken().then(setView)} />
+      <TokenRow hasToken={view.hasToken} onForget={() => void window.app.update.forgetToken()} />
       <div className="hint">A fine-grained token for tejas-kale/assay with Contents read-only. It is kept in the Keychain.</div>
     </section>
   )
