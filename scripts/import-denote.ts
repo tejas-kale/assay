@@ -15,7 +15,7 @@ if (!(await isDir(from)) || !(await isDir(root))) {
   console.error('Usage: npm run import:denote <denote folder> <root> [--apply]  (both folders must exist)')
   process.exit(2)
 }
-console.log(`${apply ? 'Importing' : 'Dry run of'} ${from} into ${root}/notes\n`)
+console.log(`${apply ? 'Importing' : 'Dry run of'} ${String(from)} into ${String(root)}/notes\n`)
 const plan = await planImport(from as string, root as string)
 if (apply) await applyImport(root as string, plan)
 process.stdout.write(printImportReport(plan, apply))
