@@ -3,7 +3,7 @@
 // `databricks` first on PATH. It opens the analysis, runs SQL from the Code tab with Cmd+Enter, and checks that Data
 // shows the rows, History lists the run and Steps draws it. Never the user's own settings or analyses.
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
@@ -129,5 +129,26 @@ test('the built app opens an analysis, runs SQL from the Code tab, and shows it 
   await page.getByRole('listbox', { name: 'Runs' }).locator('.run-number', { hasText: '001' }).waitFor()
 
   await page.getByRole('tab', { name: 'Steps' }).click()
-  await page.locator('.step-detail').getByText('big_sites').waitFor({ timeout: 60_000 })
+  await page
+    .locator('.step-detail')
+    .getByText('big_sites')
+    .waitFor({ timeout: 60_000 })
+    .catch(async (error: unknown) => {
+      console.error(await whatStepsShows(page, join(s.root, 'analyses/panel')))
+      throw error
+    })
 })
+
+/** What the Steps tab shows and the files behind it, for a failed run's log: CI has no screen to look at. */
+async function whatStepsShows(page: Page, analysis: string): Promise<string> {
+  const shown = await page.locator('.run').first().innerText().catch((error: unknown) => `(no .run: ${String(error)})`)
+  const parts = [`Steps tab shows:\n${shown}`]
+  for (const folder of ['queries', '.assay', '.assay/replies']) {
+    const names = await readdir(join(analysis, folder)).catch(() => [])
+    parts.push(`${folder}/: ${names.join(' ')}`)
+    for (const name of names.filter(each => /\.(json|sql)$/.test(each))) {
+      parts.push(`--- ${folder}/${name}\n${await readFile(join(analysis, folder, name), 'utf8').catch(() => '(unreadable)')}`)
+    }
+  }
+  return parts.join('\n')
+}
