@@ -92,10 +92,31 @@ class Analysis:
         return name
 
     def run(self, code: str, timeout: float = 60) -> dict[str, Any]:
-        done = subprocess.run(self.command(self.next_file(code), timeout), capture_output=True, text=True, timeout=DEADLINE)
-        assert done.returncode == 0, done.stderr
-        lines = done.stdout.strip().splitlines()
-        assert len(lines) == 1, done.stdout
+        # faulthandler: a run stuck past DEADLINE is sent SIGABRT and prints every thread's stack before it ends.
+        proc = subprocess.Popen(
+            self.command(self.next_file(code), timeout),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env={**os.environ, "PYTHONFAULTHANDLER": "1"},
+        )
+        try:
+            stdout, stderr = proc.communicate(timeout=DEADLINE)
+        except subprocess.TimeoutExpired:
+            proc.send_signal(signal.SIGABRT)
+            try:
+                stdout, stderr = proc.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                stdout, stderr = proc.communicate()
+            record = self.path(f"{self.counter:03d}_x.json")
+            pytest.fail(
+                f"run {self.counter} did not end in {DEADLINE}s\n--- stdout\n{stdout}\n--- stderr (thread stacks)\n{stderr}"
+                f"\n--- {record.name}\n{record.read_text() if record.exists() else '(none)'}"
+            )
+        assert proc.returncode == 0, stderr
+        lines = stdout.strip().splitlines()
+        assert len(lines) == 1, stdout
         return json.loads(lines[0])
 
     def result(self, number: int | None = None) -> dict[str, Any]:

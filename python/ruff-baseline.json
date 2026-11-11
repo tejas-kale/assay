@@ -51,7 +51,7 @@
   },
   "python/tests/test_analysis_kernel.py": {
     "UP035": 1,
-    "PLW1510": 4,
+    "PLW1510": 3,
     "E501": 7,
     "PLR2004": 9,
     "SIM105": 1
