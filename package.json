@@ -95,8 +95,7 @@
         "to": "backend/plugin",
         "filter": [
           "**/*",
-          ".claude-plugin/**",
-          ".mcp.json"
+          ".claude-plugin/**"
         ]
       },
       {

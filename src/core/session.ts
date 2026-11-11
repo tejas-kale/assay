@@ -36,8 +36,9 @@ export function spawnSpec({ folder, env, root, mode, backend, venv }: Launch): S
   }
   return {
     file: env.SHELL || '/bin/zsh',
-    // The plugin path is expanded by the shell from ASSAY_BACKEND, so its space (Application Support) stays one word.
-    args: ['-lic', 'exec "${ASSAY_CLAUDE_BIN:-claude}" --plugin-dir "$ASSAY_BACKEND/plugin"'],
+    // Both paths are expanded by the shell from the environment, so the space in Application Support stays one word.
+    // No --strict-mcp-config: a launcher adds its own servers.
+    args: ['-lic', 'exec "${ASSAY_CLAUDE_BIN:-claude}" --mcp-config "$ASSAY_MCP_CONFIG" --plugin-dir "$ASSAY_BACKEND/plugin"'],
     cwd: root,
     env: {
       ...clean,
@@ -46,12 +47,21 @@ export function spawnSpec({ folder, env, root, mode, backend, venv }: Launch): S
       ASSAY_ANALYSIS: folder,
       ASSAY_BACKEND: backend,
       ASSAY_VENV: venv,
+      ASSAY_MCP_CONFIG: mcpConfig(backend),
       ASSAY_THEME: claudeTheme(mode),
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
     },
   }
 }
+
+/**
+ * The server `assay`, declared by the app rather than the plugin: Claude Code names a plugin's server
+ * `plugin:<plugin>:<server>`, so its tools would be `mcp__assay__*`. A launcher allowlists the server by
+ * its exact command: `node` and one argument, with `plugin/..` kept as written.
+ */
+export const mcpConfig = (backend: string) =>
+  JSON.stringify({ mcpServers: { assay: { command: 'node', args: [`${backend}/plugin/../out/server/index.mjs`] } } })
 
 export type CloseState = 'running' | 'closing' | 'exited'
 

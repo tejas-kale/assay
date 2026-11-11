@@ -1,5 +1,5 @@
 // The MCP server "assay": one per Claude session, over stdio. Claude Code starts it at session start (from the
-// plugin's .mcp.json) and ends it at session end; the kernel lives exactly as long.
+// app's --mcp-config, docs/process/launch-contract.md) and ends it at session end; the kernel lives exactly as long.
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'

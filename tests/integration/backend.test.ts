@@ -80,6 +80,6 @@ test('the hooks on real files: Python through Bash and writes into trusted/ are 
   expect(write?.permissionDecision).toBe('deny')
   expect(await hook('write', { hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: join(w.analysis, 'lib/draft.sql'), content: 'x' }, cwd: w.analysis }, w.env)).toBeUndefined()
   const prompt = await hook('prompt', { hook_event_name: 'UserPromptSubmit', prompt: 'how many sites?' }, w.env)
-  expect(prompt?.additionalContext).toContain('mcp__plugin_assay_assay__python')
+  expect(prompt?.additionalContext).toContain('mcp__assay__python')
   expect(prompt?.additionalContext).toContain('site_total')
 })

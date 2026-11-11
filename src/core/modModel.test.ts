@@ -192,7 +192,7 @@ test("the test line quotes a python whose path has a space, as Assay's venv does
   const python = '/Users/me/Library/Application Support/Assay/venvs/0.4.3/bin/python'
   expect(analysisRules(python, 'analyses/a')).toContain(`cd analyses/a && '${python}' -m pytest tests`)
   expect(analysisRules("/w/it's/bin/python", 'analyses/a')).toContain(`cd analyses/a && '/w/it'\\''s/bin/python' -m pytest tests`)
-  for (const part of ['one concept', 'mcp__plugin_assay_assay__park', 'mcp__plugin_assay_assay__focus', 'mcp__plugin_assay_assay__order', 'mcp__plugin_assay_assay__python', 'q(N)', 'never through Bash', 'matplotlib', 'Altair', '.head()', 'lib/<name>.py', 'tests/test_<name>.py'])
+  for (const part of ['one concept', 'mcp__assay__park', 'mcp__assay__focus', 'mcp__assay__order', 'mcp__assay__python', 'q(N)', 'never through Bash', 'matplotlib', 'Altair', '.head()', 'lib/<name>.py', 'tests/test_<name>.py'])
     expect(analysisRules(undefined, 'analyses/a')).toContain(part)
   // Threads hold only rulings a person must make (docs/slice-10.md).
   expect(analysisRules(undefined, 'analyses/a')).toContain('only for a ruling a person must make')
@@ -369,12 +369,12 @@ test('the Bash guard refuses commands that run Python code, and lets pytest, pip
     'ls x.py',
   ]
   for (const command of allowed) expect([command, bashRunsPython(command)]).toEqual([command, false])
-  expect(BASH_PYTHON_DENY).toBe('Run Python with mcp__plugin_assay_assay__python: it runs in the kernel the user sees, and every run is saved. pytest and package commands stay allowed.')
+  expect(BASH_PYTHON_DENY).toBe('Run Python with mcp__assay__python: it runs in the kernel the user sees, and every run is saved. pytest and package commands stay allowed.')
 })
 
 test('the rules send findings to the note tools, cited and linked, and never to Write or Edit', () => {
   const rules = analysisRules(undefined, 'analyses/a')
-  for (const part of ['mcp__plugin_assay_assay__note', 'mcp__plugin_assay_assay__revise_note', 'mcp__plugin_assay_assay__link_notes', '[<slug> q N]', '[[ID]]', 'never Write or Edit under notes/']) expect(rules).toContain(part)
+  for (const part of ['mcp__assay__note', 'mcp__assay__revise_note', 'mcp__assay__link_notes', '[<slug> q N]', '[[ID]]', 'never Write or Edit under notes/']) expect(rules).toContain(part)
   for (const gone of ['new_note', 'notes.md', '[[slug]]']) expect(rules).not.toContain(gone)
   expect(rules.length).toBeLessThan(3200)
 })

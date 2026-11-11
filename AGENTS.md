@@ -29,8 +29,8 @@ one kernel the app shows. Protect this in every change.
 - `src/main`: Electron main; all file access (`files.ts`, `browse.ts`) and IPC (`ipc.ts`). The renderer never reads a
   path itself; `src/shared/ipc.ts` is the only contract between the two.
 - `src/renderer`: React UI. `terminal.ts` is the only file that imports `ghostty-web`.
-- `src/server`: the MCP server `assay`, one per Claude session (plugin `.mcp.json`). Claude's tools are
-  `mcp__plugin_assay_assay__<tool>` (Claude Code's name for a plugin's MCP tools): `sql`, `python`, `trusted`, `park`,
+- `src/server`: the MCP server `assay`, one per Claude session, declared by the app with `--mcp-config`
+  (docs/process/launch-contract.md). Claude's tools are `mcp__assay__<tool>`: `sql`, `python`, `trusted`, `park`,
   `close`, `focus`, `order`, `note`, `revise_note`, `link_notes`, `note_labels`. It owns the kernel
   (`python/analysis_kernel.py serve`), started with the server and ended with it.
 - `src/hooks`: UserPromptSubmit (the rules on each typed prompt, the trusted calculations, the user's runs since the

@@ -13,7 +13,7 @@ test('spawnSpec runs Claude through the login shell from SHELL, with the shipped
   const spec = launch('/notes/analyses/a', { SHELL: '/opt/homebrew/bin/fish', PATH: '/usr/bin' }, '/notes')
   assert.equal(spec.file, '/opt/homebrew/bin/fish')
   // The plugin path is read from the environment, so its space never meets the shell's word splitting.
-  assert.deepEqual(spec.args, ['-lic', 'exec "${ASSAY_CLAUDE_BIN:-claude}" --plugin-dir "$ASSAY_BACKEND/plugin"'])
+  assert.deepEqual(spec.args, ['-lic', 'exec "${ASSAY_CLAUDE_BIN:-claude}" --mcp-config "$ASSAY_MCP_CONFIG" --plugin-dir "$ASSAY_BACKEND/plugin"'])
   // Claude starts in the root; the open analysis is named in ASSAY_ANALYSIS.
   assert.equal(spec.cwd, '/notes')
   assert.equal(spec.env.ASSAY_ANALYSIS, '/notes/analyses/a')
@@ -24,6 +24,22 @@ test('spawnSpec passes the backend and venv paths, spaces and all', () => {
   const spec = launch('/f', {}, '/')
   assert.equal(spec.env.ASSAY_BACKEND, BACKEND)
   assert.equal(spec.env.ASSAY_VENV, VENV)
+})
+
+test('spawnSpec declares the server assay with the exact command a launcher allowlists', () => {
+  const spec = launch('/f', {}, '/')
+  // Exactly node and one argument, with plugin/.. unresolved: a launcher matches the command as written.
+  assert.deepEqual(JSON.parse(spec.env.ASSAY_MCP_CONFIG ?? ''), {
+    mcpServers: { assay: { command: 'node', args: [`${BACKEND}/plugin/../out/server/index.mjs`] } },
+  })
+  // No --strict-mcp-config: a launcher adds its own servers.
+  assert.equal(spec.args.join(' ').includes('strict-mcp-config'), false)
+})
+
+test('spawnSpec escapes the backend path as a JSON string', () => {
+  const spec = spawnSpec({ folder: '/f', env: {}, root: '/', mode: 'dark', backend: '/a "q"\\b', venv: VENV })
+  const config = JSON.parse(spec.env.ASSAY_MCP_CONFIG ?? '') as { mcpServers: { assay: { args: string[] } } }
+  assert.deepEqual(config.mcpServers.assay.args, ['/a "q"\\b/plugin/../out/server/index.mjs'])
 })
 
 test('spawnSpec sets its own backend and venv over any inherited', () => {

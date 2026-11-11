@@ -10,11 +10,11 @@ For each open analysis, the app runs, through the user's login, interactive shel
 found as a terminal finds it), in the root folder:
 
 ```sh
-exec "${ASSAY_CLAUDE_BIN:-claude}" --plugin-dir "$ASSAY_BACKEND/plugin"
+exec "${ASSAY_CLAUDE_BIN:-claude}" --mcp-config "$ASSAY_MCP_CONFIG" --plugin-dir "$ASSAY_BACKEND/plugin"
 ```
 
-`ASSAY_CLAUDE_BIN` is the launcher; unset, plain `claude` runs. The plugin loads with `--plugin-dir` on each launch,
-so only sessions Assay starts see it. The environment carries the app's own, plus:
+`ASSAY_CLAUDE_BIN` is the launcher; unset, plain `claude` runs. The plugin (hooks and skills) loads with
+`--plugin-dir` and the server with `--mcp-config` on each launch, so only sessions Assay starts see them. The environment carries the app's own, plus:
 
 | Variable | Value |
 |---|---|
@@ -22,6 +22,7 @@ so only sessions Assay starts see it. The environment carries the app's own, plu
 | `ASSAY_ROOT` | the Settings folder (holds `analyses/`, `dictionaries/`, `trusted/`) |
 | `ASSAY_ANALYSIS` | the open analysis's folder |
 | `ASSAY_BACKEND` | `~/Library/Application Support/Assay/backend/<version>` |
+| `ASSAY_MCP_CONFIG` | the server `assay`, as JSON: `{"mcpServers":{"assay":{"command":"node","args":["<ASSAY_BACKEND>/plugin/../out/server/index.mjs"]}}}` |
 | `ASSAY_VENV` | `~/Library/Application Support/Assay/venvs/<version>` |
 | `ASSAY_THEME` | Claude Code's theme: `dark-ansi` or `light-ansi` |
 
@@ -33,6 +34,16 @@ is ready, Python tools answer that it is still building, and `ASSAY_VENV.status.
 `building`, `ready` or `failed` with the error. Without `ASSAY_VENV`, every tool answers that Assay did not start the
 session.
 
+## The server `assay`
+
+The app declares the MCP server itself, with `--mcp-config`, so Claude names it `assay` and its tools
+`mcp__assay__<tool>`. A server that a plugin declares is always named `plugin:<plugin>:<server>`, so the plugin
+declares none. Two constraints hold for every launcher:
+
+- The command is exactly `node` with one argument, `$ASSAY_BACKEND/plugin/../out/server/index.mjs`, `plugin/..`
+  included and unresolved. A launcher may allowlist the server by this exact command.
+- The app does not pass `--strict-mcp-config`, so a launcher may add its own MCP servers.
+
 ## What a launcher that runs Claude elsewhere must do
 
 - Make `ASSAY_ROOT`, `ASSAY_ANALYSIS` and `ASSAY_BACKEND` valid at the **same absolute paths**, with `ASSAY_BACKEND`
@@ -43,7 +54,8 @@ session.
   `uv sync --frozen --no-editable` (the Mac's venv holds macOS binaries). Build it per Assay version: the project
   installs into it non-editable, so each version's venv holds that version's helpers. A launcher's venv needs no
   status file; it counts as built when its `bin/python` exists.
-- Pass `ASSAY_APP`, `ASSAY_ROOT`, `ASSAY_ANALYSIS` and `ASSAY_THEME` through unchanged.
+- Pass `ASSAY_APP`, `ASSAY_ROOT`, `ASSAY_ANALYSIS`, `ASSAY_MCP_CONFIG` and `ASSAY_THEME` through unchanged, and
+  `--mcp-config` with the rest of Claude's arguments.
 
 ## Isolation is the launcher's job
 

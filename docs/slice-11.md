@@ -177,7 +177,7 @@ electron-builder's `extraResources` copies into `Contents/Resources/backend/`:
 
 ```
 backend/
-  plugin/        .claude-plugin/, hooks/hooks.json, .mcp.json, skills/
+  plugin/        .claude-plugin/, hooks/hooks.json, skills/
   out/server/    index.mjs
   out/hooks/     prompt.mjs, bash.mjs, write.mjs, state.mjs
   python/        analysis_*.py, pyproject.toml, uv.lock   (no tests/, no __pycache__, no *.egg-info)

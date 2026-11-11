@@ -24,5 +24,5 @@ every file below is in it. Run no code and no queries.
      metric, a filter value);
    - if nothing matches, say so in one line and go to step 6;
    - otherwise offer up to five notes by title, newest first, with one AskUserQuestion (multi-select), and
-     call `mcp__plugin_assay_assay__link_notes` with the IDs of the ones chosen. Call nothing if none is chosen.
+     call `mcp__assay__link_notes` with the IDs of the ones chosen. Call nothing if none is chosen.
 6. Ask which thread to take up, then wait for the answer.

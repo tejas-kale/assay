@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "assay": {
-      "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/../out/server/index.mjs"]
-    }
-  }
-}

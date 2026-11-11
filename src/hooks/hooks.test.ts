@@ -35,7 +35,7 @@ test('Bash calls that run Python are refused, pointing to the python tool; pytes
   for (const command of ['python -m pytest tests', 'pytest', 'claude-pkg uv add pandas', 'uv sync', 'python --version', 'ls']) {
     expect([command, await hook('bash', bash(command), env)]).toEqual([command, undefined])
   }
-  expect(BASH_PYTHON_DENY).toContain('mcp__plugin_assay_assay__python')
+  expect(BASH_PYTHON_DENY).toContain('mcp__assay__python')
 })
 
 test('outside an Assay session Bash is not guarded', async () => {
@@ -64,7 +64,7 @@ test("each prompt carries the rules, the trust rules and the kernel's python", a
   const said = await hook('prompt', { hook_event_name: 'UserPromptSubmit', prompt: 'why? and how?' }, env)
   expect(said?.hookEventName).toBe('UserPromptSubmit')
   const rules = said?.additionalContext ?? ''
-  for (const part of ['one concept per reply', 'mcp__plugin_assay_assay__focus', 'mcp__plugin_assay_assay__order', 'mcp__plugin_assay_assay__python', 'q(N)', 'matplotlib', '.head()', 'lib/<name>.py', 'cd analyses/panel && /w/.venv/bin/python -m pytest tests', "Assay's venv is the only Python"])
+  for (const part of ['one concept per reply', 'mcp__assay__focus', 'mcp__assay__order', 'mcp__assay__python', 'q(N)', 'matplotlib', '.head()', 'lib/<name>.py', 'cd analyses/panel && /w/.venv/bin/python -m pytest tests', "Assay's venv is the only Python"])
     expect(rules).toContain(part)
   expect(rules).toContain(`${root}/dictionaries`)
   expect(rules).not.toContain('/an')
@@ -100,7 +100,7 @@ test('the rules list the usable trusted calculations the helper lists', async ()
   // A stand-in for venv-assay's python: `-m analysis_trust list <root>` prints the list.
   await writeFile(join(dir, 'venv/bin/python'), `#!/bin/sh\n[ "$3" = list ] && echo '${JSON.stringify(list)}'\n`, { mode: 0o755 })
   const rules = (await hook('prompt', { prompt: 'x' }, env))?.additionalContext ?? ''
-  expect(rules).toContain('Trusted calculations answer one question whole: run one with mcp__plugin_assay_assay__trusted when it is exactly the question')
+  expect(rules).toContain('Trusted calculations answer one question whole: run one with mcp__assay__trusted when it is exactly the question')
   expect(rules).toContain('- completes_by_site(start: date): Completes per site.')
   expect(rules).not.toContain('top_sites')
 })
@@ -207,8 +207,8 @@ test('a Write, Edit or NotebookEdit under <root>/notes is refused, pointing to t
   for (const path of paths) {
     const said = await write('Write', { file_path: path, content: 'x' })
     expect([path, said?.permissionDecision]).toEqual([path, 'deny'])
-    expect(said?.permissionDecisionReason).toContain('mcp__plugin_assay_assay__note')
-    expect(said?.permissionDecisionReason).toContain('mcp__plugin_assay_assay__revise_note')
+    expect(said?.permissionDecisionReason).toContain('mcp__assay__note')
+    expect(said?.permissionDecisionReason).toContain('mcp__assay__revise_note')
   }
   expect((await write('Edit', { file_path: `${root}/notes/a.md`, old_string: 'a', new_string: 'b' }))?.permissionDecision).toBe('deny')
   expect((await write('NotebookEdit', { notebook_path: `${root}/notes/a.ipynb` }))?.permissionDecision).toBe('deny')
@@ -220,7 +220,7 @@ test('a Write, Edit or NotebookEdit under <root>/notes is refused, pointing to t
 test('the prompt rules send findings to the note tools and no longer name notes.md, new_note or [[slug]]', async () => {
   const { env } = await scratch()
   const rules = (await hook('prompt', { prompt: 'x' }, env))?.additionalContext ?? ''
-  for (const part of ['mcp__plugin_assay_assay__note', 'one idea per note', '[<slug> q N]', '[[ID]]', 'mcp__plugin_assay_assay__revise_note', 'never Write or Edit under notes/'])
+  for (const part of ['mcp__assay__note', 'one idea per note', '[<slug> q N]', '[[ID]]', 'mcp__assay__revise_note', 'never Write or Edit under notes/'])
     expect(rules).toContain(part)
   for (const gone of ['new_note', 'notes.md', '[[slug]]', '[q NNN]']) expect(rules).not.toContain(gone)
 })

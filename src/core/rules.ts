@@ -9,7 +9,7 @@ import { shellQuote } from './text.ts'
  * The name Claude sees for one of the server's tools. Claude Code names a plugin's MCP tools
  * `mcp__plugin_<plugin>_<server>__<tool>`; plugin and server are both `assay`.
  */
-export const toolName = (tool: string) => `mcp__plugin_assay_assay__${tool}`
+export const toolName = (tool: string) => `mcp__assay__${tool}`
 
 /** The one line every tool answers when Assay did not start the session (no ASSAY_ANALYSIS or ASSAY_ROOT). */
 export const NOT_ASSAY = 'Assay did not start this session: there is no analysis to work in. Open the analysis in the Assay app.'

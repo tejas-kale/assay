@@ -10,21 +10,21 @@ The open analysis's folder, `analyses/<slug>/` from the root, is named in the ru
 Never Write or Edit under `notes/`: use the note tools.
 
 1. Read `threads.md`. For each open thread this conversation answered, call
-   `mcp__plugin_assay_assay__close` with the thread's number and a one-line outcome. For each fork that came
-   up and is not in `threads.md`, call `mcp__plugin_assay_assay__park` with it as a one-line question.
+   `mcp__assay__close` with the thread's number and a one-line outcome. For each fork that came
+   up and is not in `threads.md`, call `mcp__assay__park` with it as a one-line question.
 2. Read the notes `analysis.yaml` lists under `notes.written`. List each verified finding (a query or
    trusted run in this conversation showed it) that no note holds yet, one line each with its run. Where a
-   finding extends a written note, offer `mcp__plugin_assay_assay__revise_note` on that note instead of a new one. Ask the user which to keep (one
-   AskUserQuestion), then write each kept finding with `mcp__plugin_assay_assay__note` (a title and text citing its
+   finding extends a written note, offer `mcp__assay__revise_note` on that note instead of a new one. Ask the user which to keep (one
+   AskUserQuestion), then write each kept finding with `mcp__assay__note` (a title and text citing its
    run as `[<slug> q N]`; the server derives the label, never write one).
-3. Call `mcp__plugin_assay_assay__note_labels` with `{ weak: true }`. For each note with an unverified, stale or
+3. Call `mcp__assay__note_labels` with `{ weak: true }`. For each note with an unverified, stale or
    missing citation, ask verify, keep or delete with AskUserQuestion, at most four notes per question; offer
    delete only for notes this analysis wrote. Then act:
    - verify: run a query that backs the number (for a stale citation, rerun the calculation with
-     `mcp__plugin_assay_assay__trusted`), then call `mcp__plugin_assay_assay__revise_note` to cite the new run;
+     `mcp__assay__trusted`), then call `mcp__assay__revise_note` to cite the new run;
    - keep: change nothing;
-   - delete: call `mcp__plugin_assay_assay__revise_note` with `delete: true`.
-4. Call `mcp__plugin_assay_assay__link_notes` with the IDs of root notes you Read this session that
+   - delete: call `mcp__assay__revise_note` with `delete: true`.
+4. Call `mcp__assay__link_notes` with the IDs of root notes you Read this session that
    `analysis.yaml` does not list under `notes.written` or `notes.found`.
 5. Reply with one line: the open thread count, the next open thread, and the notes written this session.
    Export nothing and make no slides.

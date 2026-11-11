@@ -81,7 +81,7 @@ one-off migration turns every analysis's `notes.md` facts and note files into ro
   ```
 
   A note is in at most one list per analysis; `link_notes` ignores IDs already written by this analysis.
-- **MCP tools** (Claude sees `mcp__plugin_assay_assay__<name>`):
+- **MCP tools** (Claude sees `mcp__assay__<name>`):
 
   | Tool | Behaviour |
   | :- | :- |
