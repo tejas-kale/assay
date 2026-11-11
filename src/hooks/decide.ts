@@ -37,6 +37,13 @@ export function bashDecision(input: Record<string, unknown>, env: Env) {
   return bashRunsPython(field(toolInput(input), 'command')) ? deny(BASH_PYTHON_DENY) : undefined
 }
 
+/** A path without the slashes at its end. */
+function withoutTrailingSlashes(path: string): string {
+  let end = path.length
+  while (end > 0 && path[end - 1] === '/') end--
+  return path.slice(0, end)
+}
+
 /** The open analysis for the rules and reasons: its title (the folder's name when analysis.yaml has none) and its folder from the root. */
 async function openRef(analysis: string, home: string): Promise<OpenAnalysis> {
   const fallback = folderName(analysis)
@@ -52,7 +59,7 @@ export async function writeDecision(input: Record<string, unknown>, env: Env) {
   const path = field(tool, 'file_path') || field(tool, 'notebook_path')
   const base = field(input, 'cwd') || env.ASSAY_ANALYSIS
   if (!path) return undefined
-  const root = home.replace(/\/+$/, '')
+  const root = withoutTrailingSlashes(home)
   const real = realPath(path, base)
   const realRoot = realPath(root, '/')
   const other = otherAnalysis(real, realRoot, realPath(env.ASSAY_ANALYSIS, '/'), '/')
@@ -72,7 +79,7 @@ export async function writeDecision(input: Record<string, unknown>, env: Env) {
 /** A list the server appended to under `.assay/`, taken: the file is moved away first, then read and removed. */
 async function takeList(analysis: string, name: string): Promise<unknown[]> {
   const file = join(analysis, '.assay', name)
-  const taken = `${file}.${process.pid}.taken`
+  const taken = `${file}.${String(process.pid)}.taken`
   try {
     await rename(file, taken)
   } catch {
@@ -110,7 +117,7 @@ async function calculations(proc: Proc, python: string | undefined, analysis: st
   const ran = await proc.run([python, '-m', 'analysis_trust', 'list', home], { cwd: analysis, timeoutMs: 30_000 }).catch(() => undefined)
   try {
     const parsed = JSON.parse(ran?.stdout ?? '') as CalculationList | { error: string }
-    return parsed && typeof parsed === 'object' && 'calculations' in parsed ? parsed : undefined
+    return typeof parsed === 'object' && 'calculations' in parsed ? parsed : undefined
   } catch {
     return undefined
   }

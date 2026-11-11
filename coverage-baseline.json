@@ -42,29 +42,5 @@
   "src/server/index.ts": {
     "lines": 0,
     "branches": 0
-  },
-  "src/hooks/bash.ts": {
-    "lines": 0,
-    "branches": 0
-  },
-  "src/hooks/decide.ts": {
-    "lines": 0,
-    "branches": 0
-  },
-  "src/hooks/io.ts": {
-    "lines": 0,
-    "branches": 0
-  },
-  "src/hooks/prompt.ts": {
-    "lines": 0,
-    "branches": 0
-  },
-  "src/hooks/state.ts": {
-    "lines": 0,
-    "branches": 0
-  },
-  "src/hooks/write.ts": {
-    "lines": 0,
-    "branches": 0
   }
 }

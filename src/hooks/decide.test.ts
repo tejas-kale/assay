@@ -1,0 +1,174 @@
+// The hooks' decisions and helpers called in-process (hooks.test.ts runs the bundled scripts, which coverage does not
+// follow): each branch of bashDecision, writeDecision and promptDecision, and the shared io helpers.
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { test } from 'node:test'
+
+import { BASH_PYTHON_DENY } from '../core/bashGuard.ts'
+import type { Proc, RunResult } from '../server/proc.ts'
+import { expect } from '../testing/expect.ts'
+import { bashDecision, promptDecision, writeDecision } from './decide.ts'
+import { addContext, deny, field, toolInput } from './io.ts'
+import { recordState } from './recordState.ts'
+
+async function scratch() {
+  const dir = await mkdtemp(join(tmpdir(), 'assay-decide-'))
+  const root = join(dir, 'notes-src')
+  const analysis = join(root, 'analyses/panel')
+  await mkdir(join(analysis, '.assay'), { recursive: true })
+  await writeFile(join(analysis, 'analysis.yaml'), 'title: Panel sites\n')
+  return { dir, root, analysis, env: { ASSAY_ANALYSIS: analysis, ASSAY_ROOT: root, ASSAY_VENV: join(dir, 'venv') } }
+}
+
+const noChild: Proc['spawn'] = () => {
+  throw new Error('no child')
+}
+const noProc: Proc = { run: () => Promise.reject(new Error('no program')), spawn: noChild }
+const procPrinting = (stdout: string, seen: string[][] = []): Proc => ({
+  run: (argv): Promise<RunResult> => {
+    seen.push([...argv])
+    return Promise.resolve({ exitCode: 0, stdout, stderr: '' })
+  },
+  spawn: noChild,
+})
+
+const context = (said: ReturnType<typeof addContext> | undefined) => said?.hookSpecificOutput.additionalContext ?? ''
+
+test('io helpers read strings and objects, and shape the two answers', () => {
+  expect(field({ a: 'x', b: 3 }, 'a')).toBe('x')
+  expect(field({ b: 3 }, 'b')).toBe('')
+  expect(field({}, 'c')).toBe('')
+  expect(toolInput({ tool_input: { command: 'ls' } })).toEqual({ command: 'ls' })
+  expect(toolInput({ tool_input: 'ls' })).toEqual({})
+  expect(toolInput({ tool_input: null })).toEqual({})
+  expect(toolInput({})).toEqual({})
+  expect(deny('no').hookSpecificOutput).toEqual({ hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'no' })
+  expect(addContext('hi').hookSpecificOutput).toEqual({ hookEventName: 'UserPromptSubmit', additionalContext: 'hi' })
+})
+
+test('bashDecision refuses Python only in an Assay session', () => {
+  const python = { tool_input: { command: 'python x.py' } }
+  expect(bashDecision(python, { ASSAY_ANALYSIS: '/a' })?.hookSpecificOutput.permissionDecisionReason).toBe(BASH_PYTHON_DENY)
+  expect(bashDecision(python, {})).toBeUndefined()
+  expect(bashDecision({ tool_input: { command: 'ls' } }, { ASSAY_ANALYSIS: '/a' })).toBeUndefined()
+  expect(bashDecision({}, { ASSAY_ANALYSIS: '/a' })).toBeUndefined()
+})
+
+test('writeDecision does nothing without a session, a root or a path', async () => {
+  const { root, analysis } = await scratch()
+  const input = { tool_input: { file_path: `${root}/trusted/x.sql` } }
+  expect(await writeDecision(input, {})).toBeUndefined()
+  expect(await writeDecision(input, { ASSAY_ANALYSIS: analysis })).toBeUndefined()
+  expect(await writeDecision(input, { ASSAY_ROOT: root })).toBeUndefined()
+  expect(await writeDecision({ tool_input: {} }, { ASSAY_ANALYSIS: analysis, ASSAY_ROOT: root })).toBeUndefined()
+})
+
+test('writeDecision reads notebook_path, resolves against cwd or the analysis, and trims the root\'s trailing slashes', async () => {
+  const { root, analysis, env } = await scratch()
+  const notebook = await writeDecision({ tool_input: { notebook_path: `${root}/trusted/n.ipynb` } }, env)
+  expect(notebook?.hookSpecificOutput.permissionDecision).toBe('deny')
+  // No cwd: a relative path is taken from the open analysis.
+  const relative = await writeDecision({ tool_input: { file_path: '../../trusted/x.sql' } }, env)
+  expect(relative?.hookSpecificOutput.permissionDecisionReason).toMatch(/change only through the user's approval/)
+  const slashed = await writeDecision({ tool_input: { file_path: `${root}/trusted/x.sql` }, cwd: analysis }, { ...env, ASSAY_ROOT: `${root}///` })
+  expect(slashed?.hookSpecificOutput.permissionDecision).toBe('deny')
+  expect(await writeDecision({ tool_input: { file_path: `${analysis}/lib/x.py` }, cwd: analysis }, { ...env, ASSAY_ROOT: `${root}//` })).toBeUndefined()
+})
+
+test('the other-analysis refusal names the open analysis by its title, or by its folder when analysis.yaml is missing or has none', async () => {
+  const { root, analysis, env } = await scratch()
+  const other = { tool_input: { file_path: `${root}/analyses/other/x.py` } }
+  const reason = async () => (await writeDecision(other, env))?.hookSpecificOutput.permissionDecisionReason
+  expect(await reason()).toBe('analyses/other is not the open analysis. The open analysis is "Panel sites" (analyses/panel/): write only there.')
+  await writeFile(join(analysis, 'analysis.yaml'), 'created: 2026-11-02\n')
+  expect(await reason()).toContain('The open analysis is "panel"')
+  await writeFile(join(analysis, 'analysis.yaml'), '')
+  expect(await reason()).toContain('The open analysis is "panel"')
+  // Not a file at all: reading it fails.
+  expect(await writeDecision(other, { ...env, ASSAY_ANALYSIS: join(root, 'analyses/ghost') })).toBeDefined()
+})
+
+test('a path under a missing folder is resolved from its deepest existing ancestor', async () => {
+  const { root, env } = await scratch()
+  const said = await writeDecision({ tool_input: { file_path: `${root}/trusted/deep/er/x.sql` } }, env)
+  expect(said?.hookSpecificOutput.permissionDecision).toBe('deny')
+  expect(await writeDecision({ tool_input: { file_path: `${root}/elsewhere/deep/x.sql` } }, env)).toBeUndefined()
+})
+
+test('promptDecision does nothing without an analysis and a root', async () => {
+  expect(await promptDecision({}, noProc)).toBeUndefined()
+  expect(await promptDecision({ ASSAY_ANALYSIS: '/a' }, noProc)).toBeUndefined()
+  expect(await promptDecision({ ASSAY_ROOT: '/r' }, noProc)).toBeUndefined()
+})
+
+test('promptDecision names the kernel python, else the venv python when built, else plain python', async () => {
+  const { dir, analysis, env } = await scratch()
+  const withoutVenv = { ASSAY_ANALYSIS: env.ASSAY_ANALYSIS, ASSAY_ROOT: env.ASSAY_ROOT }
+  expect(context(await promptDecision(withoutVenv, noProc))).toContain('cd analyses/panel && python -m pytest tests')
+  expect(context(await promptDecision(env, noProc))).toContain('cd analyses/panel && python -m pytest tests')
+  await mkdir(join(dir, 'venv/bin'), { recursive: true })
+  await writeFile(join(dir, 'venv/bin/python'), '')
+  expect(context(await promptDecision(env, noProc))).toContain(`cd analyses/panel && ${dir}/venv/bin/python -m pytest tests`)
+  await writeFile(join(analysis, '.assay/session.json'), JSON.stringify({ python: '/k/bin/python' }))
+  expect(context(await promptDecision(env, noProc))).toContain('cd analyses/panel && /k/bin/python -m pytest tests')
+  for (const bad of ['{', 'null', '{"python":3}', '[]']) {
+    await writeFile(join(analysis, '.assay/session.json'), bad)
+    expect([bad, context(await promptDecision(env, noProc)).includes(`${dir}/venv/bin/python -m pytest`)]).toEqual([bad, true])
+  }
+})
+
+test('promptDecision takes the recorded runs and step notices once, ignoring files that are not lists', async () => {
+  const { analysis, env } = await scratch()
+  const runs = join(analysis, '.assay/user-runs.json')
+  const notices = join(analysis, '.assay/step-notices.json')
+  await writeFile(runs, JSON.stringify([{ number: 2, language: 'sql' }]))
+  await writeFile(notices, JSON.stringify(['q001 step a: bad grain', 4, null]))
+  const said = context(await promptDecision(env, noProc))
+  expect(said).toContain('Since your last turn the user ran: 002 sql.')
+  expect(said).toContain('Step checks failed since your last turn:\n- q001 step a: bad grain')
+  expect(await readFile(runs, 'utf8').catch(() => 'gone')).toBe('gone')
+  expect(await readFile(notices, 'utf8').catch(() => 'gone')).toBe('gone')
+  for (const bad of ['not json', '{"number":1}', '"x"']) {
+    await writeFile(runs, bad)
+    await writeFile(notices, bad)
+    const text = context(await promptDecision(env, noProc))
+    expect([bad, text.includes('Since your last turn'), text.includes('Step checks failed')]).toEqual([bad, false, false])
+  }
+})
+
+test('promptDecision lists the trusted calculations only when the venv python prints a list', async () => {
+  const { dir, root, analysis, env } = await scratch()
+  const list = { calculations: [{ name: 'by_site', kind: 'sql', file: 'c.sql', description: 'Per site.', parameters: [], commit: 'abc', dirty: false }], problems: [] }
+  await mkdir(join(dir, 'venv/bin'), { recursive: true })
+  const seen: string[][] = []
+  expect(context(await promptDecision(env, procPrinting(JSON.stringify(list), seen)))).toContain('- by_site(): Per site.')
+  expect(seen).toEqual([[`${dir}/venv/bin/python`, '-m', 'analysis_trust', 'list', root]])
+  for (const out of ['', 'not json', 'null', '5', JSON.stringify({ error: 'broken' })])
+    expect([out, context(await promptDecision(env, procPrinting(out))).includes('by_site')]).toEqual([out, false])
+  expect(context(await promptDecision(env, noProc))).not.toContain('by_site')
+  // Without Assay's venv the helper is not run.
+  const unrun: string[][] = []
+  await promptDecision({ ASSAY_ANALYSIS: analysis, ASSAY_ROOT: root }, procPrinting(JSON.stringify(list), unrun))
+  expect(unrun).toEqual([])
+})
+
+test('recordState writes the state for an event that moves it, and nothing otherwise', async () => {
+  const { analysis } = await scratch()
+  const file = join(analysis, '.assay/claude.json')
+  const now = new Date('2026-11-11T10:00:00Z')
+  await recordState({ hook_event_name: 'Notification' }, analysis, now)
+  await recordState({ hook_event_name: 'Stop' }, undefined, now)
+  expect(await readFile(file, 'utf8').catch(() => 'none')).toBe('none')
+  await recordState({ hook_event_name: 'Stop' }, analysis, now)
+  expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ state: 'idle', at: '2026-11-11T10:00:00.000Z' })
+  await recordState({ hook_event_name: 'UserPromptSubmit' }, analysis, now)
+  expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ state: 'working', at: '2026-11-11T10:00:00.000Z' })
+})
+
+test('recordState never fails the turn when the folder cannot be written', async () => {
+  const { dir } = await scratch()
+  const blocker = join(dir, 'file')
+  await writeFile(blocker, '')
+  await recordState({ hook_event_name: 'Stop' }, blocker, new Date())
+})

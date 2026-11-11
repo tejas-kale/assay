@@ -12,7 +12,10 @@ export async function readInput(): Promise<Record<string, unknown>> {
   }
 }
 
-export const field = (input: Record<string, unknown>, key: string): string => (typeof input[key] === 'string' ? (input[key] as string) : '')
+export function field(input: Record<string, unknown>, key: string): string {
+  const value = input[key]
+  return typeof value === 'string' ? value : ''
+}
 
 /** The tool input of a PreToolUse hook. */
 export const toolInput = (input: Record<string, unknown>): Record<string, unknown> =>
