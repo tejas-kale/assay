@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { analysisNumber } from '../core/keymap.ts'
+import { analysisNumber, tabAction } from '../core/keymap.ts'
+import { defaultTabPrefs, hitTab, isTabOn, nextTab, shownTab, tabOffText } from '../core/tabs.ts'
+import type { TabId, TabIdIn, TabPrefs } from '../core/tabs.ts'
 import type { CommandId } from '../core/keymap.ts'
 import type { HoldKind } from '../core/cmdHold.ts'
 import { runningPythonRun } from '../core/runs.ts'
@@ -14,8 +16,10 @@ import { Settings } from './components/Settings.tsx'
 import { Workspace } from './components/Workspace.tsx'
 import type { DataCommand } from './components/DataPane.tsx'
 import type { FocusRequest } from './components/Workspace.tsx'
-import type { DataTabName, NotesTabName, PaneName, Reveal } from './components/common.tsx'
+import type { PaneName, Reveal } from './components/common.tsx'
 import type { SearchTarget } from '../core/search.ts'
+
+const DEFAULT_TABS = defaultTabPrefs()
 
 type View = { type: 'loading' } | { type: 'picker' } | { type: 'workspace'; state: AnalysisState }
 
@@ -24,8 +28,8 @@ const paneOfActive = (): PaneName | undefined =>
 
 export function App() {
   const [view, setView] = useState<View>({ type: 'loading' })
-  const [notesTab, setNotesTab] = useState<NotesTabName>('threads')
-  const [dataTab, setDataTab] = useState<DataTabName>('data')
+  const [notesTab, setNotesTab] = useState<TabIdIn<'notes'>>('threads')
+  const [dataTab, setDataTab] = useState<TabIdIn<'data'>>('data')
   const [focusRequest, setFocusRequest] = useState<FocusRequest>()
   // Ctrl+0: the terminal fills the analysis. Focus moving to another pane brings the panes back, so it never lands in a hidden one.
   const [zoomed, setZoomed] = useState(false)
@@ -52,6 +56,20 @@ export function App() {
   settingsRef.current = settings
   const viewRef = useRef(view)
   viewRef.current = view
+  const tabPrefs = settings?.tabs ?? DEFAULT_TABS
+  /** The tab settings, for handlers that outlive a render. */
+  const currentTabs = useCallback((): TabPrefs => settingsRef.current?.tabs ?? DEFAULT_TABS, [])
+  const showToast = useCallback((text: string) => {
+    setToast(text)
+    clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(undefined), 4000)
+  }, [])
+
+  /** A new trust review shows the Trust tab, or says it is off. */
+  const showReview = useCallback(() => {
+    if (isTabOn(currentTabs(), 'trust')) setDataTab('trust')
+    else showToast(tabOffText('trust'))
+  }, [currentTabs, showToast])
   // The newest review start the data pane has switched to; undefined until the first state, whose review is only the baseline.
   const trustStart = useRef<number | null | undefined>(undefined)
   const reviewStart = view.type === 'workspace' ? (view.state.trust?.startedAt ?? null) : undefined
@@ -60,8 +78,8 @@ export function App() {
     const known = trustStart.current
     trustStart.current = reviewStart
     // A new review shows the Trust tab, but the keyboard stays where the user is typing (Claude).
-    if (known !== undefined && reviewStart !== null && reviewStart !== known) setDataTab('trust')
-  }, [reviewStart])
+    if (known !== undefined && reviewStart !== null && reviewStart !== known) showReview()
+  }, [reviewStart, showReview])
 
   const loadState = useCallback(() => {
     window.app.state.get().then(
@@ -81,11 +99,6 @@ export function App() {
     return () => stops.forEach(stop => stop())
   }, [])
 
-  const showToast = useCallback((text: string) => {
-    setToast(text)
-    clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setToast(undefined), 4000)
-  }, [])
 
   const focusPane = useCallback((pane: PaneName) => {
     if (pane !== 'terminal') setZoomed(false)
@@ -95,6 +108,17 @@ export function App() {
   /** Runs a command. Returns true when it moved focus itself. */
   const run = useCallback(
     (id: CommandId): boolean => {
+      const action = tabAction(id, currentTabs())
+      if (action?.type === 'toast') {
+        showToast(action.text)
+        return false
+      }
+      if (action?.type === 'show') {
+        if (action.pane === 'notes') setNotesTab(action.tab as TabIdIn<'notes'>)
+        else setDataTab(action.tab as TabIdIn<'data'>)
+        focusPane(action.pane)
+        return true
+      }
       switch (id) {
         case 'focus.terminal':
           focusPane('terminal')
@@ -105,30 +129,17 @@ export function App() {
           focusPane('terminal')
           return true
         case 'focus.notes':
-          // Pressed again inside the pane, it cycles Overview, Threads, Notes, Files.
-          if (paneOfActive() === 'notes') setNotesTab(tab => (tab === 'overview' ? 'threads' : tab === 'threads' ? 'notes' : tab === 'notes' ? 'files' : 'overview'))
+          // Pressed again inside the pane, it cycles through the tabs that are on, in the user's order.
+          if (paneOfActive() === 'notes') {
+            const prefs = currentTabs()
+            setNotesTab(tab => (nextTab(prefs, 'notes', shownTab(prefs, 'notes', tab) ?? tab) as TabIdIn<'notes'> | undefined) ?? tab)
+          }
           focusPane('notes')
           return true
         case 'shortcuts.show':
           setShortcuts(n => n + 1)
           return false
         case 'focus.data':
-          focusPane('data')
-          return true
-        case 'tab.overview':
-        case 'tab.notes':
-        case 'tab.threads':
-        case 'tab.files':
-          setNotesTab(id.slice(4) as NotesTabName)
-          focusPane('notes')
-          return true
-        case 'tab.data':
-        case 'tab.plots':
-        case 'tab.code':
-        case 'tab.history':
-        case 'tab.steps':
-        case 'tab.trust':
-          setDataTab(id.slice(4) as DataTabName)
           focusPane('data')
           return true
         case 'settings.open': {
@@ -230,7 +241,7 @@ export function App() {
         }
       }
     },
-    [focusPane, showToast],
+    [focusPane, showToast, currentTabs],
   )
 
   const runRef = useRef(run)
@@ -253,6 +264,7 @@ export function App() {
   /** Shows a search hit in its own tab: a run in the data pane, the rest in the notes pane. */
   const showHit = (target: SearchTarget) => {
     setSearchOpen(undefined)
+    if (!guardTab(hitTab(target.kind))) return
     if (target.kind === 'run') {
       setDataCommand({ id: 'run.show', number: target.number, n: ++counter.current })
       focusPane('data')
@@ -261,6 +273,13 @@ export function App() {
     setNotesTab(target.kind === 'thread' ? 'threads' : target.kind === 'file' ? 'files' : 'notes')
     setReveal({ target, n: ++counter.current })
     focusPane('notes')
+  }
+
+  /** True while `tab` is on; otherwise shows its toast. */
+  const guardTab = (tab: TabId): boolean => {
+    if (isTabOn(tabPrefs, tab)) return true
+    showToast(tabOffText(tab))
+    return false
   }
 
   const closePalette = (restore: boolean) => {
@@ -277,13 +296,16 @@ export function App() {
       {view.type === 'workspace' && (
         <Workspace
           state={view.state}
+          tabPrefs={tabPrefs}
           notesTab={notesTab}
           dataTab={dataTab}
           onNotesTab={tab => {
+            if (!guardTab(tab)) return
             setNotesTab(tab)
             focusPane('notes')
           }}
           onDataTab={tab => {
+            if (!guardTab(tab)) return
             setDataTab(tab)
             focusPane('data')
           }}
@@ -293,12 +315,12 @@ export function App() {
           toast={toast}
           hints={hints === 'ctrl'}
           zoomed={zoomed}
-          onShowRun={number => setDataCommand({ id: 'run.show', number, n: ++counter.current })}
+          onShowRun={number => guardTab('data') && setDataCommand({ id: 'run.show', number, n: ++counter.current })}
           reveal={reveal}
           onRevealed={() => setReveal(undefined)}
         />
       )}
-      {searchOpen && view.type === 'workspace' && <Search state={view.state} onChoose={showHit} onClose={closeSearch} />}
+      {searchOpen && view.type === 'workspace' && <Search state={view.state} isShown={kind => isTabOn(tabPrefs, hitTab(kind))} onChoose={showHit} onClose={closeSearch} />}
       {palette && (
         <Palette
           onClose={() => closePalette(true)}
@@ -323,8 +345,8 @@ export function App() {
           }}
         />
       )}
-      {settingsOpen && settings && <Settings root={settings.root} onClose={closeSettings} />}
-      {!settingsOpen && settings && !settings.root && view.type === 'picker' && <Settings root={undefined} onClose={undefined} />}
+      {settingsOpen && settings && <Settings settings={settings} onClose={closeSettings} />}
+      {!settingsOpen && settings && !settings.root && view.type === 'picker' && <Settings settings={settings} onClose={undefined} />}
       {hints === 'cmd' && <GlobalHints />}
       {shortcuts > 0 && <ShortcutsOverlay key={shortcuts} onDone={() => setShortcuts(0)} />}
       {view.type === 'picker' && toast && <div className="toast floating">{toast}</div>}

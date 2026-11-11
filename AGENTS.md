@@ -22,13 +22,14 @@ one kernel the app shows. Protect this in every change.
 - `docs/process/testing.md`: where tests live, the fakes, the coverage bar, the baselines, and how to run them.
 - `docs/process/ci-release.md`: the CI pipeline, the release filter, versions and `Release:` trailers, signing.
 - `docs/process/launch-contract.md`: how the app starts Claude, and what a launcher (the Podman wrapper) must provide.
+- `docs/process/adding-a-tab.md`: the tab registry, and the three places a new tab touches.
 
 ## Where things are
 
-- `src/core`: pure logic with tests (runs, root notes, threads, search, keymap, theme).
+- `src/core`: pure logic with tests (runs, root notes, threads, search, keymap, tabs, theme).
 - `src/main`: Electron main; all file access (`files.ts`, `browse.ts`) and IPC (`ipc.ts`). The renderer never reads a
   path itself; `src/shared/ipc.ts` is the only contract between the two.
-- `src/renderer`: React UI. `terminal.ts` is the only file that imports `ghostty-web`.
+- `src/renderer`: React UI. `terminal.ts` is the only file that imports `ghostty-web`. `tabs/` holds one component per tab.
 - `src/server`: the MCP server `assay`, one per Claude session, declared by the app with `--mcp-config`
   (docs/process/launch-contract.md). Claude's tools are `mcp__assay__<tool>`: `sql`, `python`, `trusted`, `park`,
   `close`, `focus`, `order`, `note`, `revise_note`, `link_notes`, `note_labels`. It owns the kernel

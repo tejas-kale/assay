@@ -86,14 +86,6 @@
       "count": 2
     }
   },
-  "src/core/dataTabs.test.ts": {
-    "sonarjs/no-alphabetical-sort": {
-      "count": 3
-    },
-    "sonarjs/use-type-alias": {
-      "count": 1
-    }
-  },
   "src/core/engines.ts": {
     "@typescript-eslint/restrict-plus-operands": {
       "count": 2
@@ -490,7 +482,7 @@
       "count": 1
     },
     "@typescript-eslint/use-unknown-in-catch-callback-variable": {
-      "count": 2
+      "count": 1
     },
     "max-lines": {
       "count": 1
@@ -593,7 +585,7 @@
       "count": 1
     },
     "sonarjs/no-nested-conditional": {
-      "count": 3
+      "count": 1
     }
   },
   "src/renderer/appearance.ts": {
@@ -636,7 +628,7 @@
   },
   "src/renderer/components/DataPane.tsx": {
     "@typescript-eslint/no-confusing-void-expression": {
-      "count": 36
+      "count": 33
     },
     "@typescript-eslint/restrict-template-expressions": {
       "count": 8
@@ -666,7 +658,7 @@
       "count": 4
     },
     "sonarjs/no-nested-conditional": {
-      "count": 16
+      "count": 14
     },
     "sonarjs/no-redundant-optional": {
       "count": 1
@@ -1002,14 +994,8 @@
     "@typescript-eslint/no-confusing-void-expression": {
       "count": 3
     },
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 1
-    },
     "max-lines-per-function": {
       "count": 1
-    },
-    "sonarjs/no-nested-conditional": {
-      "count": 7
     },
     "sonarjs/no-nested-template-literals": {
       "count": 1

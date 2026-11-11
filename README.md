@@ -65,6 +65,13 @@ Cmd+1..9, Cmd+N, Cmd+W, the palette, search and Settings, plus Cmd+Enter, Cmd+E 
 palette's Show Shortcuts lists them all. Holding left Cmd shows the Cmd shortcuts and the analysis numbers in the strip;
 holding left Ctrl shows the pane and tab hints.
 
+## Tabs
+
+Every tab is an entry in `src/core/tabs.ts` with its component in `src/renderer/tabs/` (`docs/process/adding-a-tab.md`).
+Settings > Tabs turns each tab on or off and orders it within its pane, for the whole app (`settings.json`'s `tabs`).
+A tab that is off leaves its tab bar and search, and its shortcut shows `<Title> tab is off: Settings (⌘,)`. A pane
+with every tab off is hidden.
+
 ## Overviews
 
 The Overview tab (`⌃⇧O`, docs/slice-10.md) shows the open analysis's `overview.md` and, with `s`, the system overview
@@ -86,9 +93,11 @@ comment silences it. A run's warnings are kept in `queries/NNN.notices.json` and
 
 One window holds up to nine analyses (`docs/multi-analysis-window.md`). Each is its own `WebContentsView` running the
 whole renderer with its own Claude session, so a hidden one keeps running and keeps its UI state. Cmd+1..9 switches,
-Cmd+N opens another from the picker, Cmd+W closes the shown one. The strip along the bottom, or down the left after
-the palette's Move analysis strip (`#strip`, the same renderer bundle), shows each analysis's title and Claude state, from `.assay/claude.json` that the plugin's `state` hook writes,
-and any run in progress. The open set is saved in the user data folder (`open-analyses.json`) and reopened at launch.
+Cmd+N opens another from the picker, Cmd+W closes the shown one. The strip along the bottom, or down the left
+(Settings > Strip, or the palette's Move analysis strip; `#strip`, the same renderer bundle), shows each analysis's
+title and Claude state, from `.assay/claude.json` that the plugin's `state` hook writes, and any run in progress.
+Settings > Strip also picks which of title, state, run and number each entry shows, and can hide the strip while one
+analysis is open. The open set is saved in the user data folder (`open-analyses.json`) and reopened at launch.
 
 ## Launchers
 

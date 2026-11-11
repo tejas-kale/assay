@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent, ReactNode, RefObject } from 'react'
+import type { ComponentType, KeyboardEvent, ReactNode, RefObject } from 'react'
 
-import { markTabs } from '../../core/dataTabs.ts'
-import type { Seen } from '../../core/dataTabs.ts'
+import { markTabs, tabSpec } from '../../core/tabs.ts'
+import type { Seen, TabIdIn } from '../../core/tabs.ts'
 import { shortcutLabel } from '../../core/keymap.ts'
 import type { CommandId } from '../../core/keymap.ts'
 import { canRerun, SELECTION_SLUG, selectedSql } from '../../core/requests.ts'
@@ -16,18 +16,38 @@ import { CodeEditor, CodeView, formatSql } from './CodeView.tsx'
 import type { EditorHandle, SelectionHandle } from './CodeView.tsx'
 import { isPaneKey } from './common.tsx'
 import { runningLabel } from '../../core/steps.ts'
-import { isStepsRequest, StepsTab } from './StepsTab.tsx'
-import { TrustTab, trustRequests } from './TrustTab.tsx'
-import type { DataTabName } from './common.tsx'
+import { isStepsRequest } from './StepsTab.tsx'
+import { trustRequests } from './TrustTab.tsx'
 
-export const DATA_TABS: { id: DataTabName; title: string }[] = [
-  { id: 'data', title: 'Data' },
-  { id: 'plots', title: 'Plots' },
-  { id: 'code', title: 'Code' },
-  { id: 'history', title: 'History' },
-  { id: 'steps', title: 'Steps' },
-  { id: 'trust', title: 'Trust' },
-]
+/**
+ * What the data pane hands the tab on screen (src/renderer/tabs): the current run and its header, and the pane's
+ * actions. Each tab picks what it needs.
+ */
+export type DataPaneModel = {
+  runs: Run[]
+  status: RunStatus
+  trust: TrustReview | undefined
+  /** The run the pane shows: Claude's latest, unless one is held. */
+  current: Run | undefined
+  view: RunView | undefined
+  /** The current run's header line, with this tab's links. */
+  header: ReactNode
+  edit: Edit | undefined
+  onTab: (tab: TabIdIn<'data'>) => void
+  onToast: (text: string) => void
+  choose: (run: Run) => void
+  togglePin: () => void
+  stepRun: (delta: 1 | -1) => void
+  startNew: () => void
+  /** The Code tab, under `header`. */
+  codeTab: (header: ReactNode) => ReactNode
+  trustSelection: RefObject<SelectionHandle | null>
+  table: { k: number; count: number; textView: boolean; toggleText: () => void; step: (delta: 1 | -1) => void }
+  plot: { n: number; count: number; step: (delta: 1 | -1) => void }
+}
+
+/** The shared props of the data pane's tab components. */
+export type DataTabProps = { pane: DataPaneModel }
 
 /** A command the app sends to the pane: `n` makes a repeat of the same command a new request. */
 export type DataCommand = { n: number } & (
@@ -37,11 +57,15 @@ export type DataCommand = { n: number } & (
 )
 
 type Props = {
-  tab: DataTabName
+  tab: TabIdIn<'data'>
+  /** The tabs that are on, in the user's order. */
+  tabs: readonly TabIdIn<'data'>[]
+  /** The component of `tab` (src/renderer/tabs/index.ts). */
+  Body: ComponentType<DataTabProps>
   runs: Run[]
   status: RunStatus
   trust?: TrustReview | undefined
-  onTab: (tab: DataTabName) => void
+  onTab: (tab: TabIdIn<'data'>) => void
   command: DataCommand | undefined
   onToast: (text: string) => void
 }
@@ -56,7 +80,7 @@ const headerOf = (run: Run): RunHeader => ({
 })
 
 /** What is open for editing: the run it came from (none for a new query), its language and the text it started with. */
-type Edit = { id: number; from: Run | undefined; language: 'sql' | 'python'; start: string }
+export type Edit = { id: number; from: Run | undefined; language: 'sql' | 'python'; start: string }
 
 /** The slug a new query's run gets; the server makes it safe for a file name. */
 const NEW_QUERY_SLUG = 'query'
@@ -78,7 +102,7 @@ const focusDataPane = () =>
  * Python runs add table switching and a stdout view to Data, the Plots tab, the kernel restart
  * prompt and the Replay view.
  */
-export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: Props) {
+export function DataPane({ tab, tabs: shownTabs, Body, runs, status, trust, onTab, command, onToast }: Props) {
   const [held, setHeld] = useState<number>()
   const [original, setOriginal] = useState(false)
   const [edit, setEdit] = useState<Edit>()
@@ -87,7 +111,7 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
   const [plotK, setPlotK] = useState(1)
   const [textOverride, setTextOverride] = useState<boolean>()
   const [confirmRestart, setConfirmRestart] = useState(false)
-  const [replay, setReplay] = useState<{ state: ReplayState; back: DataTabName }>()
+  const [replay, setReplay] = useState<{ state: ReplayState; back: TabIdIn<'data'> }>()
   const editText = useRef('')
   const editCount = useRef(0)
   const latest = runs.at(-1)
@@ -361,19 +385,19 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
 
   const tabs = (
     <div className="tabs" role="tablist">
-      {DATA_TABS.map(t => (
+      {shownTabs.map(id => (
         <button
-          key={t.id}
+          key={id}
           role="tab"
           tabIndex={-1}
-          aria-selected={tab === t.id && !replay}
+          aria-selected={tab === id && !replay}
           onClick={() => {
             setReplay(undefined)
-            onTab(t.id)
+            onTab(id)
           }}
         >
-          {t.title}
-          {markers.has(t.id) && <span className="mark" title="New since you looked" />}
+          {tabSpec(id).title}
+          {markers.has(id) && <span className="mark" title="New since you looked" />}
         </button>
       ))}
     </div>
@@ -404,102 +428,68 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
     />
   )
 
-  let body
-  if (replay) body = <ReplayView state={replay.state} onKey={onReplayKey} />
-  else if (tab === 'trust') body = <TrustTab review={trust} onToast={onToast} selectionRef={trustSelection} />
-  else if (tab === 'history') body = <History runs={runs} status={status} current={current} onChoose={choose} onPin={togglePin} />
-  else if (tab === 'code' && edit && !edit.from) body = codeTab(<NewQueryHeader engine={runs.findLast(r => r.language === 'sql')?.engine ?? 'databricks'} />)
-  else if (!current) {
-    body =
-      tab === 'code' ? (
-        <Placeholder text="No runs yet. n: new SQL query." onKey={key => key === 'n' && (startNew(), true)} />
-      ) : (
-        <Placeholder text="No runs yet. Claude's queries appear here." />
-      )
-  } else {
-    const note =
-      tab === 'data' && isPython && !textView && tableCount > 0 ? (
-        <span className="dim">
-          table {k} of {tableCount}
-        </span>
-      ) : tab === 'plots' && plotCount > 0 ? (
-        <span className="dim">
-          plot {plot} of {plotCount}
-        </span>
-      ) : tab === 'steps' && runningLabel(view?.steps) ? (
-        <span className="dim">{runningLabel(view?.steps)}</span>
-      ) : null
-    const header = (
-      <>
-        <RunHeader
-          run={edit?.from && tab === 'code' ? edit.from : current}
-          status={status}
-          pinned={!following}
-          editing={edit?.from !== undefined && tab === 'code'}
-          onFollow={() => setHeld(undefined)}
-          onStep={edit && tab === 'code' ? undefined : stepRun}
-        >
-          {note}
-          {kernel && (
-            <span className={`kernel-state kernel-${kernel.state}`} title={kernel.message}>
-              kernel {kernel.state}
-            </span>
-          )}
-          {tab === 'code' ? (
-            <>
-              {!edit && <LinkButton onClick={startNew} label="New SQL" shortcut="n" />}
-              <LinkButton onClick={() => onTab('data')} label="Data" shortcut={shortcutLabel('tab.data')} />
-            </>
-          ) : (
-            <LinkButton onClick={() => onTab('code')} label="Code" shortcut={shortcutLabel('tab.code')} />
-          )}
-        </RunHeader>
-        {kernel && (kernel.state === 'missing' || kernel.state === 'dead') && kernel.message && (
-          <div className="status warn">{kernel.message}</div>
+  const note =
+    tab === 'data' && isPython && !textView && tableCount > 0 ? (
+      <span className="dim">
+        table {k} of {tableCount}
+      </span>
+    ) : tab === 'plots' && plotCount > 0 ? (
+      <span className="dim">
+        plot {plot} of {plotCount}
+      </span>
+    ) : tab === 'steps' && runningLabel(view?.steps) ? (
+      <span className="dim">{runningLabel(view?.steps)}</span>
+    ) : null
+  const header = current && (
+    <>
+      <RunHeader
+        run={edit?.from && tab === 'code' ? edit.from : current}
+        status={status}
+        pinned={!following}
+        editing={edit?.from !== undefined && tab === 'code'}
+        onFollow={() => setHeld(undefined)}
+        onStep={edit && tab === 'code' ? undefined : stepRun}
+      >
+        {note}
+        {kernel && (
+          <span className={`kernel-state kernel-${kernel.state}`} title={kernel.message}>
+            kernel {kernel.state}
+          </span>
         )}
-      </>
-    )
-    body =
-      tab === 'data' ? (
-        <DataTab
-          header={header}
-          view={view}
-          status={status}
-          run={current}
-          textView={textView}
-          tableCount={tableCount}
-          onToggleText={() => setTextOverride(!textView)}
-          onTable={delta => setTableK(Math.max(1, Math.min(k + delta, tableCount)))}
-          onCode={() => onTab('code')}
-          onPin={togglePin}
-          onStep={stepRun}
-        />
-      ) : tab === 'steps' ? (
-        <StepsTab
-          header={header}
-          view={view}
-          run={current}
-          onToast={onToast}
-          onCode={() => onTab('code')}
-          onPin={togglePin}
-          onStep={stepRun}
-        />
-      ) : tab === 'plots' ? (
-        <PlotsTab
-          header={header}
-          run={current}
-          runs={runs}
-          plot={plot}
-          plotCount={plotCount}
-          onPlot={delta => setPlotK(Math.max(1, Math.min(plot + delta, plotCount)))}
-          onCode={() => onTab('code')}
-          onPin={togglePin}
-          onStep={stepRun}
-        />
-      ) : (
-        codeTab(header)
-      )
+        {tab === 'code' ? (
+          <>
+            {!edit && <LinkButton onClick={startNew} label="New SQL" shortcut="n" />}
+            <LinkButton onClick={() => onTab('data')} label="Data" shortcut={shortcutLabel('tab.data')} />
+          </>
+        ) : (
+          <LinkButton onClick={() => onTab('code')} label="Code" shortcut={shortcutLabel('tab.code')} />
+        )}
+      </RunHeader>
+      {kernel && (kernel.state === 'missing' || kernel.state === 'dead') && kernel.message && (
+        <div className="status warn">{kernel.message}</div>
+      )}
+    </>
+  )
+  const model: DataPaneModel = {
+    runs,
+    status,
+    trust,
+    current,
+    view,
+    header,
+    edit,
+    onTab,
+    onToast,
+    choose,
+    togglePin,
+    stepRun,
+    startNew,
+    codeTab,
+    trustSelection,
+    table: { k, count: tableCount, textView, toggleText: () => setTextOverride(!textView), step: delta => setTableK(Math.max(1, Math.min(k + delta, tableCount))) },
+    plot: { n: plot, count: plotCount, step: delta => setPlotK(Math.max(1, Math.min(plot + delta, plotCount))) },
   }
+  const body = replay ? <ReplayView state={replay.state} onKey={onReplayKey} /> : <Body pane={model} />
   return (
     <Fragment>
       {tabs}
@@ -531,7 +521,7 @@ function useRunView(run: Run | undefined, runs: Run[], table: number): RunView |
 }
 
 /** onKey returns true for a key it used, so the key's own text does not land in the editor it may have opened. */
-const Placeholder = ({ text, onKey }: { text: string; onKey?: (key: string) => boolean }) => (
+export const Placeholder = ({ text, onKey }: { text: string; onKey?: (key: string) => boolean }) => (
   <div
     className="list placeholder"
     tabIndex={-1}
@@ -545,7 +535,7 @@ const Placeholder = ({ text, onKey }: { text: string; onKey?: (key: string) => b
 )
 
 /** The Code tab's header while a new query is open: no run yet, only where it will run. */
-function NewQueryHeader({ engine }: { engine: string }) {
+export function NewQueryHeader({ engine }: { engine: string }) {
   return (
     <div className="run-header">
       <b>new</b>
@@ -644,7 +634,7 @@ type Cell = { row: number; col: number }
  * The result table with a cell cursor: h/j/k/l move, J/K a page, g/G first/last row, 0/$ first/last
  * column. The selected cell's full value shows below the table; Enter shows the whole row; y copies.
  */
-function DataTab(props: {
+export function DataTab(props: {
   header: ReactNode
   view: RunView | undefined
   status: RunStatus
@@ -883,7 +873,7 @@ function ReplayView({ state, onKey }: { state: ReplayState; onKey: (key: string)
 }
 
 /** The current run's plots, one at a time and fit to the pane. `j` and `k` move between them. */
-function PlotsTab(props: {
+export function PlotsTab(props: {
   header: ReactNode
   run: Run
   runs: Run[]
@@ -1045,7 +1035,7 @@ function CodeTab(props: {
   )
 }
 
-function History(props: {
+export function History(props: {
   runs: Run[]
   status: RunStatus
   current: Run | undefined

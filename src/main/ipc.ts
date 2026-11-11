@@ -9,13 +9,13 @@ import { addThread, closeOpen, deleteClosed, deleteOpen, editOpen, moveOpen } fr
 import type { ClosedThread } from '../core/threads.ts'
 import { CHANNELS } from '../shared/ipc.ts'
 import type { EditResult, NoteCreateResult, NoteReadResult, OpenResult, PlotResult, RequestResult, SetRootResult, SettingsView } from '../shared/ipc.ts'
-import { analysisRoot, chooseRootPath, saveRoot } from './settings.ts'
+import { analysisRoot, chooseRootPath, readSettings, saveRoot, saveStrip, saveTabs } from './settings.ts'
 import { listFiles, openChart, openFile, previewFile } from './browse.ts'
 import { THREADS, editFile, fsPort, loadState, markOverviewRead, readPlot, readRun, readSearchContents, rootOf, writeRequest } from './files.ts'
 import { addRootNote, readCitedRun, readRootNote, saveRootNote } from './notes.ts'
 import { doctorView, openBlocker, recheck } from './runtime.ts'
 import { forgetToken, requestRestart, saveToken, updateView } from './update.ts'
-import { attachAnalysis, broadcast, contextFor, hostWindow, openPicker, pushState, requestClose, retitle, showAnalysis, startPty, toggleStripSide } from './windows.ts'
+import { attachAnalysis, contextFor, hostWindow, openPicker, publishSettings, pushState, requestClose, retitle, showAnalysis, startPty, toggleStripSide } from './windows.ts'
 import type { WindowCtx } from './windows.ts'
 
 const MAX_WRITE = 1 << 20
@@ -71,12 +71,21 @@ export function registerIpc() {
     return root ? listAnalyses(fsPort, root) : []
   })
 
-  handle(CHANNELS.settingsGet, async (): Promise<SettingsView> => ({ root: await analysisRoot() }))
+  handle(CHANNELS.settingsGet, async (): Promise<SettingsView> => {
+    const { tabs, strip } = await readSettings()
+    return { root: await analysisRoot(), tabs, strip }
+  })
   handle(CHANNELS.settingsSetRoot, async (_ctx, input): Promise<SetRootResult> => {
     if (!isText(input)) return { ok: false, message: 'Invalid path' }
     const result = await saveRoot(input)
-    if (result.ok) broadcast(CHANNELS.settingsChanged, { root: result.root } satisfies SettingsView)
+    if (result.ok) publishSettings(await readSettings(), result.root)
     return result
+  })
+  handle(CHANNELS.settingsSetTabs, async (_ctx, tabs) => {
+    publishSettings(await saveTabs(tabs), await analysisRoot())
+  })
+  handle(CHANNELS.settingsSetStrip, async (_ctx, strip) => {
+    publishSettings(await saveStrip(strip), await analysisRoot())
   })
   handle(CHANNELS.settingsChooseRoot, () => {
     const win = hostWindow()

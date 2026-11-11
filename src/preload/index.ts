@@ -75,6 +75,8 @@ const api: AppApi = {
     get: () => invoke(CHANNELS.settingsGet),
     setRoot: input => invoke(CHANNELS.settingsSetRoot, input),
     chooseRoot: () => invoke(CHANNELS.settingsChooseRoot),
+    setTabs: tabs => invoke(CHANNELS.settingsSetTabs, tabs),
+    setStrip: strip => invoke(CHANNELS.settingsSetStrip, strip),
     onChange: cb => subscribe(CHANNELS.settingsChanged, cb),
   },
   doctor: {

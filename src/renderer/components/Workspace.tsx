@@ -3,27 +3,27 @@ import { useEffect, useRef, useState } from 'react'
 import type { AnalysisState, CloseState, PtyExit } from '../../shared/ipc.ts'
 import type { TerminalHandle } from '../terminal.ts'
 import { shortcutLabel } from '../../core/keymap.ts'
-import { noteGroups, notesTabLabel } from '../../core/notesView.ts'
+import { hitTab, isPaneHidden, shownTab, tabSpec, visibleTabs } from '../../core/tabs.ts'
+import type { Pane, TabId, TabIdIn, TabPrefs } from '../../core/tabs.ts'
+import { TAB_VIEWS } from '../tabs/index.ts'
 import { Banners } from './Banners.tsx'
 import { PaneHint } from './KeyHints.tsx'
-import { DATA_TABS, DataPane } from './DataPane.tsx'
+import { DataPane } from './DataPane.tsx'
 import type { DataCommand } from './DataPane.tsx'
-import { FilesTab } from './FilesTab.tsx'
-import { NotesTab } from './NotesTab.tsx'
-import { OverviewTab } from './OverviewTab.tsx'
 import { TerminalPane } from './TerminalPane.tsx'
 import { UpdateBanner } from './Updates.tsx'
-import { ThreadsTab } from './ThreadsTab.tsx'
-import type { DataTabName, NotesTabName, PaneName, Reveal } from './common.tsx'
+import type { PaneName, Reveal } from './common.tsx'
 
 export type FocusRequest = { pane: PaneName; n: number }
 
 type Props = {
   state: AnalysisState
-  notesTab: NotesTabName
-  dataTab: DataTabName
-  onNotesTab: (tab: NotesTabName) => void
-  onDataTab: (tab: DataTabName) => void
+  /** Settings > Tabs: which tabs are on, in which order. */
+  tabPrefs: TabPrefs
+  notesTab: TabIdIn<'notes'>
+  dataTab: TabIdIn<'data'>
+  onNotesTab: (tab: TabIdIn<'notes'>) => void
+  onDataTab: (tab: TabIdIn<'data'>) => void
   focusRequest: FocusRequest | undefined
   /** The last pin, edit or run command, for the data pane to carry out. */
   dataCommand: DataCommand | undefined
@@ -41,14 +41,19 @@ type Props = {
   onRevealed: () => void
 }
 
-/** The notes-pane tab that shows a hit of this kind. */
-const tabOf = (reveal: Reveal | undefined): NotesTabName | undefined => {
-  const kind = reveal?.target.kind
-  return kind === 'thread' ? 'threads' : kind === 'note' ? 'notes' : kind === 'file' ? 'files' : undefined
-}
+/** A pane's hint line: its focus key, then each visible tab's key. */
+const paneHint = (pane: Pane, tabs: readonly TabId[]) =>
+  [shortcutLabel(pane === 'notes' ? 'focus.notes' : 'focus.data'), ...tabs.map(id => `${tabSpec(id).title} ${shortcutLabel(`tab.${id}`)}`)].join('  ·  ')
 
-export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, focusRequest, dataCommand, onToast, toast, hints, zoomed, onShowRun, reveal, onRevealed }: Props) {
-  const revealFor = (tab: NotesTabName) => (tabOf(reveal) === tab ? reveal : undefined)
+export function Workspace({ state, tabPrefs, notesTab, dataTab, onNotesTab, onDataTab, focusRequest, dataCommand, onToast, toast, hints, zoomed, onShowRun, reveal, onRevealed }: Props) {
+  const notesTabs = visibleTabs(tabPrefs, 'notes') as TabIdIn<'notes'>[]
+  const dataTabs = visibleTabs(tabPrefs, 'data') as TabIdIn<'data'>[]
+  // A chosen tab that is now off gives way to the pane's first tab that is on.
+  const notesShown = shownTab(tabPrefs, 'notes', notesTab) as TabIdIn<'notes'> | undefined
+  const dataShown = shownTab(tabPrefs, 'data', dataTab) as TabIdIn<'data'> | undefined
+  const revealFor = (tab: TabIdIn<'notes'>) => (reveal && hitTab(reveal.target.kind) === tab ? reveal : undefined)
+  const NotesBody = notesShown && TAB_VIEWS[notesShown].Component
+  const hidden = [isPaneHidden(tabPrefs, 'notes') && 'no-notes', isPaneHidden(tabPrefs, 'data') && 'no-data'].filter(Boolean)
   const terminalRef = useRef<TerminalHandle | undefined>(undefined)
   const notesRef = useRef<HTMLElement>(null)
   const dataRef = useRef<HTMLElement>(null)
@@ -73,7 +78,7 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
   }, [focusRequest])
 
   return (
-    <div className={zoomed ? 'workspace zoomed' : 'workspace'}>
+    <div className={['workspace', zoomed && 'zoomed', ...hidden].filter(Boolean).join(' ')}>
       <section className="pane terminal-pane" data-pane="terminal" aria-label="Claude Code">
         <TerminalPane handleRef={terminalRef} />
         {hints && <PaneHint>{`${shortcutLabel('focus.terminal')}  ·  ${zoomed ? 'Restore' : 'Zoom'} ${shortcutLabel('terminal.zoom')}`}</PaneHint>}
@@ -81,37 +86,33 @@ export function Workspace({ state, notesTab, dataTab, onNotesTab, onDataTab, foc
 
       <section className="pane" data-pane="notes" ref={notesRef} tabIndex={-1} aria-label="Notes and threads">
         <div className="tabs" role="tablist">
-          {(['overview', 'threads', 'notes', 'files'] as const).map(id => (
-            <button key={id} role="tab" tabIndex={-1} aria-selected={notesTab === id} onClick={() => onNotesTab(id)}>
-              {id === 'overview' ? 'Overview' : id === 'notes' ? notesTabLabel(noteGroups(state.rootNotes, state.noteLists)) : id === 'threads' ? (state.threads.open.length > 0 ? `Threads (${state.threads.open.length})` : 'Threads') : 'Files'}
+          {notesTabs.map(id => (
+            <button key={id} role="tab" tabIndex={-1} aria-selected={notesShown === id} onClick={() => onNotesTab(id)}>
+              {TAB_VIEWS[id].label?.(state) ?? tabSpec(id).title}
             </button>
           ))}
           <span className="grow" />
           <span className="dim title">{state.analysis.title}</span>
         </div>
-        {hints && (
-          <PaneHint>
-            {`${shortcutLabel('focus.notes')}  ·  Overview ${shortcutLabel('tab.overview')}  ·  Threads ${shortcutLabel('tab.threads')}  ·  Notes ${shortcutLabel('tab.notes')}  ·  Files ${shortcutLabel('tab.files')}`}
-          </PaneHint>
-        )}
-        {notesTab === 'overview' ? (
-          <OverviewTab key="overview" overview={state.overview} slug={state.analysis.name} />
-        ) : notesTab === 'notes' ? (
-          <NotesTab key="notes" slug={state.analysis.name} rootNotes={state.rootNotes} noteLists={state.noteLists} runs={state.runs} onShowRun={onShowRun} reveal={revealFor('notes')} onRevealed={onRevealed} />
-        ) : notesTab === 'threads' ? (
-          <ThreadsTab key="threads" threads={state.threads} reveal={revealFor('threads')} onRevealed={onRevealed} />
-        ) : (
-          <FilesTab key="files" refreshKey={state} reveal={revealFor('files')} onRevealed={onRevealed} />
-        )}
+        {hints && <PaneHint>{paneHint('notes', notesTabs)}</PaneHint>}
+        {notesShown && NotesBody && <NotesBody key={notesShown} state={state} reveal={revealFor(notesShown)} onRevealed={onRevealed} onShowRun={onShowRun} />}
       </section>
 
       <section className="pane" data-pane="data" ref={dataRef} tabIndex={-1} aria-label="Data pane">
-        <DataPane tab={dataTab} runs={state.runs} status={state.runStatus} trust={state.trust} onTab={onDataTab} command={dataCommand} onToast={onToast} />
-        {hints && (
-          <PaneHint>
-            {[shortcutLabel('focus.data'), ...DATA_TABS.map(t => `${t.title} ${shortcutLabel(`tab.${t.id}`)}`)].join('  ·  ')}
-          </PaneHint>
+        {dataShown && (
+          <DataPane
+            tab={dataShown}
+            tabs={dataTabs}
+            Body={TAB_VIEWS[dataShown].Component}
+            runs={state.runs}
+            status={state.runStatus}
+            trust={state.trust}
+            onTab={onDataTab}
+            command={dataCommand}
+            onToast={onToast}
+          />
         )}
+        {hints && <PaneHint>{paneHint('data', dataTabs)}</PaneHint>}
       </section>
 
       <div className="float-status">

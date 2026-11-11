@@ -8,7 +8,8 @@
 import type { Analysis, AnalysisRef } from '../core/analyses.ts'
 import type { CommandId } from '../core/keymap.ts'
 import type { HoldKind } from '../core/cmdHold.ts'
-import type { StripEntry } from '../core/strip.ts'
+import type { StripEntry, StripPrefs, StripSide } from '../core/strip.ts'
+import type { TabPrefs } from '../core/tabs.ts'
 import type { FileEntry } from '../core/files.ts'
 import type { CitationLabel } from '../core/citationLabels.ts'
 import type { NoteLists, RootNote } from '../core/rootNotes.ts'
@@ -81,7 +82,6 @@ export type PlotResult = { ok: true; dataUrl: string } | { ok: false; message: s
 /** `ok`: the request file is written and `id` will come back in a reply. */
 export type RequestResult = { ok: true; id: string } | { ok: false; message: string }
 
-export type StripSide = 'bottom' | 'left'
 
 export type StripView = { side: StripSide; entries: StripEntry[] }
 
@@ -111,7 +111,8 @@ export type NoteReadResult = { ok: true; text: string; labels: Record<string, Ci
 /** `name` is the new file's name inside `<root>/notes/`. */
 export type NoteCreateResult = { ok: true; name: string } | { ok: false; message: string }
 
-export type SettingsView = { root: string | undefined }
+/** The app's settings as the renderer sees them: the folder, and the tab and strip choices (docs/slice-11.md, 11e). */
+export type SettingsView = { root: string | undefined; tabs: TabPrefs; strip: StripPrefs }
 /** The Doctor in Settings: this version, what it is preparing, and the checks of the tools and the venv. */
 export type DoctorView = { version: string; checks: Check[]; isChecking: boolean; preparing?: string; error?: string }
 
@@ -243,6 +244,10 @@ export type AppApi = {
     setRoot(input: string): Promise<SetRootResult>
     /** The native folder chooser; undefined when cancelled. Saves nothing. */
     chooseRoot(): Promise<string | undefined>
+    /** Saves which tabs are on and their order; every analysis follows at once. */
+    setTabs(tabs: TabPrefs): Promise<void>
+    /** Saves the strip's side, what its entries show, and auto-hide. */
+    setStrip(strip: StripPrefs): Promise<void>
     /** Fired in every window after a save. */
     onChange(cb: (settings: SettingsView) => void): Unsubscribe
   }
@@ -313,6 +318,8 @@ export const CHANNELS = {
   settingsGet: 'settings:get',
   settingsSetRoot: 'settings:setRoot',
   settingsChooseRoot: 'settings:chooseRoot',
+  settingsSetTabs: 'settings:setTabs',
+  settingsSetStrip: 'settings:setStrip',
   doctorGet: 'doctor:get',
   doctorRecheck: 'doctor:recheck',
   updateGet: 'update:get',

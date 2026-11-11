@@ -20,7 +20,7 @@ the same checks, so `--no-verify` only delays a failure.
 - Fakes: a stub `python` script stands in for the venv in the hook tests; the MCP SDK's client stands in for Claude.
   The unit tests never start a real kernel.
 - `src/renderer` and `src/main` have no unit tests. When a component or main holds a decision worth testing, move the
-  decision into `src/core` as a pure function and test it there, as `dataTabs.ts` and `stepsRequests.ts` do.
+  decision into `src/core` as a pure function and test it there, as `tabs.ts` and `stepsRequests.ts` do.
 
 ## Integration tests
 

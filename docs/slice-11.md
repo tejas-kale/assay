@@ -1,6 +1,6 @@
 # Slice 11 spec: process, gates, backend in the app, CI/CD, auto-update, tab settings, audit
 
-Status: 11a and 11b built, 2026-11-10. 11c built and released: v0.1.0, signed with the Developer ID and notarized, 2026-11-11 (docs/process/ci-release.md). 11d built, 2026-11-11; its manual test on the Mac is still to run. Written from the grilling session of 2026-11-10, after reading Assay's
+Status: 11a and 11b built, 2026-11-10. 11c built and released: v0.1.0, signed with the Developer ID and notarized, 2026-11-11 (docs/process/ci-release.md). 11d built, 2026-11-11; its manual test on the Mac is still to run. 11e built, 2026-11-11; not yet tried in the running app. Written from the grilling session of 2026-11-10, after reading Assay's
 code.
 
 Seven slices, built in this order. Each ships, with CI green, before the next one starts:

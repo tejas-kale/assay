@@ -15,26 +15,52 @@ export type StripFacts = {
   current: boolean
 }
 
-export type StripEntry = {
-  number: number
-  title: string
-  /** The title cut to TITLE_CHARS, for the strip; `title` is the full one, for the tooltip. */
-  label: string
-  /** Shown by its icon alone, never in words: empty circle idle, pulsing orange dot working, white hand waiting. */
-  state: ClaudeState | 'ended'
-  current: boolean
-  run?: { number: number; duration: string }
+export type StripSide = 'bottom' | 'left'
+/** Which parts of an entry the strip shows. */
+export type StripShow = { title: boolean; state: boolean; run: boolean; number: boolean }
+/** settings.json's `strip`: where it sits, what each entry shows, and whether it hides while one analysis is open. */
+export type StripPrefs = { side: StripSide; show: StripShow; autoHide: boolean }
+
+export const DEFAULT_STRIP: StripPrefs = { side: 'bottom', show: { title: true, state: true, run: true, number: false }, autoHide: false }
+
+const field = (object: unknown, key: string): unknown => (object !== null && typeof object === 'object' ? Reflect.get(object, key) : undefined)
+const flag = (value: unknown, fallback: boolean) => (typeof value === 'boolean' ? value : fallback)
+
+/** settings.json's `strip`, each part falling back to its default when missing or malformed. */
+export function parseStripPrefs(raw: unknown): StripPrefs {
+  const show = field(raw, 'show')
+  const d = DEFAULT_STRIP.show
+  return {
+    side: field(raw, 'side') === 'left' ? 'left' : 'bottom',
+    show: { title: flag(field(show, 'title'), d.title), state: flag(field(show, 'state'), d.state), run: flag(field(show, 'run'), d.run), number: flag(field(show, 'number'), d.number) },
+    autoHide: flag(field(raw, 'autoHide'), DEFAULT_STRIP.autoHide),
+  }
 }
 
-export function stripEntry(facts: StripFacts, nowMs: number): StripEntry {
-  const entry: StripEntry = {
-    number: facts.number,
-    title: facts.title,
-    label: shortTitle(facts.title, TITLE_CHARS),
-    state: facts.sessionLive ? facts.claude : 'ended',
-    current: facts.current,
-  }
-  if (facts.running) entry.run = { number: facts.running.number, duration: runDuration(facts.running.startedAt, nowMs) }
+/** False while auto-hide is on and the window holds at most one analysis. */
+export const isStripShown = (prefs: StripPrefs, openCount: number): boolean => !prefs.autoHide || openCount > 1
+
+export type StripEntry = {
+  number: number
+  /** The full title, for the tooltip. */
+  title: string
+  /** The title cut to TITLE_CHARS, when the strip shows titles. */
+  label?: string
+  /** When the strip shows Claude's state: by its icon alone, never in words (empty circle idle, pulsing orange dot working, white hand waiting). */
+  state?: ClaudeState | 'ended'
+  current: boolean
+  /** When the strip shows runs: the one in progress. */
+  run?: { number: number; duration: string }
+  /** When the strip shows numbers: its Cmd+number, such as `⌘2`. */
+  key?: string
+}
+
+export function stripEntry(facts: StripFacts, nowMs: number, show: StripShow): StripEntry {
+  const entry: StripEntry = { number: facts.number, title: facts.title, current: facts.current }
+  if (show.title) entry.label = shortTitle(facts.title, TITLE_CHARS)
+  if (show.state) entry.state = facts.sessionLive ? facts.claude : 'ended'
+  if (show.run && facts.running) entry.run = { number: facts.running.number, duration: runDuration(facts.running.startedAt, nowMs) }
+  if (show.number) entry.key = `⌘${String(facts.number)}`
   return entry
 }
 

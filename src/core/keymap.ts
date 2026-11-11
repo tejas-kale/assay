@@ -1,3 +1,6 @@
+import { TABS, isPaneHidden, isTabOn, paneOffText, tabOffText } from './tabs.ts'
+import type { Pane, TabId, TabPrefs } from './tabs.ts'
+
 export type CommandId =
   | 'focus.terminal'
   | 'focus.notes'
@@ -10,16 +13,7 @@ export type CommandId =
   | 'code.new'
   | 'run.interrupt'
   | 'analysis.new'
-  | 'tab.data'
-  | 'tab.plots'
-  | 'tab.code'
-  | 'tab.history'
-  | 'tab.steps'
-  | 'tab.trust'
-  | 'tab.overview'
-  | 'tab.notes'
-  | 'tab.threads'
-  | 'tab.files'
+  | TabCommand
   | 'analysis.close'
   | 'settings.open'
   | 'pin.toggle'
@@ -30,6 +24,9 @@ export type CommandId =
   | 'strip.side'
   | 'update.restart'
   | AnalysisSwitch
+
+/** Ctrl+Shift+letter: show a tab (core/tabs.ts). */
+export type TabCommand = `tab.${TabId}`
 
 /** Cmd+1 to Cmd+9: show that analysis in the window's set (core/analysisSet.ts). */
 export type AnalysisSwitch = `analysis.${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`
@@ -66,16 +63,7 @@ export const COMMANDS: readonly Command[] = [
   { id: 'analysis.new', title: 'Open another analysis', accelerator: { code: 'KeyN' } },
   { id: 'analysis.close', title: 'Close analysis', accelerator: { code: 'KeyW' } },
   { id: 'settings.open', title: 'Settings', accelerator: { code: 'Comma' } },
-  { id: 'tab.data', title: 'Show Data tab', accelerator: { code: 'KeyD', shift: true, ctrl: true } },
-  { id: 'tab.plots', title: 'Show Plots tab', accelerator: { code: 'KeyP', shift: true, ctrl: true } },
-  { id: 'tab.code', title: 'Show Code tab', accelerator: { code: 'KeyC', shift: true, ctrl: true } },
-  { id: 'tab.history', title: 'Show History tab', accelerator: { code: 'KeyH', shift: true, ctrl: true } },
-  { id: 'tab.steps', title: 'Show Steps tab', accelerator: { code: 'KeyS', shift: true, ctrl: true } },
-  { id: 'tab.trust', title: 'Show Trust tab', accelerator: { code: 'KeyR', shift: true, ctrl: true } },
-  { id: 'tab.overview', title: 'Show Overview tab', accelerator: { code: 'KeyO', shift: true, ctrl: true } },
-  { id: 'tab.threads', title: 'Show Threads tab', accelerator: { code: 'KeyT', shift: true, ctrl: true } },
-  { id: 'tab.notes', title: 'Show Notes tab', accelerator: { code: 'KeyN', shift: true, ctrl: true } },
-  { id: 'tab.files', title: 'Show Files tab', accelerator: { code: 'KeyF', shift: true, ctrl: true } },
+  ...TABS.map(tab => ({ id: `tab.${tab.id}` as const, title: `Show ${tab.title} tab`, accelerator: { code: tab.shortcut, shift: true as const, ctrl: true as const } })),
   { id: 'shortcuts.show', title: 'Show Shortcuts' },
   { id: 'pin.toggle', title: 'Pin current run' },
   { id: 'kernel.restart', title: 'Restart kernel' },
@@ -93,6 +81,23 @@ export const COMMANDS: readonly Command[] = [
 /** The commands the palette lists: Restart to update only while a downloaded update waits (docs/slice-11.md, 11d). */
 export function paletteCommands({ isUpdateReady }: { isUpdateReady: boolean }): readonly Command[] {
   return isUpdateReady ? COMMANDS : COMMANDS.filter(c => c.id !== 'update.restart')
+}
+
+/** What a tab or pane command does under the user's tab settings. */
+export type TabAction = { type: 'show'; tab: TabId; pane: Pane } | { type: 'toast'; text: string }
+
+const FOCUS_PANE: Partial<Record<CommandId, Pane>> = { 'focus.notes': 'notes', 'focus.data': 'data' }
+
+/**
+ * A `tab.*` command shows its tab, or the toast while that tab is off; Ctrl+2 or Ctrl+3 aimed at a pane whose tabs
+ * are all off gives that pane's toast. Undefined for every other command, and for a pane that has a tab on.
+ */
+export function tabAction(id: CommandId, prefs: TabPrefs): TabAction | undefined {
+  const pane = FOCUS_PANE[id]
+  if (pane) return isPaneHidden(prefs, pane) ? { type: 'toast', text: paneOffText(pane) } : undefined
+  const tab = TABS.find(t => id === `tab.${t.id}`)
+  if (!tab) return undefined
+  return isTabOn(prefs, tab.id) ? { type: 'show', tab: tab.id, pane: tab.pane } : { type: 'toast', text: tabOffText(tab.id) }
 }
 
 /** The parts of Electron's `Input` that matter here. */

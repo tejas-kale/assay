@@ -1,6 +1,6 @@
 // The analysis strip: one entry per open analysis with its title, Claude's state and any run in progress. Its own
 // view (main loads the page with #strip), along the bottom or down the left with the text turned to read upwards
-// (the palette's Move analysis strip).
+// (Settings > Strip, or the palette's Move analysis strip). Settings > Strip also picks what each entry shows.
 // Holding left Cmd adds each entry's Cmd+number.
 import { useEffect, useState } from 'react'
 
@@ -24,9 +24,9 @@ export function Strip() {
           title={`⌘${entry.number}  ${entry.title}`}
           onClick={() => void window.app.showAnalysis(entry.number)}
         >
-          <StateIcon state={entry.state} />
-          {hints === 'cmd' && <b className="strip-key">⌘{entry.number}</b>}
-          <span className="strip-title">{entry.label}</span>
+          {entry.state && <StateIcon state={entry.state} />}
+          {(entry.key !== undefined || hints === 'cmd') && <b className="strip-key">⌘{entry.number}</b>}
+          {entry.label !== undefined && <span className="strip-title">{entry.label}</span>}
           {entry.run && <span className="strip-run">#{entry.run.number} {entry.run.duration}</span>}
         </button>
       ))}
@@ -34,7 +34,9 @@ export function Strip() {
   )
 }
 
-const STATE_NAME: Record<StripEntry['state'], string> = {
+type State = NonNullable<StripEntry['state']>
+
+const STATE_NAME: Record<State, string> = {
   idle: 'idle',
   working: 'working',
   waiting: 'waiting for you',
@@ -42,7 +44,7 @@ const STATE_NAME: Record<StripEntry['state'], string> = {
 }
 
 /** Claude's state as an icon, with no visible words: empty circle, pulsing orange dot, or a small white hand. */
-function StateIcon({ state }: { state: StripEntry['state'] }) {
+function StateIcon({ state }: { state: State }) {
   if (state !== 'waiting') return <span className={`strip-dot ${state}`} role="img" aria-label={STATE_NAME[state]} />
   // A raised hand: drawn once thick in the outline colour, then filled white on top, so it reads on light panels too.
   const hand = (

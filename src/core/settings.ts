@@ -1,16 +1,32 @@
 import { basename, dirname, isAbsolute, join, normalize } from 'node:path'
 
-/** The app's settings. There is no default root: until one is set, the app asks for it. */
-export type Settings = { root?: string }
+import { parseStripPrefs } from './strip.ts'
+import type { StripPrefs } from './strip.ts'
+import { parseTabPrefs } from './tabs.ts'
+import type { TabPrefs } from './tabs.ts'
 
-export function parseSettings(text: string | undefined): Settings {
-  if (!text) return {}
+/** The app's settings. There is no default root: until one is set, the app asks for it. */
+export type Settings = { root?: string; tabs: TabPrefs; strip: StripPrefs }
+
+function parseJson(text: string | undefined): unknown {
   try {
-    const root: unknown = (JSON.parse(text) as { root?: unknown } | null)?.root
-    return typeof root === 'string' && root !== '' ? { root } : {}
+    return text ? (JSON.parse(text) as unknown) : undefined
   } catch {
-    return {}
+    return undefined
   }
+}
+
+const field = (object: unknown, key: string): unknown => (object !== null && typeof object === 'object' ? Reflect.get(object, key) : undefined)
+
+/**
+ * settings.json, with defaults for anything missing or malformed. `legacyStrip` is the old `strip.json`: its side
+ * counts only while settings.json has no `strip` of its own (main then saves the result and deletes the old file).
+ */
+export function parseSettings(text: string | undefined, legacyStrip?: string): Settings {
+  const raw = parseJson(text)
+  const root = field(raw, 'root')
+  const strip = field(raw, 'strip') ?? { side: field(parseJson(legacyStrip), 'side') }
+  return { ...(typeof root === 'string' && root !== '' && { root }), tabs: parseTabPrefs(field(raw, 'tabs')), strip: parseStripPrefs(strip) }
 }
 
 export const serializeSettings = (settings: Settings) => `${JSON.stringify(settings, null, 2)}\n`

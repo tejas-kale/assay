@@ -2,15 +2,31 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { normalizeRoot, parseSettings, rootFor, serializeSettings } from './settings.ts'
+import { DEFAULT_STRIP } from './strip.ts'
+import { defaultTabPrefs, setTabOn } from './tabs.ts'
 
-test('no file, bad JSON or a wrong type means no root, never a default folder', () => {
+const DEFAULTS = { tabs: defaultTabPrefs(), strip: DEFAULT_STRIP }
+
+test('no file, bad JSON or a wrong type means no root, never a default folder, and the default tabs and strip', () => {
   for (const text of [undefined, '', 'not json', '[]', 'null', '{}', '{"root":5}', '{"root":""}']) {
-    assert.deepEqual(parseSettings(text), {}, String(text))
+    assert.deepEqual(parseSettings(text), DEFAULTS, String(text))
   }
 })
 
-test('a saved root reads back', () => {
-  assert.deepEqual(parseSettings(serializeSettings({ root: '/a/b' })), { root: '/a/b' })
+test('saved settings read back', () => {
+  const settings = { root: '/a/b', tabs: setTabOn(defaultTabPrefs(), 'trust', false), strip: { ...DEFAULT_STRIP, side: 'left' as const, autoHide: true } }
+  assert.deepEqual(parseSettings(serializeSettings(settings)), settings)
+})
+
+test('a settings file from before tabs and strip gets their defaults and keeps its root', () => {
+  assert.deepEqual(parseSettings('{"root":"/a"}'), { root: '/a', ...DEFAULTS })
+})
+
+test('the old strip.json side moves in when settings.json has no strip yet', () => {
+  assert.equal(parseSettings('{"root":"/a"}', '{"side":"left"}').strip.side, 'left')
+  assert.equal(parseSettings(undefined, '{"side":"left"}').strip.side, 'left')
+  assert.equal(parseSettings('{"strip":{"side":"bottom"}}', '{"side":"left"}').strip.side, 'bottom')
+  assert.equal(parseSettings('{}', 'not json').strip.side, 'bottom')
 })
 
 test('normalizeRoot expands ~ and tidies the path', () => {

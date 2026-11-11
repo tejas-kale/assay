@@ -20,17 +20,19 @@ import { analysisNumber, commandForInput } from '../core/keymap.ts'
 import type { CommandId } from '../core/keymap.ts'
 import { parseRunStatus } from '../core/runs.ts'
 import { KILL_AFTER_MS, spawnSpec } from '../core/session.ts'
-import { stripEntry } from '../core/strip.ts'
+import { DEFAULT_STRIP, isStripShown, stripEntry } from '../core/strip.ts'
+import type { StripPrefs } from '../core/strip.ts'
+import type { Settings } from '../core/settings.ts'
 import { THEMES } from '../core/theme.ts'
 import { failedMessage, justAnswered, justFailed } from '../core/trust.ts'
 import type { TrustReview } from '../core/trust.ts'
 import { pollFiles, pollSignature } from '../core/watch.ts'
 import { CHANNELS } from '../shared/ipc.ts'
-import type { OpenResult, PtyExit, StripSide, StripView } from '../shared/ipc.ts'
+import type { OpenResult, PtyExit, SettingsView, StripView } from '../shared/ipc.ts'
 import { QUERIES, REPLIES_DIR, RUN_STATUS, THREADS, TRUST_DIR, fsPort, loadState, notesSignature, overviewSignature, rootOf, takeReplies, watchPort } from './files.ts'
 import { startSession } from './session.ts'
 import { launchPaths } from './runtime.ts'
-import { analysisRoot } from './settings.ts'
+import { analysisRoot, readSettings, updateSettings } from './settings.ts'
 import type { PtySession } from './session.ts'
 
 export type WindowCtx = {
@@ -61,8 +63,8 @@ type Host = {
   /** Closing every analysis (Cmd+Q or the window's close button): the set is not saved again until the window is gone. */
   closingAll: boolean
   stopStrip: () => void
-  /** Where the strip sits; the palette's Move analysis strip flips it, and it is saved. */
-  side: StripSide
+  /** Settings > Strip: its side (the palette's Move analysis strip flips it too), what entries show, auto-hide. */
+  stripPrefs: StripPrefs
 }
 
 /** The analysis strip's height along the bottom, or its width down the left, in CSS pixels. */
@@ -157,8 +159,11 @@ function saveSet(set: AnalysisSet) {
 
 function setSet(next: AnalysisSet) {
   if (!host) return
+  const count = host.set.paths.length
   host.set = next
   if (!host.closingAll) saveSet(next)
+  // Auto-hide shows the strip only from the second analysis on.
+  if (count !== next.paths.length) layout()
 }
 
 const ctxForPath = (path: string | undefined) => allContexts().find(c => c.analysis?.path === path)
@@ -173,10 +178,10 @@ export function ensureWindow(restore = false): Host {
   guardPage(strip.webContents)
   win.contentView.addChildView(strip)
   const timer = setInterval(() => void refreshStrip(), STRIP_MS)
-  const h: Host = { win, strip, set: EMPTY_SET, picker: undefined, closingAll: false, stopStrip: () => clearInterval(timer), side: 'bottom' }
+  const h: Host = { win, strip, set: EMPTY_SET, picker: undefined, closingAll: false, stopStrip: () => clearInterval(timer), stripPrefs: DEFAULT_STRIP }
   host = h
-  void readSide().then(side => {
-    h.side = side
+  void readSettings().then(settings => {
+    h.stripPrefs = settings.strip
     layout()
     void refreshStrip()
   })
@@ -245,7 +250,13 @@ let hostHold: ReturnType<typeof cmdHold> | undefined
 function layout() {
   if (!host) return
   const { width, height } = host.win.getContentBounds()
-  if (host.side === 'left') {
+  const shown = isStripShown(host.stripPrefs, host.set.paths.length)
+  host.strip.setVisible(shown)
+  if (!shown) {
+    for (const ctx of allContexts()) ctx.view.setBounds({ x: 0, y: 0, width, height })
+    return
+  }
+  if (host.stripPrefs.side === 'left') {
     const stripWidth = Math.min(STRIP_WIDTH, width)
     for (const ctx of allContexts()) ctx.view.setBounds({ x: stripWidth, y: 0, width: width - stripWidth, height })
     host.strip.setBounds({ x: 0, y: 0, width: stripWidth, height })
@@ -256,27 +267,22 @@ function layout() {
   host.strip.setBounds({ x: 0, y: main.height, width, height: STRIP_HEIGHT })
 }
 
-const sidePath = () => join(app.getPath('userData'), 'strip.json')
-
-async function readSide(): Promise<StripSide> {
-  try {
-    const side: unknown = Reflect.get(JSON.parse(await readFile(sidePath(), 'utf8')) as object, 'side')
-    return side === 'left' ? 'left' : 'bottom'
-  } catch {
-    return 'bottom'
-  }
-}
-
-/** The palette's Move analysis strip: bottom to left and back, kept for the next launch. */
-export function toggleStripSide() {
+/** Sends saved settings to every analysis, and lays the strip out by them. */
+export function publishSettings(settings: Settings, root: string | undefined) {
+  broadcast(CHANNELS.settingsChanged, { root, tabs: settings.tabs, strip: settings.strip } satisfies SettingsView)
   if (!host) return
-  host.side = host.side === 'bottom' ? 'left' : 'bottom'
+  host.stripPrefs = settings.strip
   layout()
   void refreshStrip()
-  const temp = `${sidePath()}.${randomUUID()}.tmp`
-  void writeFile(temp, JSON.stringify({ side: host.side }))
-    .then(() => rename(temp, sidePath()))
-    .catch(err => console.error('Could not save the strip side', err))
+}
+
+/** The palette's Move analysis strip: bottom to left and back, saved as Settings > Strip's side. */
+export function toggleStripSide() {
+  void updateSettings(s => ({ ...s, strip: { ...s.strip, side: s.strip.side === 'bottom' ? 'left' : 'bottom' } }))
+    .then(async settings => {
+      publishSettings(settings, await analysisRoot())
+    })
+    .catch((err: unknown) => console.error('Could not save the strip side', err))
 }
 
 /** The view the window shows: the picker while it is open, else the current analysis. */
@@ -497,10 +503,11 @@ async function refreshStrip() {
           current: !h.picker && path === h.set.current,
         },
         now,
+        h.stripPrefs.show,
       )
     }),
   )
-  if (host === h) sendStrip(CHANNELS.stripEntries, { side: h.side, entries } satisfies StripView)
+  if (host === h) sendStrip(CHANNELS.stripEntries, { side: h.stripPrefs.side, entries } satisfies StripView)
 }
 
 // --- an analysis in a view ---

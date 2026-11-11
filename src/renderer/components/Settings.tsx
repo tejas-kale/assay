@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 
+import type { SettingsView } from '../../shared/ipc.ts'
 import { Doctor } from './Doctor.tsx'
+import { StripSettings, TabSettings } from './LayoutSettings.tsx'
 import { Updates } from './Updates.tsx'
 
-/** Sets the analysis folder, keeps the update token, and shows the Doctor. `onClose` is undefined while no folder is set, since the app cannot go on without one. */
-export function Settings({ root, onClose }: { root: string | undefined; onClose: (() => void) | undefined }) {
+/**
+ * Sets the analysis folder, the tabs and the strip, keeps the update token, and shows the Doctor. `onClose` is
+ * undefined while no folder is set, since the app cannot go on without one.
+ */
+export function Settings({ settings, onClose }: { settings: SettingsView; onClose: (() => void) | undefined }) {
+  const { root } = settings
   const [input, setInput] = useState(root ?? '')
   const [message, setMessage] = useState<string>()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -64,6 +70,8 @@ export function Settings({ root, onClose }: { root: string | undefined; onClose:
         </div>
         <div className="hint">Analyses live in its analyses/ subfolder; picking one analysis works too. Enter saves{onClose ? ', Escape cancels' : ''}.</div>
         {message && <div className="status warn">{message}</div>}
+        <TabSettings tabs={settings.tabs} />
+        <StripSettings strip={settings.strip} />
         <Updates />
         <Doctor />
       </div>

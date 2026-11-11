@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { COMMANDS, PANE_KEYS, commandForInput, paletteCommands, shortcutLabel } from './keymap.ts'
+import { COMMANDS, PANE_KEYS, commandForInput, paletteCommands, shortcutLabel, tabAction } from './keymap.ts'
+import { TABS, defaultTabPrefs, setTabOn } from './tabs.ts'
 
 const input = (over: Partial<Parameters<typeof commandForInput>[0]>) => ({
   key: '',
@@ -170,4 +171,30 @@ test('Restart to update is in the palette only while an update is ready', () => 
   assert.ok(titles(true).includes('Restart to update'))
   assert.ok(!titles(false).includes('Restart to update'))
   assert.equal(titles(false).length, COMMANDS.length - 1)
+})
+
+test('every tab in the registry has its Show command on Ctrl+Shift and its own key', () => {
+  for (const tab of TABS) {
+    const command = COMMANDS.find(c => c.id === `tab.${tab.id}`)
+    assert.ok(command, tab.id)
+    assert.equal(command.title, `Show ${tab.title} tab`)
+    assert.deepEqual(command.accelerator, { code: tab.shortcut, shift: true, ctrl: true })
+  }
+  const tabKeys = COMMANDS.filter(c => c.id.startsWith('tab.')).map(c => c.accelerator?.code)
+  assert.equal(new Set(tabKeys).size, TABS.length)
+})
+
+test('a tab command shows its tab while it is on, and resolves to the toast while it is off', () => {
+  const prefs = setTabOn(defaultTabPrefs(), 'trust', false)
+  assert.deepEqual(tabAction('tab.code', prefs), { type: 'show', tab: 'code', pane: 'data' })
+  assert.deepEqual(tabAction('tab.threads', prefs), { type: 'show', tab: 'threads', pane: 'notes' })
+  assert.deepEqual(tabAction('tab.trust', prefs), { type: 'toast', text: 'Trust tab is off: Settings (⌘,)' })
+})
+
+test('focusing a pane whose tabs are all off resolves to the toast; other commands are not tab actions', () => {
+  let prefs = defaultTabPrefs()
+  for (const id of ['data', 'plots', 'code', 'history', 'steps', 'trust'] as const) prefs = setTabOn(prefs, id, false)
+  assert.deepEqual(tabAction('focus.data', prefs), { type: 'toast', text: 'Every Data pane tab is off: Settings (⌘,)' })
+  assert.equal(tabAction('focus.notes', prefs), undefined)
+  assert.equal(tabAction('palette.open', prefs), undefined)
 })

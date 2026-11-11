@@ -11,7 +11,13 @@ const KIND_LABEL: Record<SearchTarget['kind'], string> = { thread: 'thread', not
  * Cmd+F: one search over threads, every root note, runs and files. Names match fuzzily; note text and
  * run code match the query as typed. Enter shows the hit in its own tab, Tab toggles a preview.
  */
-export function Search(props: { state: AnalysisState; onChoose: (target: SearchTarget) => void; onClose: () => void }) {
+export function Search(props: {
+  state: AnalysisState
+  /** False for a hit only a tab that is off could show: such hits are dropped. */
+  isShown: (kind: SearchTarget['kind']) => boolean
+  onChoose: (target: SearchTarget) => void
+  onClose: () => void
+}) {
   const { state } = props
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
@@ -30,7 +36,9 @@ export function Search(props: { state: AnalysisState; onChoose: (target: SearchT
     () => searchEntries({ threads: state.threads, notes: state.rootNotes, runs: state.runs, ...(files && { files }), ...(contents && { contents }) }),
     [state, files, contents],
   )
-  const hits = useMemo(() => search(entries, query), [entries, query])
+  const { isShown } = props
+  const shownEntries = useMemo(() => entries.filter(e => isShown(e.target.kind)), [entries, isShown])
+  const hits = useMemo(() => search(shownEntries, query), [shownEntries, query])
   const index = Math.max(0, Math.min(selected, hits.length - 1))
   const hit = hits[index]
   const loading = files === undefined || contents === undefined
