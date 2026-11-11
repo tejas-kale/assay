@@ -3,6 +3,7 @@
 // other SQL run with a result), computed (a Python run that ended ok), unverified; plus stale (a trusted run whose
 // calculation has a newer commit) and missing (no such analysis or run).
 import type { FsPort } from './analyses.ts'
+import { stripTrailingSlashes } from './analyses.ts'
 import { parseTrustedHeader } from './calculations.ts'
 import { parseRunResult, parseRuns } from './runs.ts'
 import type { Citation } from './rootNotes.ts'
@@ -16,10 +17,10 @@ export type LabelDeps = {
   currentCommit?: (name: string) => Promise<string | undefined>
 }
 
-const join = (...parts: string[]) => parts.map((part, i) => (i === 0 ? part.replace(/\/+$/, '') : part)).join('/')
+const join = (...parts: string[]) => parts.map((part, i) => (i === 0 ? stripTrailingSlashes(part) : part)).join('/')
 
 /** The key `citationLabels` files a citation under. */
-export const citationKey = (citation: Citation) => `${citation.analysis} q ${citation.number}`
+export const citationKey = (citation: Citation) => `${citation.analysis} q ${String(citation.number)}`
 
 export async function citationLabel(deps: LabelDeps, citation: Citation): Promise<CitationLabel> {
   const { fs } = deps

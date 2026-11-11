@@ -1,34 +1,36 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { analysisSlug, cleanTitle, createAnalysis, isoDay, listAnalyses, openAnalysis, parseAnalysisFile, renameAnalysis, setTitle, slugFor } from './analyses.ts'
+import { analysisSlug, cleanTitle, createAnalysis, isoDay, listAnalyses, openAnalysis, parseAnalysisFile, renameAnalysis, setTitle, slugFor, stripTrailingSlashes } from './analyses.ts'
 import type { FsPort } from './analyses.ts'
 
 /** An in-memory port: `dirs` maps a folder to its mtime; `files` maps a file path to its text. */
 function fakePort(dirs: Record<string, number>, files: Record<string, string> = {}) {
   const port: FsPort = {
-    readdir: async path => {
+    readdir: path => {
       const prefix = `${path}/`
       const names = [...Object.keys(dirs), ...Object.keys(files)].filter(each => each.startsWith(prefix)).map(each => each.slice(prefix.length).split('/')[0] ?? '')
-      if (names.length === 0 && !(path in dirs)) throw new Error('ENOENT')
-      return [...new Set(names)]
+      if (names.length === 0 && !(path in dirs)) return Promise.reject(new Error('ENOENT'))
+      return Promise.resolve([...new Set(names)])
     },
-    stat: async path => {
-      if (path in dirs) return { isDirectory: true, mtimeMs: dirs[path] ?? 0 }
-      if (path in files) return { isDirectory: false, mtimeMs: 1 }
-      return undefined
+    stat: path => {
+      if (path in dirs) return Promise.resolve({ isDirectory: true, mtimeMs: dirs[path] ?? 0 })
+      if (path in files) return Promise.resolve({ isDirectory: false, mtimeMs: 1 })
+      return Promise.resolve(undefined)
     },
-    exists: async path => path in dirs || path in files,
-    mkdir: async path => {
+    exists: path => Promise.resolve(path in dirs || path in files),
+    mkdir: path => {
       dirs[path] = 1
+      return Promise.resolve()
     },
-    readFile: async path => {
+    readFile: path => {
       const text = files[path]
-      if (text === undefined) throw new Error('ENOENT')
-      return text
+      if (text === undefined) return Promise.reject(new Error('ENOENT'))
+      return Promise.resolve(text)
     },
-    writeFile: async (path, text) => {
+    writeFile: (path, text) => {
       files[path] = text
+      return Promise.resolve()
     },
   }
   return { port, files, dirs }
@@ -133,4 +135,19 @@ test('renameAnalysis changes the title and never the folder', async () => {
   assert.deepEqual(await renameAnalysis(port, '/r/analyses/a', ' Better name '), { name: 'a', title: 'Better name', path: '/r/analyses/a' })
   assert.equal(files['/r/analyses/a/analysis.yaml'], 'title: Better name\nprofile: P\n')
   await assert.rejects(renameAnalysis(port, '/r/analyses/a', ' '), /title/i)
+})
+
+test('a key line has the colon at the end or before a space or tab; other lines name no key', () => {
+  assert.deepEqual(parseAnalysisFile('title:x\nprofile:\t P \nwarehouse:\n'), { profile: 'P' })
+  assert.deepEqual(parseAnalysisFile('title::x\n  title: indented\nti tle: two words\n'), {})
+  assert.deepEqual(parseAnalysisFile('Title : Spaced\r\ntitle: second\r\n'), { title: 'Spaced' })
+  assert.deepEqual(parseAnalysisFile('title: a\rb\n'), {})
+  assert.equal(setTitle('title:x\nother: 1\n', 'New'), 'title: New\ntitle:x\nother: 1\n')
+})
+
+test('trailing slashes are stripped, however many', () => {
+  assert.equal(stripTrailingSlashes('/a/b///'), '/a/b')
+  assert.equal(stripTrailingSlashes('/a/b'), '/a/b')
+  assert.equal(stripTrailingSlashes('///'), '')
+  assert.equal(stripTrailingSlashes(`/a${'/'.repeat(100000)}`), '/a')
 })

@@ -30,26 +30,32 @@ export const newSeen = (): Seen => ({ tables: new Set(), terms: new Set() })
  * one. Marks what it gives as seen. Undefined when every table was seen.
  */
 export function dictionaryText(answer: DictionaryAnswer, seen: Seen): string | undefined {
-  const parts: string[] = []
-  const terms: string[] = []
-  const missing: string[] = []
-  for (const table of answer.tables) {
-    const key = table.entry ?? table.name
-    if (seen.tables.has(key)) continue
-    seen.tables.add(key)
-    if (table.entry && table.text !== undefined) {
-      parts.push(`## ${table.entry}\n${table.text.trimEnd()}`)
-      for (const term of table.terms ?? []) {
-        if (!seen.terms.has(term) && !terms.includes(term)) terms.push(term)
-      }
-    } else missing.push(table.name)
-  }
+  const { parts, terms, missing } = gatherTables(answer.tables, seen)
   for (const term of terms) seen.terms.add(term)
   const lines: string[] = []
   if (parts.length > 0) lines.push('Data dictionary (first use this session):', ...parts)
   if (terms.length > 0) lines.push('Glossary:', ...terms.map(term => `- ${term}: ${answer.glossary[term] ?? ''}`))
   for (const name of missing) lines.push(draftHint(name))
   return lines.length > 0 ? lines.join('\n') : undefined
+}
+
+type Gathered = { parts: string[]; terms: string[]; missing: string[] }
+
+/** The unseen tables' entries, their new glossary terms and the tables with no entry; marks the tables seen. */
+function gatherTables(tables: readonly DictionaryTable[], seen: Seen): Gathered {
+  const gathered: Gathered = { parts: [], terms: [], missing: [] }
+  for (const table of tables) {
+    const key = table.entry ?? table.name
+    if (seen.tables.has(key)) continue
+    seen.tables.add(key)
+    if (table.entry && table.text !== undefined) {
+      gathered.parts.push(`## ${table.entry}\n${table.text.trimEnd()}`)
+      for (const term of table.terms ?? []) {
+        if (!seen.terms.has(term) && !gathered.terms.includes(term)) gathered.terms.push(term)
+      }
+    } else gathered.missing.push(table.name)
+  }
+  return gathered
 }
 
 /** How to draft a missing entry: only a full name can name its file. */
@@ -119,8 +125,10 @@ export type Calculation = {
 export type CalculationList = { calculations: Calculation[]; problems: string[] }
 
 /** A calculation as the per-prompt list names it: `name(start: date, status?: string)`. */
-export const signature = (calc: Pick<Calculation, 'name' | 'parameters'>) =>
-  `${calc.name}(${calc.parameters.map(param => `${param.name}${param.required ? '' : '?'}: ${param.type}`).join(', ')})`
+export const signature = (calc: Pick<Calculation, 'name' | 'parameters'>) => `${calc.name}(${calc.parameters.map(parameterText).join(', ')})`
+
+const parameterText = (param: Param) => `${param.name}${optionalMark(param)}: ${param.type}`
+const optionalMark = (param: Param) => (param.required ? '' : '?')
 
 /** A block as the per-prompt list names it: `name(start: date) -> grain session_id: session_id, buyer_id`. */
 export const blockSignature = (calc: Pick<Calculation, 'name' | 'parameters'> & { block: { grain: string[]; columns: string[] } }) =>
@@ -131,28 +139,45 @@ export const blockSignature = (calc: Pick<Calculation, 'name' | 'parameters'> & 
  * unknown, every required one given, each of its type (a date as YYYY-MM-DD).
  */
 export function checkArgs(params: readonly Param[], given: unknown): { args: Record<string, unknown> } | { error: string } {
-  if (given === undefined) given = {}
-  if (!given || typeof given !== 'object' || Array.isArray(given)) return { error: 'Give args as an object of named arguments.' }
-  const args = given as Record<string, unknown>
+  const asked = given === undefined ? {} : given
+  if (!asked || typeof asked !== 'object' || Array.isArray(asked)) return { error: 'Give args as an object of named arguments.' }
+  const args = asked as Record<string, unknown>
   const unknown = Object.keys(args).filter(name => !params.some(param => param.name === name))
   if (unknown.length > 0) return { error: `Unknown arguments: ${unknown.join(', ')}. It takes ${params.map(param => param.name).join(', ') || 'none'}.` }
   for (const param of params) {
-    const value = args[param.name]
-    if (value === undefined) {
-      if (param.required) return { error: `Missing argument: ${param.name} (${param.type}).` }
-      continue
-    }
-    const ok =
-      param.type === 'string' ? typeof value === 'string'
-      : param.type === 'integer' ? Number.isInteger(value)
-      : param.type === 'number' ? typeof value === 'number' && Number.isFinite(value)
-      : param.type === 'boolean' ? typeof value === 'boolean'
-      : param.type === 'list' ? Array.isArray(value) && value.every(each => typeof each === 'string')
-      : typeof value === 'string' && /^\d{4}-\d\d-\d\d$/.test(value) && !Number.isNaN(Date.parse(value))
-    const said = param.type === 'date' ? 'a date as YYYY-MM-DD' : param.type === 'list' ? 'a list of names' : `a ${param.type}`
-    if (!ok) return { error: `Argument ${param.name} must be ${said}.` }
+    const error = argumentError(param, args[param.name])
+    if (error) return { error }
   }
   return { args }
+}
+
+/** Why one argument is refused: missing when required, or not of its declared type; undefined when fine. */
+function argumentError(param: Param, value: unknown): string | undefined {
+  if (value === undefined) return param.required ? `Missing argument: ${param.name} (${param.type}).` : undefined
+  return isOfType(param.type, value) ? undefined : `Argument ${param.name} must be ${typeName(param.type)}.`
+}
+
+/** A type the list does not know is read as a date, as it always was. */
+function isOfType(type: ParamType, value: unknown): boolean {
+  switch (type) {
+    case 'string':
+      return typeof value === 'string'
+    case 'integer':
+      return Number.isInteger(value)
+    case 'number':
+      return typeof value === 'number' && Number.isFinite(value)
+    case 'boolean':
+      return typeof value === 'boolean'
+    case 'list':
+      return Array.isArray(value) && value.every(each => typeof each === 'string')
+    default:
+      return typeof value === 'string' && /^\d{4}-\d\d-\d\d$/.test(value) && !Number.isNaN(Date.parse(value))
+  }
+}
+
+function typeName(type: ParamType): string {
+  if (type === 'date') return 'a date as YYYY-MM-DD'
+  return type === 'list' ? 'a list of names' : `a ${type}`
 }
 
 /** What a trusted run's .sql records at its top: the calculation, its arguments and its file's commit. */

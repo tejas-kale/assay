@@ -1,30 +1,33 @@
 const isWordStart = (key: string, i: number) => i === 0 || !/[a-z0-9]/i.test(key[i - 1] ?? '')
 
+type Row = (number | undefined)[]
+
+/** The score of matching `key[i]` (a position where the query's next character occurs); undefined when the previous character has no placement leading to it. */
+function matchScore(key: string, i: number, apart: number, prev: Row | undefined): number | undefined {
+  const gain = 1 + (isWordStart(key, i) ? 6 : 0)
+  if (!prev) return gain
+  const base = Math.max(apart, (prev[i - 1] ?? -Infinity) + 4)
+  return base === -Infinity ? undefined : base + gain
+}
+
+/** For one query character: at each key position, the best score with that character matched there. `prev` is the row of the query character before it. */
+function nextRow(key: string, lower: string, wanted: string, prev: Row | undefined): Row {
+  const row: Row = []
+  // Best of prev over positions at least two before i (a gap, so no run bonus).
+  let apart = -Infinity
+  for (let i = 0; i < lower.length; i++) {
+    if (i >= 2) apart = Math.max(apart, prev?.[i - 2] ?? -Infinity)
+    row.push(lower[i] === wanted ? matchScore(key, i, apart, prev) : undefined)
+  }
+  return row
+}
+
 /** Best score of `query` as a subsequence of `key`, or undefined when it is not one. */
 function score(key: string, query: string): number | undefined {
   const lower = key.toLowerCase()
-  // prev[i]: best score with the previous query char matched at key position i.
-  let prev: (number | undefined)[] = []
-  for (let j = 0; j < query.length; j++) {
-    const row: (number | undefined)[] = []
-    // Best of prev over positions at least two before i (a gap, so no run bonus).
-    let apart = -Infinity
-    for (let i = 0; i < lower.length; i++) {
-      if (i >= 2) apart = Math.max(apart, prev[i - 2] ?? -Infinity)
-      if (lower[i] !== query[j]) {
-        row.push(undefined)
-        continue
-      }
-      const gain = 1 + (isWordStart(key, i) ? 6 : 0)
-      if (j === 0) row.push(gain)
-      else {
-        const base = Math.max(apart, (prev[i - 1] ?? -Infinity) + 4)
-        row.push(base === -Infinity ? undefined : base + gain)
-      }
-    }
-    prev = row
-  }
-  const scores = prev.filter((s): s is number => s !== undefined)
+  let row: Row | undefined
+  for (let j = 0; j < query.length; j++) row = nextRow(key, lower, query[j] ?? '', row)
+  const scores = (row ?? []).filter((each): each is number => each !== undefined)
   return scores.length === 0 ? undefined : Math.max(...scores)
 }
 

@@ -88,6 +88,14 @@ function edgeLabel(edge: LineageEdge): string | undefined {
   return edge.join.cardinality === undefined ? 'join: no line' : `${edge.join.cardinality} on ${(edge.join.keys ?? []).join(', ')}`.trim()
 }
 
+const nodeId = (index: number) => `n${String(index)}`
+
+function nodeLine(node: LineageNode, index: number): string {
+  const id = nodeId(index)
+  if (node.kind === 'table') return `  ${id}([${label(node)}])`
+  return node.block ? `  ${id}[[${label(node)}]]` : `  ${id}[${label(node)}]`
+}
+
 /**
  * The Mermaid text of a lineage. Node ids are `n0`, `n1`, ... by position, never the table or CTE name, so no name
  * can break the syntax. `marks` maps a node's index to how it went, drawn in `colors`.
@@ -96,13 +104,13 @@ export function lineageMermaid(lineage: Lineage, marks: Readonly<Record<number, 
   const index = new Map(lineage.nodes.map((node, i) => [node.id, i]))
   const lines = ['flowchart LR']
   // Tables are stadiums, an included block a subroutine box, other CTEs and the final SELECT boxes.
-  lineage.nodes.forEach((node, i) => lines.push(node.kind === 'table' ? `  n${i}([${label(node)}])` : node.block ? `  n${i}[[${label(node)}]]` : `  n${i}[${label(node)}]`))
+  lineage.nodes.forEach((node, i) => lines.push(nodeLine(node, i)))
   for (const edge of lineage.edges) {
     const from = index.get(edge.from)
     const to = index.get(edge.to)
     if (from === undefined || to === undefined) continue
     const text = edgeLabel(edge)
-    lines.push(text === undefined ? `  n${from} --> n${to}` : `  n${from} -->|${quote(text)}| n${to}`)
+    lines.push(text === undefined ? `  ${nodeId(from)} --> ${nodeId(to)}` : `  ${nodeId(from)} -->|${quote(text)}| ${nodeId(to)}`)
   }
   const used = new Set(Object.values(marks))
   const styles: Record<LineageMark, string> = {
@@ -112,7 +120,7 @@ export function lineageMermaid(lineage: Lineage, marks: Readonly<Record<number, 
     skipped: `stroke:${colors.dim},color:${colors.dim},opacity:0.6`,
   }
   for (const mark of Object.keys(styles) as LineageMark[]) if (used.has(mark)) lines.push(`  classDef ${mark} ${styles[mark]}`)
-  for (const [i, mark] of Object.entries(marks)) if (Number(i) < lineage.nodes.length) lines.push(`  class n${i} ${mark}`)
+  for (const [i, mark] of Object.entries(marks)) if (Number(i) < lineage.nodes.length) lines.push(`  class ${nodeId(Number(i))} ${mark}`)
   return lines.join('\n')
 }
 

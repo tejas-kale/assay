@@ -96,7 +96,7 @@ test('stepsView: Python and trusted Python runs read no SQL, a missing file is b
 })
 
 const PLAN = (steps: object[], over: object = {}) => ({ run: 1, status: 'running' as const, steps, ...over })
-const STEP = (k: number, node: number, status: string, checks: object[] = []) => ({ k, name: `s${k}`, node, status, checks })
+const STEP = (k: number, node: number, status: string, checks: object[] = []) => ({ k, name: `s${String(k)}`, node, status, checks })
 
 test('stepsView with a plan carries the plan and the marks for the diagram, and joins the notes', () => {
   const plan = PLAN([STEP(1, 2, 'ok'), STEP(2, 3, 'running')], { note: 'plan note' })

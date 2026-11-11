@@ -17,7 +17,9 @@ function setup() {
       }
     },
   })
-  const fire = () => timers.filter(t => !t.cancelled).forEach(t => t.cb())
+  const fire = () => {
+    for (const timer of timers.filter(t => !t.cancelled)) timer.cb()
+  }
   return { hold, seen, timers, fire }
 }
 
