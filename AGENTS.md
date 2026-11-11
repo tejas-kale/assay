@@ -41,7 +41,8 @@ one kernel the app shows. Protect this in every change.
   - `assay:wrap-up`: close threads, write findings as root notes, settle weak citations, link the notes read.
   - `assay:propose-trusted`: draft a trusted calculation or dictionary entry, with every file Check needs.
 - `python/`: `analysis_db`, `analysis_kernel`, `analysis_sql` (the SQL rules on Claude's `sql`
-  calls and on SQL templates at Check, and the lineage and step queries the Steps tab draws and runs; docs/slice-9.md),
+  calls and on SQL templates at Check, and the lineage and step queries the Steps tab draws and runs; docs/slice-9.md;
+  its docstring names the modules behind it),
   and `analysis_trust` (the trust command line; its docstring names the modules behind it), built by the app into
   Assay's venv (`src/main/backend.ts`). A new `analysis_*.py` module goes in `py-modules` in `python/pyproject.toml`.
 - The app talks to the server through files: it writes `.assay/requests/<id>.json` (`sql`, `python`, `interrupt`,

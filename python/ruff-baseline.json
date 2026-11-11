@@ -15,18 +15,6 @@
     "PLR0912": 1,
     "PLR2004": 1
   },
-  "python/analysis_sql.py": {
-    "E501": 29,
-    "C901": 3,
-    "PLR0912": 4,
-    "PLR2004": 7,
-    "PLR0911": 1,
-    "PLR0915": 3,
-    "E731": 1,
-    "PLC0415": 1,
-    "PLR0913": 1,
-    "PLR0917": 1
-  },
   "python/tests/test_analysis_db.py": {
     "RUF100": 1,
     "RUF012": 1,

@@ -70,9 +70,5 @@
   "src/hooks/write.ts": {
     "lines": 0,
     "branches": 0
-  },
-  "python/analysis_sql.py": {
-    "lines": 94.61,
-    "branches": 88.16
   }
 }

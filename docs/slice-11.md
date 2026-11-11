@@ -443,7 +443,11 @@ until it is green).
   `components/data/` (`paneState`, `paneRequests`, `paneEdit`, `paneReplay`), with each tab in its own file there.
   Its decisions (keys, toasts, the header note, the marker snapshot) are in `src/core/dataPane.ts`, under test.
   State that reset when the run changed is now kept per run, and the command and marker effects use
-  `useEffectEvent`. Not yet tried in the running app. Next: `analysis_sql.py`.
+  `useEffectEvent`. Not yet tried in the running app.
+- Progress: `analysis_sql.py` (2026-11-11, 51 ruff entries to none) is the command line and the names other helpers
+  import, over `analysis_sqlread` (how a query is read), `analysis_lint`, `analysis_lineage`, `analysis_steps`,
+  `analysis_include` and `analysis_retype`. Their outputs matched the old module's on every SQL text in the tests.
+  Next: `assay.ts`.
 
 ## Slice 11g: security audit
 

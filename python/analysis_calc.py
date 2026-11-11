@@ -2,7 +2,7 @@
 
 A calculation is ``<name>.sql`` (a SQL template: front matter, then one Databricks statement) or ``<name>.py`` (a
 function named after the file, taking a SQLAlchemy engine). The other ``analysis_*`` trust modules build on this one;
-it imports none of them, nor ``analysis_sql``, so ``analysis_sql`` can import it.
+it imports none of them, nor the SQL modules, so ``analysis_include`` can import it.
 """
 
 from __future__ import annotations

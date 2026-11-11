@@ -36,6 +36,12 @@ build-backend = "setuptools.build_meta"
 py-modules = [
   "analysis_db",
   "analysis_sql",
+  "analysis_sqlread",
+  "analysis_lint",
+  "analysis_lineage",
+  "analysis_steps",
+  "analysis_include",
+  "analysis_retype",
   "analysis_trust",
   "analysis_calc",
   "analysis_dictionary",
