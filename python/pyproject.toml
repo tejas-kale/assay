@@ -20,7 +20,7 @@ dependencies = [
   # analysis_trust and analysis_sql: SQL parsing, the SQL rules and transpiling, the dictionary's and calculations' YAML.
   "sqlglot",
   "pyyaml",
-  # A SQLAlchemy engine on DuckDB, for Python calculations' fixture tests (analysis_trust.fixture_engine).
+  # A SQLAlchemy engine on DuckDB, for Python calculations' fixture tests (analysis_fixtures.fixture_engine).
   "duckdb-engine",
   "altair",
   "matplotlib",
@@ -33,7 +33,19 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["analysis_db", "analysis_trust", "analysis_sql"]
+py-modules = [
+  "analysis_db",
+  "analysis_sql",
+  "analysis_trust",
+  "analysis_calc",
+  "analysis_dictionary",
+  "analysis_library",
+  "analysis_runner",
+  "analysis_fixtures",
+  "analysis_pytest",
+  "analysis_blocks",
+  "analysis_review",
+]
 packages = []
 
 

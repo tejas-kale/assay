@@ -11,7 +11,14 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import analysis_trust as trust  # noqa: E402
+import analysis_calc as calc
+import analysis_dictionary as entries
+import analysis_fixtures as fixtures
+import analysis_library as library
+import analysis_pytest as pyt
+import analysis_review as review
+import analysis_runner as runner
+import analysis_trust as trust
 
 
 def test_table_names_skip_ctes_and_keep_the_parts_written() -> None:
@@ -22,7 +29,7 @@ def test_table_names_skip_ctes_and_keep_the_parts_written() -> None:
         JOIN `Main`.panel.Completes c ON c.survey_id = r.id
         LEFT JOIN lookups l USING (id)
     """
-    assert trust.table_names(sql) == ["lookups", "main.panel.completes", "main.panel.surveys", "panel.sites"]
+    assert entries.table_names(sql) == ["lookups", "main.panel.completes", "main.panel.surveys", "panel.sites"]
 
 
 @pytest.fixture
@@ -38,7 +45,7 @@ def notes_src(tmp_path: Path) -> Path:
 
 
 def test_dictionary_resolves_full_and_unique_partial_names(notes_src: Path) -> None:
-    found = trust.dictionary(notes_src, "SELECT * FROM surveys JOIN panel.sites ON 1 = 1 JOIN x.y.z ON 1 = 1")
+    found = entries.dictionary(notes_src, "SELECT * FROM surveys JOIN panel.sites ON 1 = 1 JOIN x.y.z ON 1 = 1")
     assert found["tables"] == [
         {"name": "panel.sites"},
         {
@@ -142,7 +149,7 @@ def trusted(tmp_path: Path) -> Path:
 def test_list_describes_each_calculation_with_its_commit(trusted: Path) -> None:
     commit_all(trusted.parent)
     (trusted / "top_sites.py").write_text(FUNCTION + "\n")
-    listed = trust.list_calculations(trusted.parent)
+    listed = library.list_calculations(trusted.parent)
     by_name = {calc["name"]: calc for calc in listed["calculations"]}
     sql = by_name["completes_by_site"]
     assert sql["kind"] == "sql" and sql["description"] == "Completes per site between two days."
@@ -159,8 +166,8 @@ def test_list_describes_each_calculation_with_its_commit(trusted: Path) -> None:
 
 
 def test_arguments_are_checked_against_their_types() -> None:
-    params = trust.parameters_of({"start": "date", "n": "integer", "flag": {"type": "boolean", "default": False}})
-    assert trust.convert(params, {"start": "2026-01-02", "n": 3})["start"].isoformat() == "2026-01-02"
+    params = calc.parameters_of({"start": "date", "n": "integer", "flag": {"type": "boolean", "default": False}})
+    assert calc.convert(params, {"start": "2026-01-02", "n": 3})["start"].isoformat() == "2026-01-02"
     for given, said in [
         ({"start": "2026-01-02"}, "missing argument: n"),
         ({"start": "2026-01-02", "n": "3"}, "argument n must be a integer"),
@@ -168,32 +175,32 @@ def test_arguments_are_checked_against_their_types() -> None:
         ({"start": "2026-01-02", "n": 3, "x": 1}, "unknown arguments: x"),
         ({"start": "2026-01-02", "n": True}, "argument n must be a integer"),
     ]:
-        with pytest.raises(trust.Problem, match=said):
-            trust.convert(params, given)
+        with pytest.raises(calc.TrustError, match=said):
+            calc.convert(params, given)
 
 
 def test_a_template_transpiles_and_its_fixture_cases_pass(trusted: Path) -> None:
-    assert trust.placeholders(trust.split_template(TEMPLATE)[1]) == {"start", "end", "status"}
-    trust.run_case(trusted, "completes_by_site", 0)
-    assert trust.run_tests(trusted, "completes_by_site")["passed"] is True
+    assert calc.placeholders(calc.split_template(TEMPLATE)[1]) == {"start", "end", "status"}
+    fixtures.run_case(trusted, "completes_by_site", 0)
+    assert pyt.run_tests(trusted, "completes_by_site")["passed"] is True
 
 
 def test_a_failing_case_fails_the_tests(trusted: Path) -> None:
     (trusted / "completes_by_site.test.yaml").write_text(TEMPLATE_TESTS.replace("10,2", "10,3"))
     with pytest.raises(AssertionError, match="rows"):
-        trust.run_case(trusted, "completes_by_site", 0)
-    result = trust.run_tests(trusted, "completes_by_site")
+        fixtures.run_case(trusted, "completes_by_site", 0)
+    result = pyt.run_tests(trusted, "completes_by_site")
     assert result["passed"] is False and "failed" in result["output"]
 
 
 def test_a_python_calculation_runs_its_own_tests(trusted: Path) -> None:
-    result = trust.run_tests(trusted, "top_sites")
+    result = pyt.run_tests(trusted, "top_sites")
     assert result["passed"] is True and "1 passed" in result["output"]
 
 
 def test_without_tests_nothing_passes(trusted: Path) -> None:
     (trusted / "test_top_sites.py").unlink()
-    assert trust.run_tests(trusted, "top_sites") == {"passed": False, "output": "no tests: add cases to top_sites.test.yaml or write test_top_sites.py"}
+    assert pyt.run_tests(trusted, "top_sites") == {"passed": False, "output": "no tests: add cases to top_sites.test.yaml or write test_top_sites.py"}
 
 
 def test_check_runs_every_step_and_a_live_run(trusted: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -201,8 +208,8 @@ def test_check_runs_every_step_and_a_live_run(trusted: Path, monkeypatch: pytest
 
     tables = yaml_tables()
     on_cint(trusted)
-    monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: trust.fixture_engine(tables))
-    answer = trust.check(trusted, "completes_by_site", tmp_path)
+    monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: fixtures.fixture_engine(tables))
+    answer = review.check(trusted, "completes_by_site", tmp_path)
     assert [(step["step"], step["ok"]) for step in answer["steps"]] == [("form", True), ("transpile", True), ("test", True), ("live", True)]
     assert answer["steps"][0]["text"] == "SQL template, 3 parameters"
     assert answer["steps"][2]["name"] == "case 1"
@@ -229,7 +236,7 @@ def on_cint(folder: Path) -> None:
 
 def test_check_stops_at_a_template_whose_parameters_do_not_match(trusted: Path, tmp_path: Path) -> None:
     (trusted / "completes_by_site.sql").write_text(TEMPLATE.replace("  status: {type: string, default: C}\n", ""))
-    answer = trust.check(trusted, "completes_by_site", tmp_path)
+    answer = review.check(trusted, "completes_by_site", tmp_path)
     assert answer["ok"] is False
     assert answer["steps"][-1] == {"step": "transpile", "ok": False, "text": "uses :end, :start, :status but declares end, start"}
 
@@ -243,7 +250,7 @@ CTE_TEMPLATE = TEMPLATE.replace(
 
 def test_check_fails_a_template_that_breaks_the_sql_rules(trusted: Path, tmp_path: Path) -> None:
     (trusted / "completes_by_site.sql").write_text(CTE_TEMPLATE)
-    answer = trust.check(trusted, "completes_by_site", tmp_path)
+    answer = review.check(trusted, "completes_by_site", tmp_path)
     assert answer["ok"] is False
     assert [(step["step"], step["ok"]) for step in answer["steps"]] == [("form", True), ("transpile", True), ("rules", False)]
     assert answer["steps"][-1]["text"] == (
@@ -253,17 +260,17 @@ def test_check_fails_a_template_that_breaks_the_sql_rules(trusted: Path, tmp_pat
 
 def test_a_template_that_follows_the_rules_passes_its_rules_step() -> None:
     steps: list[dict[str, Any]] = []
-    body = trust.split_template(CTE_TEMPLATE)[1].replace("WITH sv AS", "WITH\n-- grain: id\nrecent_surveys AS").replace("FROM sv", "FROM recent_surveys")
+    body = calc.split_template(CTE_TEMPLATE)[1].replace("WITH sv AS", "WITH\n-- grain: id\nrecent_surveys AS").replace("FROM sv", "FROM recent_surveys")
     body = body.replace("SELECT site_id, count", "-- grain: site_id\nSELECT site_id, count")
-    assert trust.rules_step(body, steps.append) is True
+    assert review.rules_step(body, steps.append) is True
     assert steps == [{"step": "rules", "ok": True, "text": "grain, joins and names as the rules ask"}]
     plain: list[dict[str, Any]] = []
-    assert trust.rules_step(trust.split_template(TEMPLATE)[1], plain.append) is True and plain == []
+    assert review.rules_step(calc.split_template(TEMPLATE)[1], plain.append) is True and plain == []
 
 
 def test_check_needs_live_arguments_for_required_parameters(trusted: Path, tmp_path: Path) -> None:
     (trusted / "completes_by_site.test.yaml").write_text(TEMPLATE_TESTS.split("live:")[0])
-    answer = trust.check(trusted, "completes_by_site", tmp_path)
+    answer = review.check(trusted, "completes_by_site", tmp_path)
     assert answer["steps"][-1] == {"step": "live", "ok": False, "text": "no live: arguments in completes_by_site.test.yaml for the live run"}
 
 
@@ -272,11 +279,11 @@ def test_run_binds_arguments_as_parameters(trusted: Path, monkeypatch: pytest.Mo
 
     tables = {**yaml_tables(), "panel.surveys": "id,site_id\n1,10\n2,10\n3,11\n"}
     on_cint(trusted)
-    monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: trust.fixture_engine(tables))
+    monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: fixtures.fixture_engine(tables))
     # A value that would break SQL pasted in is only a value.
-    result = trust.run(trusted, "completes_by_site", {"start": "2026-01-01", "end": "2026-01-31", "status": "C' OR '1'='1"}, tmp_path)
+    result = runner.run(trusted, "completes_by_site", {"start": "2026-01-01", "end": "2026-01-31", "status": "C' OR '1'='1"}, tmp_path)
     assert result == {"columns": ["site_id", "completes"], "rows": []}
-    top = trust.run(trusted, "top_sites", {"limit": 1}, tmp_path)
+    top = runner.run(trusted, "top_sites", {"limit": 1}, tmp_path)
     assert top == {"columns": ["site_id", "completes"], "rows": [["10", "2"]]}
 
 
@@ -288,11 +295,12 @@ def test_the_run_command_reports_a_problem_as_json(trusted: Path, tmp_path: Path
 def test_a_drafted_entry_is_checked_for_its_form(tmp_path: Path) -> None:
     draft = tmp_path / "main.panel.sites.yaml"
     draft.write_text("description: Sites.\ncolumns:\n  - name: id\n    type: bigint\n")
-    answer = trust.check_entry(draft, tmp_path)
+    answer = review.check_entry(draft, tmp_path)
     assert answer["ok"] is True and answer["files"] == ["main.panel.sites.yaml"]
     assert answer["steps"] == [{"step": "form", "ok": True, "text": "1 column"}]
     draft.write_text("columns: []\n")
-    assert trust.check_entry(draft, tmp_path)["steps"] == [{"step": "form", "ok": False, "text": "needs a description"}]
+    steps = review.check_entry(draft, tmp_path)["steps"]
+    assert steps == [{"step": "form", "ok": False, "text": "needs a description"}]
 
 
 # ---------------------------------------------------------------------------
@@ -349,19 +357,19 @@ def test_a_definition_renders_with_checked_names_only() -> None:
 
     data = yaml.safe_load(ENTRY)
     t = "main.panel.surveys"
-    assert trust.render_definition(data, t, "completes", {"by": ["Site_Id"]}) == (
+    assert entries.render_definition(data, t, "completes", {"by": ["Site_Id"]}) == (
         "-- grain: site_id\nSELECT `site_id`, count_if(status = 'C') AS `completes` FROM `main`.`panel`.`surveys` GROUP BY `site_id`"
     )
-    assert trust.render_definition(data, t, "is_complete", {}) == (
+    assert entries.render_definition(data, t, "is_complete", {}) == (
         "-- grain: none\nSELECT count(*) AS `is_complete` FROM `main`.`panel`.`surveys` WHERE (status = 'C')"
     )
-    assert trust.render_definition(data, t, "site_label", {"filters": ["is_complete"]}) == (
+    assert entries.render_definition(data, t, "site_label", {"filters": ["is_complete"]}) == (
         "SELECT *, concat('site ', site_id) AS `site_label` FROM `main`.`panel`.`surveys` WHERE (status = 'C') LIMIT 100"
     )
-    with pytest.raises(trust.Problem, match="by: x; DROP is not a column"):
-        trust.render_definition(data, t, "completes", {"by": ["x; DROP"]})
-    with pytest.raises(trust.Problem, match="filters: completes is not a filter"):
-        trust.render_definition(data, t, "completes", {"filters": ["completes"]})
+    with pytest.raises(calc.TrustError, match="by: x; DROP is not a column"):
+        entries.render_definition(data, t, "completes", {"by": ["x; DROP"]})
+    with pytest.raises(calc.TrustError, match="filters: completes is not a filter"):
+        entries.render_definition(data, t, "completes", {"filters": ["completes"]})
 
 
 @pytest.fixture
@@ -378,10 +386,10 @@ def test_a_draft_with_definitions_runs_their_cases_and_a_live_run_each(draft: Pa
 
     tables = {"cint.panel.surveys": "id,site_id,status\n1,10,C\n"}
     (draft / "main.panel.surveys.yaml").write_text(ENTRY)
-    monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: trust.fixture_engine(tables))
+    monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: fixtures.fixture_engine(tables))
     # The live engine is DuckDB here, with no catalog named main: point the draft's live runs at cint.
-    monkeypatch.setattr(trust, "run_live_sql", lambda sql, analysis: _on_duckdb(sql.replace("`main`", "`cint`"), tables))
-    answer = trust.check_entry(draft / "main.panel.surveys.yaml", tmp_path)
+    monkeypatch.setattr(runner, "run_live_sql", lambda sql, _: _on_duckdb(sql.replace("`main`", "`cint`"), tables))
+    answer = review.check_entry(draft / "main.panel.surveys.yaml", tmp_path)
     assert [(step["step"], step["ok"]) for step in answer["steps"]] == [("form", True), ("transpile", True), ("test", True), ("test", True), ("test", True), ("live", True)]
     assert answer["steps"][-1]["text"] == "completes 1 row, is_complete 1 row, site_label 1 row"
     assert answer["ok"] is True
@@ -389,22 +397,22 @@ def test_a_draft_with_definitions_runs_their_cases_and_a_live_run_each(draft: Pa
 
 
 def _on_duckdb(sql: str, tables: dict[str, str]) -> dict[str, Any]:
-    engine = trust.fixture_engine(tables)
+    engine = fixtures.fixture_engine(tables)
     with engine.connect() as connection:
-        result = connection.exec_driver_sql(trust.to_duckdb(sql))
-        return {"columns": list(result.keys()), "rows": [[trust.cell(v) for v in row] for row in result]}
+        result = connection.exec_driver_sql(fixtures.to_duckdb(sql))
+        return {"columns": list(result.keys()), "rows": [[calc.cell(v) for v in row] for row in result]}
 
 
 def test_a_definition_without_a_case_cannot_pass(draft: Path, tmp_path: Path) -> None:
     (draft / "main.panel.surveys.test.yaml").write_text(ENTRY_TESTS.split("  - definition: site_label")[0])
-    answer = trust.check_entry(draft / "main.panel.surveys.yaml", tmp_path)
+    answer = review.check_entry(draft / "main.panel.surveys.yaml", tmp_path)
     assert answer["ok"] is False
     assert answer["steps"][-1] == {"step": "tests", "ok": False, "text": "no case in main.panel.surveys.test.yaml for site_label"}
 
 
 def test_a_failing_definition_case_fails(draft: Path, tmp_path: Path) -> None:
     (draft / "main.panel.surveys.test.yaml").write_text(ENTRY_TESTS.replace("      2\n", "      3\n"))
-    answer = trust.check_entry(draft / "main.panel.surveys.yaml", tmp_path)
+    answer = review.check_entry(draft / "main.panel.surveys.yaml", tmp_path)
     failed = [step for step in answer["steps"] if step["step"] == "test" and not step["ok"]]
     assert answer["ok"] is False and [step["name"] for step in failed] == ["case 2"]
 
@@ -415,7 +423,7 @@ def test_definitions_are_listed_as_calculations_with_their_entry_commit(tmp_path
     (folder / "main.panel.surveys.yaml").write_text(ENTRY)
     (folder / "main.panel.sites.yaml").write_text("description: no definitions\n")
     commit_all(tmp_path)
-    listed = trust.list_calculations(tmp_path)
+    listed = library.list_calculations(tmp_path)
     names = [calc["name"] for calc in listed["calculations"]]
     assert names == ["main.panel.surveys:completes", "main.panel.surveys:is_complete", "main.panel.surveys:site_label"]
     first = listed["calculations"][0]
@@ -424,9 +432,9 @@ def test_definitions_are_listed_as_calculations_with_their_entry_commit(tmp_path
     assert [p["name"] for p in first["parameters"]] == ["by", "filters"]
     assert [p["name"] for p in listed["calculations"][2]["parameters"]] == ["by", "filters", "limit"]
     assert first["dirty"] is False and len(first["commit"]) == 12
-    assert trust.render(tmp_path, "main.panel.surveys:completes", {"by": ["site_id"]}).endswith("GROUP BY `site_id`")
-    with pytest.raises(trust.Problem, match="argument by must be a list of names"):
-        trust.render(tmp_path, "main.panel.surveys:completes", {"by": "site_id"})
+    assert runner.render(tmp_path, "main.panel.surveys:completes", {"by": ["site_id"]}).endswith("GROUP BY `site_id`")
+    with pytest.raises(calc.TrustError, match="argument by must be a list of names"):
+        runner.render(tmp_path, "main.panel.surveys:completes", {"by": "site_id"})
 
 
 # ---------------------------------------------------------------------------
@@ -443,7 +451,7 @@ def test_a_stream_prints_start_then_each_step_then_done(trusted: Path, monkeypat
 
     tables = yaml_tables()
     on_cint(trusted)
-    monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: trust.fixture_engine(tables))
+    monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: fixtures.fixture_engine(tables))
     events = stream(capsys, "check", str(trusted), "completes_by_site", str(tmp_path))
     assert [event["event"] for event in events] == ["start", "step", "step", "step", "step", "done"]
     start = events[0]
@@ -467,7 +475,7 @@ def test_a_failing_case_streams_a_diff_of_expected_and_got(trusted: Path, tmp_pa
 
 def test_a_long_diff_is_cut(trusted: Path) -> None:
     lines = [f"{n}" for n in range(100)]
-    diff = trust.line_diff(lines, [])
+    diff = fixtures.line_diff(lines, [])
     assert diff.splitlines()[-1] == "… 60 more" and len(diff.splitlines()) == 41
 
 
@@ -504,7 +512,7 @@ def test_an_unexpected_error_streams_done_with_an_error(monkeypatch: pytest.Monk
     def boom(*_: Any, **__: Any) -> Any:
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(trust, "check", boom)
+    monkeypatch.setattr(review, "check", boom)
     assert [event for event in stream(capsys, "check", str(tmp_path), "x", str(tmp_path))] == [{"event": "done", "answer": {"error": "RuntimeError: boom"}}]
 
 

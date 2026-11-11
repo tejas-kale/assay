@@ -34,6 +34,10 @@ from typing import Any
 import sqlglot
 from sqlglot import exp
 
+import analysis_calc
+import analysis_dictionary
+import analysis_library
+
 DIALECTS = ("databricks", "postgres")
 GRAIN = re.compile(r"^\s*grain\s*:\s*(.*?)\s*$", re.IGNORECASE)
 JOIN = re.compile(r"^\s*join\s*:\s*(.*?)\s*$", re.IGNORECASE)
@@ -659,10 +663,8 @@ class Pieces:
     """The trusted pieces under a root: blocks and other templates by name, definitions by full and short name."""
 
     def __init__(self, root: Path) -> None:
-        import analysis_trust
-
         self.root = root
-        listed = analysis_trust.list_calculations(root)
+        listed = analysis_library.list_calculations(root)
         self.calcs = {calc["name"]: calc for calc in listed["calculations"] if calc["kind"] != "definition"}
         self.definitions = {calc["name"]: calc for calc in listed["calculations"] if calc["kind"] == "definition"}
         self.short: dict[str, list[str]] = {}
@@ -682,11 +684,9 @@ class Pieces:
 
     def item(self, full: str) -> dict[str, Any]:
         """Definition ``full``'s entry item: its ``kind``, ``sql`` and description."""
-        import analysis_trust
-
         table, _, name = full.partition(":")
-        entry = analysis_trust.read_entry(self.root / analysis_trust.DICTIONARIES / f"{table}.yaml")
-        return next(item for item in analysis_trust.definitions_of(entry) if item["name"] == name)
+        entry = analysis_dictionary.read_entry(self.root / analysis_dictionary.DICTIONARIES / f"{table}.yaml")
+        return next(item for item in analysis_dictionary.definitions_of(entry) if item["name"] == name)
 
     def expression(self, full: str) -> str:
         return str(self.item(full)["sql"]).strip()
@@ -699,8 +699,6 @@ def expand(sql: str, dialect: str, root: Path | str, pieces: Pieces | None = Non
     <block>`` and each definition expanded; ``built_from`` lists the pieces in order of first use, ``blocks`` which CTE
     holds which block. ``{"errors": [...]}`` when a piece is unknown, misused or not trusted as committed.
     """
-    import analysis_trust
-
     if dialect not in DIALECTS:
         raise ValueError(f"dialect {dialect!r} is not one of {', '.join(DIALECTS)}")
     if "{{" not in sql:
@@ -749,7 +747,7 @@ def expand(sql: str, dialect: str, root: Path | str, pieces: Pieces | None = Non
                 errors.append(f"{written}: a block is the whole body of a CTE, e.g. sessions AS ({written}).")
             else:
                 try:
-                    values = analysis_trust.convert(calc["parameters"], _block_args(calc["parameters"], args))
+                    values = analysis_calc.convert(calc["parameters"], _block_args(calc["parameters"], args))
                 except Exception as error:
                     errors.append(f"{written}: {error}; {name}({', '.join(p['name'] + ('' if p['required'] else '?') + ': ' + p['type'] for p in calc['parameters'])}).")
                     values = None

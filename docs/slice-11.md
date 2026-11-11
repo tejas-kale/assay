@@ -1,6 +1,6 @@
 # Slice 11 spec: process, gates, backend in the app, CI/CD, auto-update, tab settings, audit
 
-Status: 11a and 11b built, 2026-11-10. 11c built and released: v0.1.0, signed with the Developer ID and notarized, 2026-11-11 (docs/process/ci-release.md). 11d built, 2026-11-11; its manual test on the Mac is still to run. 11e built, 2026-11-11; not yet tried in the running app. Written from the grilling session of 2026-11-10, after reading Assay's
+Status: 11a and 11b built, 2026-11-10. 11c built and released: v0.1.0, signed with the Developer ID and notarized, 2026-11-11 (docs/process/ci-release.md). 11d built, 2026-11-11; its manual test on the Mac is still to run. 11e built, 2026-11-11; not yet tried in the running app. 11f in progress: `analysis_trust.py` done, 2026-11-11. Written from the grilling session of 2026-11-10, after reading Assay's
 code.
 
 Seven slices, built in this order. Each ships, with CI green, before the next one starts:
@@ -434,6 +434,11 @@ until it is green).
 - Codex reviews each session's commits against `docs/process/coding-standards.md`.
 - Done when `eslint-suppressions.json`, `python/ruff-baseline.json` and `coverage-baseline.json` are empty and
   deleted, and the ratchet then requires the full bar everywhere.
+- Progress: `analysis_trust.py` (2026-11-11) is now the command line only, over `analysis_calc`, `analysis_dictionary`,
+  `analysis_library`, `analysis_runner`, `analysis_fixtures`, `analysis_pytest`, `analysis_blocks` and
+  `analysis_review`. `list` and `dictionary` still load neither SQLAlchemy nor DuckDB; `analysis_trust.fixture_engine`
+  still works for a calculation's own tests. `Problem` is now `TrustError` and `Mismatch` `MismatchError` (ruff's
+  N818); only a failing run's pytest summary line shows the new names. Next: `DataPane.tsx`.
 
 ## Slice 11g: security audit
 

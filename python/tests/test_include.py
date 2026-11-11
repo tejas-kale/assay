@@ -11,8 +11,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import analysis_sql as sql_  # noqa: E402
-import analysis_trust as trust  # noqa: E402
+import analysis_calc as calc
+import analysis_fixtures as fixtures
+import analysis_review as review
+import analysis_runner as runner
+import analysis_sql as sql_
 
 BLOCK = """/*---
 description: One row per entry session in a date range.
@@ -180,8 +183,8 @@ def test_a_block_may_not_include_a_block(root: Path) -> None:
     commit_all(root)
     found = sql_.expand("WITH\n-- grain: buyer_id\nb AS ({{ nested() }})\nSELECT * FROM b", "databricks", root)
     assert "block nested includes block all_buyers" in found["errors"][0]
-    with pytest.raises(trust.Problem, match="includes block all_buyers"):
-        trust.expand_template((root / "trusted" / "nested.sql").read_text(), root, "nested")
+    with pytest.raises(calc.TrustError, match="includes block all_buyers"):
+        runner.expand_template((root / "trusted" / "nested.sql").read_text(), root, "nested")
 
 
 def test_lineage_and_steps_draw_a_block_as_one_node_and_one_step(root: Path) -> None:
@@ -223,8 +226,8 @@ def test_a_template_including_a_definition_is_checked_expanded(root: Path, tmp_p
         "-- rebuilt by: codex\nSELECT session_id, buyer_id, status FROM cint.mkt.sessions\nWHERE day >= :start AND day <= :end AND lk_responsestatusid = 3 AND surveyid > 0\n"
     )
     tables = {"cint.mkt.sessions": "session_id,buyer_id,status,day,lk_responsestatusid,surveyid\n1,10,1,2026-11-02,3,7\n2,10,1,2026-11-03,2,7\n3,11,2,2026-11-04,3,8\n"}
-    monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: trust.fixture_engine(tables))
-    answer = trust.check(drafts, "entry_sessions", analysis)
+    monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: fixtures.fixture_engine(tables))
+    answer = review.check(drafts, "entry_sessions", analysis)
     assert [(step["step"], step["ok"]) for step in answer["steps"]] == [
         ("form", True), ("transpile", True), ("contract", True), ("live", True), ("grain", True), ("rebuild", True),
     ], answer["steps"]

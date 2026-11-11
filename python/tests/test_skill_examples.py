@@ -14,7 +14,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import analysis_trust as trust  # noqa: E402
+import analysis_fixtures as fixtures
+import analysis_review as review
+import analysis_runner as runner
 
 SKILL = Path(__file__).resolve().parents[2] / "plugin" / "skills" / "propose-trusted" / "SKILL.md"
 EXAMPLE = re.compile(r"<!-- example: (\S+) -->\n```\w*\n(.*?)\n```", re.DOTALL)
@@ -56,29 +58,29 @@ def test_the_skill_holds_one_example_per_kind() -> None:
 
 def check_without_live(monkeypatch: pytest.MonkeyPatch, check, *args):
     """The check's answer; the live step runs against no warehouse here, so it is stubbed and left out."""
-    monkeypatch.setattr(trust, "run", lambda *a, **k: {"columns": [], "rows": []})
-    monkeypatch.setattr(trust, "run_live_sql", lambda *a, **k: {"columns": [], "rows": []})
+    monkeypatch.setattr(runner, "run", lambda *a, **k: {"columns": [], "rows": []})
+    monkeypatch.setattr(runner, "run_live_sql", lambda *a, **k: {"columns": [], "rows": []})
     return check(*args)
 
 
 def test_the_sql_template_passes_form_transpile_and_fixture_cases(analysis: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     folder = analysis / "lib" / "trusted"
-    answer = check_without_live(monkeypatch, trust.check, folder, "completes_by_site", analysis)
+    answer = check_without_live(monkeypatch, review.check, folder, "completes_by_site", analysis)
     assert steps_before_live(answer) == [("form", True), ("transpile", True), ("test", True)]
-    assert trust.load_tests(folder, "completes_by_site").get("live"), "the fixture has live arguments"
+    assert fixtures.load_tests(folder, "completes_by_site").get("live"), "the fixture has live arguments"
     assert answer["ok"] is True
 
 
 def test_the_python_function_passes_form_and_its_own_pytest(analysis: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     folder = analysis / "lib" / "trusted"
-    answer = check_without_live(monkeypatch, trust.check, folder, "top_sites", analysis)
+    answer = check_without_live(monkeypatch, review.check, folder, "top_sites", analysis)
     assert steps_before_live(answer) == [("form", True), ("test", True)]
     assert answer["ok"] is True
 
 
 def test_the_dictionary_entry_passes_form_transpile_and_its_definition_case(analysis: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     draft = analysis / "lib" / "dictionaries" / "main.panel.surveys.yaml"
-    answer = check_without_live(monkeypatch, trust.check_entry, draft, analysis)
+    answer = check_without_live(monkeypatch, review.check_entry, draft, analysis)
     assert steps_before_live(answer) == [("form", True), ("transpile", True), ("test", True)]
     assert answer["ok"] is True
 
@@ -86,7 +88,7 @@ def test_the_dictionary_entry_passes_form_transpile_and_its_definition_case(anal
 def test_an_invalid_example_fails(analysis: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     sql = analysis / "lib" / "trusted" / "completes_by_site.sql"
     sql.write_text(sql.read_text().replace(":status", ":state"))
-    answer = check_without_live(monkeypatch, trust.check, sql.parent, "completes_by_site", analysis)
+    answer = check_without_live(monkeypatch, review.check, sql.parent, "completes_by_site", analysis)
     assert answer["ok"] is False and ("transpile", False) in steps_before_live(answer)
 
 
@@ -97,12 +99,12 @@ def test_the_block_passes_every_step_on_fixture_tables(analysis: Path, monkeypat
         "main_.panel.surveys": "id,site_id,status,day\n1,10,C,2026-01-02\n2,11,S,2026-01-03\n3,10,C,2026-02-01\n",
         "main_.panel.sites": "site_id,name\n10,North\n11,South\n",
     }
-    monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: trust.fixture_engine(tables))
+    monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: fixtures.fixture_engine(tables))
     # DuckDB reserves the catalog main; the fixture engine names it main_, so the live SQL does too.
     for name in ("site_surveys.sql", "site_surveys.rebuild.sql"):
         path = analysis / "lib" / "trusted" / name
         path.write_text(path.read_text().replace("main.panel", "main_.panel"))
-    answer = trust.check(analysis / "lib" / "trusted", "site_surveys", analysis)
+    answer = review.check(analysis / "lib" / "trusted", "site_surveys", analysis)
     assert [(step["step"], step["ok"]) for step in answer["steps"]] == [
         ("form", True), ("transpile", True), ("rules", True), ("contract", True), ("live", True), ("grain", True), ("rebuild", True),
     ]

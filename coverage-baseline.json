@@ -74,9 +74,5 @@
   "python/analysis_sql.py": {
     "lines": 94.61,
     "branches": 88.16
-  },
-  "python/analysis_trust.py": {
-    "lines": 88.98,
-    "branches": 80.06
   }
 }
