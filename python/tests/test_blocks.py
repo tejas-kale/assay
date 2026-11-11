@@ -10,8 +10,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import analysis_calc as calc
+import analysis_db
 import analysis_fixtures as fixtures
 import analysis_review as review
+
+SAMPLE_ROWS = 3
 
 BLOCK = """/*---
 description: One row per entry session in a date range, with its buyer's name.
@@ -40,7 +43,8 @@ WHERE buy.buyer_id = ses.buyer_id AND ses.day >= :start AND ses.day <= :end
 """
 
 TABLES = {
-    "cint.mkt.sessions": "session_id,buyer_id,day\n1,10,2026-11-01\n2,10,2026-11-02\n3,11,2026-11-02\n4,11,2026-12-01\n",
+    "cint.mkt.sessions": "session_id,buyer_id,day\n1,10,2026-11-01\n2,10,2026-11-02\n3,11,2026-11-02\n"
+    "4,11,2026-12-01\n",
     "cint.mkt.buyers": "buyer_id,name\n10,Acme\n11,Bolt\n",
 }
 
@@ -49,8 +53,6 @@ TESTS = "live: {start: 2026-11-01, end: 2026-11-30}\n"
 
 @pytest.fixture
 def drafts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    import analysis_db
-
     folder = tmp_path / "lib" / "trusted"
     folder.mkdir(parents=True)
     (folder / "entry_sessions.sql").write_text(BLOCK)
@@ -76,28 +78,46 @@ def test_describe_and_list_carry_the_block_contract(drafts: Path) -> None:
 
 def test_a_block_passes_contract_grain_and_rebuild(drafts: Path, tmp_path: Path) -> None:
     answer = review.check(drafts, "entry_sessions", tmp_path)
-    assert steps(answer) == [("form", True), ("transpile", True), ("rules", True), ("contract", True), ("live", True), ("grain", True), ("rebuild", True)]
+    assert steps(answer) == [
+        ("form", True),
+        ("transpile", True),
+        ("rules", True),
+        ("contract", True),
+        ("live", True),
+        ("grain", True),
+        ("rebuild", True),
+    ]
     assert answer["ok"] is True
     assert text_of(answer, "form") == "SQL block, 2 parameters"
     assert text_of(answer, "contract") == "params start, end -> grain session_id -> 3 columns"
     assert text_of(answer, "grain") == "grain session_id: 3 rows, 3 distinct"
     assert text_of(answer, "rebuild") == "block and rebuild (codex) agree: 3 rows"
     assert answer["files"] == ["entry_sessions.sql", "entry_sessions.test.yaml", "entry_sessions.rebuild.sql"]
-    assert answer["sample"]["total"] == 3
+    assert answer["sample"]["total"] == SAMPLE_ROWS
 
 
 def test_the_contract_must_match_the_sql(drafts: Path, tmp_path: Path) -> None:
-    (drafts / "entry_sessions.sql").write_text(BLOCK.replace("    day: the entry day\n", "    entry_day: the entry day\n"))
+    (drafts / "entry_sessions.sql").write_text(
+        BLOCK.replace("    day: the entry day\n", "    entry_day: the entry day\n")
+    )
     answer = review.check(drafts, "entry_sessions", tmp_path)
     assert steps(answer)[-1] == ("contract", False)
-    assert text_of(answer, "contract") == "the SQL returns session_id, buyer, day; the contract says session_id, buyer, entry_day"
+    assert (
+        text_of(answer, "contract")
+        == "the SQL returns session_id, buyer, day; the contract says session_id, buyer, entry_day"
+    )
     (drafts / "entry_sessions.sql").write_text(BLOCK.replace("-- grain: session_id\n", "-- grain: session_id, day\n"))
-    assert text_of(review.check(drafts, "entry_sessions", tmp_path), "contract") == "the final SELECT's grain line says session_id, day; the contract says session_id"
+    assert (
+        text_of(review.check(drafts, "entry_sessions", tmp_path), "contract")
+        == "the final SELECT's grain line says session_id, day; the contract says session_id"
+    )
 
 
 def test_a_long_block_warns_but_passes(drafts: Path, tmp_path: Path) -> None:
     padding = "".join(f"-- note {i}\n" for i in range(30))
-    (drafts / "entry_sessions.sql").write_text(BLOCK.replace("-- grain: session_id\n", padding + "-- grain: session_id\n"))
+    (drafts / "entry_sessions.sql").write_text(
+        BLOCK.replace("-- grain: session_id\n", padding + "-- grain: session_id\n")
+    )
     answer = review.check(drafts, "entry_sessions", tmp_path)
     assert answer["ok"] is True
     assert "warning: 36 lines; a block is about 30 at most" in text_of(answer, "contract")
@@ -110,8 +130,6 @@ def test_a_block_needs_live_arguments(drafts: Path, tmp_path: Path) -> None:
 
 
 def test_duplicate_grain_rows_fail(drafts: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import analysis_db
-
     doubled = {**TABLES, "cint.mkt.buyers": "buyer_id,name\n10,Acme\n10,Acme Ltd\n11,Bolt\n"}
     monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: fixtures.fixture_engine(doubled))
     answer = review.check(drafts, "entry_sessions", tmp_path)
@@ -120,7 +138,9 @@ def test_duplicate_grain_rows_fail(drafts: Path, tmp_path: Path, monkeypatch: py
 
 
 def test_rows_on_one_side_only_fail_the_rebuild(drafts: Path, tmp_path: Path) -> None:
-    (drafts / "entry_sessions.rebuild.sql").write_text(REBUILD.replace("ses.day <= :end", "ses.day < :end AND ses.buyer_id = 10"))
+    (drafts / "entry_sessions.rebuild.sql").write_text(
+        REBUILD.replace("ses.day <= :end", "ses.day < :end AND ses.buyer_id = 10")
+    )
     answer = review.check(drafts, "entry_sessions", tmp_path)
     assert steps(answer)[-1] == ("rebuild", False)
     lines = text_of(answer, "rebuild").splitlines()
@@ -131,13 +151,21 @@ def test_rows_on_one_side_only_fail_the_rebuild(drafts: Path, tmp_path: Path) ->
 def test_the_rebuild_must_exist_be_signed_and_return_the_contract(drafts: Path, tmp_path: Path) -> None:
     rebuild = drafts / "entry_sessions.rebuild.sql"
     rebuild.write_text(REBUILD.replace("-- rebuilt by: codex\n", ""))
-    assert text_of(review.check(drafts, "entry_sessions", tmp_path), "rebuild") == "entry_sessions.rebuild.sql has no '-- rebuilt by: codex|copilot-opus' line"
+    assert (
+        text_of(review.check(drafts, "entry_sessions", tmp_path), "rebuild")
+        == "entry_sessions.rebuild.sql has no '-- rebuilt by: codex|copilot-opus' line"
+    )
     rebuild.write_text(REBUILD.replace("AS buyer", "AS buyer_name"))
     assert "returns session_id, day, buyer_name" in text_of(review.check(drafts, "entry_sessions", tmp_path), "rebuild")
     rebuild.write_text(REBUILD.replace("codex", "copilot-opus"))
-    assert text_of(review.check(drafts, "entry_sessions", tmp_path), "rebuild") == "block and rebuild (copilot-opus) agree: 3 rows"
+    assert (
+        text_of(review.check(drafts, "entry_sessions", tmp_path), "rebuild")
+        == "block and rebuild (copilot-opus) agree: 3 rows"
+    )
     rebuild.unlink()
-    assert text_of(review.check(drafts, "entry_sessions", tmp_path), "rebuild").startswith("no entry_sessions.rebuild.sql")
+    assert text_of(review.check(drafts, "entry_sessions", tmp_path), "rebuild").startswith(
+        "no entry_sessions.rebuild.sql"
+    )
 
 
 def test_a_bad_contract_is_a_form_problem(drafts: Path, tmp_path: Path) -> None:

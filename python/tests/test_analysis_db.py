@@ -4,20 +4,25 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import ClassVar
 
+import databricks.sdk.core
+import databricks.sql
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import analysis_db  # noqa: E402
+import analysis_db
 
 HOST = "https://cint-prd-mkt.cloud.databricks.com"
+CLOSED_TWICE = 2  # the SQL statement with no rows and the one before it each closed their connection
+ENGINES_AFTER_NEW_CATALOG = 2
 
 
 class FakeConfig:
     """Stands for databricks.sdk.core.Config: records its arguments, never runs the CLI."""
 
-    made: list[dict[str, str]] = []
+    made: ClassVar[list[dict[str, str]]] = []
 
     def __init__(self, **kwargs: str) -> None:
         FakeConfig.made.append(kwargs)
@@ -32,9 +37,6 @@ class FakeConfig:
 @pytest.fixture
 def connects(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
     """Patches the SDK's Config and the connector's connect; returns the connect calls' keyword arguments."""
-    import databricks.sdk.core
-    import databricks.sql
-
     FakeConfig.made = []
     monkeypatch.setattr(databricks.sdk.core, "Config", FakeConfig)
     calls: list[dict] = []
@@ -64,7 +66,10 @@ def test_read_target_unescapes_quotes_like_the_server() -> None:
 
 
 def test_read_target_reads_double_quotes_as_json_strings() -> None:
-    assert analysis_db.read_target('profile: "a\\nb"\nwarehouse: "tab\\there"\n') == {"profile": "a\nb", "warehouse": "tab\there"}
+    assert analysis_db.read_target('profile: "a\\nb"\nwarehouse: "tab\\there"\n') == {
+        "profile": "a\nb",
+        "warehouse": "tab\there",
+    }
 
 
 def test_find_marker_is_the_nearest(tmp_path: Path) -> None:
@@ -82,7 +87,10 @@ def test_find_marker_skips_a_folder_named_like_it(tmp_path: Path) -> None:
 
 
 def test_engine_url_has_the_warehouse_path_and_no_credentials() -> None:
-    assert analysis_db.engine_url(HOST, "w1") == "databricks://cint-prd-mkt.cloud.databricks.com?http_path=/sql/1.0/warehouses/w1"
+    assert (
+        analysis_db.engine_url(HOST, "w1")
+        == "databricks://cint-prd-mkt.cloud.databricks.com?http_path=/sql/1.0/warehouses/w1"
+    )
     assert (
         analysis_db.engine_url("cint.example.com/", "w1", "main", "sales")
         == "databricks://cint.example.com?http_path=/sql/1.0/warehouses/w1&catalog=main&schema=sales"
@@ -103,7 +111,9 @@ def test_engine_uses_the_marker_and_the_cli_login(tmp_path: Path, connects: list
     assert connects == []
 
 
-def test_a_connection_gets_the_credentials_provider_and_no_cloud_fetch_or_telemetry(tmp_path: Path, connects: list[dict]) -> None:
+def test_a_connection_gets_the_credentials_provider_and_no_cloud_fetch_or_telemetry(
+    tmp_path: Path, connects: list[dict]
+) -> None:
     (tmp_path / "analysis.yaml").write_text("")
     engine = analysis_db.engine(tmp_path)
     with pytest.raises(Exception, match="no network in tests"):
@@ -129,7 +139,9 @@ def test_without_a_marker_the_defaults_apply(tmp_path: Path, connects: list[dict
     assert FakeConfig.made[0]["profile"] == "Cint mkt"
 
 
-def test_with_no_start_it_looks_from_the_working_directory(tmp_path: Path, connects: list[dict], monkeypatch: pytest.MonkeyPatch) -> None:
+def test_with_no_start_it_looks_from_the_working_directory(
+    tmp_path: Path, connects: list[dict], monkeypatch: pytest.MonkeyPatch
+) -> None:
     (tmp_path / "analysis.yaml").write_text("warehouse: here\n")
     nested = tmp_path / "lib"
     nested.mkdir()
@@ -188,6 +200,6 @@ def test_sql_returns_a_frame_and_keeps_one_engine_per_marker(tmp_path: Path, mon
     # Sent as written: no bind parameters, no escaping.
     assert made[0].ran == ["select country, count(*) n from t where x::int > 0 and y like '%a'"]
     assert analysis_db.sql("set x = 1", start=tmp_path / "lib") is None
-    assert len(made) == 1 and made[0].closed == 2
+    assert len(made) == 1 and made[0].closed == CLOSED_TWICE
     analysis_db.sql("select 1", start=tmp_path, catalog="main")
-    assert len(made) == 2 and made[1].catalog == "main"
+    assert len(made) == ENGINES_AFTER_NEW_CATALOG and made[1].catalog == "main"

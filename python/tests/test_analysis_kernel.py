@@ -5,6 +5,7 @@ The venv needs ipykernel, jupyter_client, pandas, polars, pyarrow, matplotlib an
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import queue
@@ -13,14 +14,23 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 import pytest
 
 HERE = Path(__file__).resolve().parents[1]
 SCRIPT = HERE / "analysis_kernel.py"
 DEADLINE = 90.0
+SMALL_TABLE_ROWS = 3
+BIG_TABLE_ROWS = 100_050
+ROW_CAP = 100_000  # the preload's row cap: the csv keeps this many rows and a header
+SUMMARY_ROWS = 50  # rows of each table in the summary line
+KEPT_TABLES_AND_PLOTS = 20
+STDOUT_CAP = 1_000_000
+SUMMARY_STDOUT = 4000
+EXIT_NO_IPYKERNEL = 2
 
 
 class Serve:
@@ -111,7 +121,8 @@ class Analysis:
                 stdout, stderr = proc.communicate()
             record = self.path(f"{self.counter:03d}_x.json")
             pytest.fail(
-                f"run {self.counter} did not end in {DEADLINE}s\n--- stdout\n{stdout}\n--- stderr (thread stacks)\n{stderr}"
+                f"run {self.counter} did not end in {DEADLINE}s\n--- stdout\n{stdout}\n"
+                f"--- stderr (thread stacks)\n{stderr}"
                 f"\n--- {record.name}\n{record.read_text() if record.exists() else '(none)'}"
             )
         assert proc.returncode == 0, stderr
@@ -172,7 +183,7 @@ def test_a_dataframe_becomes_a_table_file(kernel: Analysis) -> None:
     assert summary["stdout"] == ""  # a table is not repeated as text
     table = summary["tables"][0]
     assert table["file"] == f"{kernel.counter:03d}_x.t1.csv"
-    assert table["columns"] == ["a", "b"] and table["rowCount"] == 3 and table["truncated"] is False
+    assert table["columns"] == ["a", "b"] and table["rowCount"] == SMALL_TABLE_ROWS and table["truncated"] is False
     assert table["rows"] == [["1", "x"], ["2", "y"], ["3", "z"]]
     assert kernel.path(table["file"]).read_text() == "a,b\n1,x\n2,y\n3,z\n"
     assert kernel.result()["tables"] == [{k: v for k, v in table.items() if k != "rows"}]
@@ -195,9 +206,9 @@ def test_display_shows_several_tables_in_order_and_series_and_polars_work(kernel
 def test_the_row_cap_truncates_the_csv_and_keeps_the_count(kernel: Analysis) -> None:
     summary = kernel.run("import pandas as pd\npd.DataFrame({'a': range(100_050)})\n")
     table = summary["tables"][0]
-    assert table["rowCount"] == 100_050 and table["truncated"] is True
-    assert len(kernel.path(table["file"]).read_text().splitlines()) == 100_001
-    assert len(table["rows"]) == 50
+    assert table["rowCount"] == BIG_TABLE_ROWS and table["truncated"] is True
+    assert len(kernel.path(table["file"]).read_text().splitlines()) == ROW_CAP + 1
+    assert len(table["rows"]) == SUMMARY_ROWS
 
 
 def test_at_most_twenty_tables_and_plots_are_kept(kernel: Analysis) -> None:
@@ -207,7 +218,7 @@ def test_at_most_twenty_tables_and_plots_are_kept(kernel: Analysis) -> None:
         "    display(pd.DataFrame({'i': [i]}))\n"
         "    fig = plt.figure(); plt.plot([i]); plt.show()\n"
     )
-    assert len(summary["tables"]) == 20 and len(summary["plots"]) == 20
+    assert len(summary["tables"]) == KEPT_TABLES_AND_PLOTS and len(summary["plots"]) == KEPT_TABLES_AND_PLOTS
     assert not kernel.path(f"{kernel.counter:03d}_x.t21.csv").exists()
 
 
@@ -222,7 +233,7 @@ def test_a_figure_becomes_a_png(kernel: Analysis) -> None:
 def test_svg_only_output_becomes_an_svg(kernel: Analysis) -> None:
     summary = kernel.run(
         "from IPython.display import SVG, display\n"
-        "display(SVG('<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"4\" height=\"4\"></svg>'))\n"
+        'display(SVG(\'<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"></svg>\'))\n'
     )
     assert summary["plots"] == [f"{kernel.counter:03d}_x.p1.svg"]
     assert kernel.path(summary["plots"][0]).read_text().startswith("<svg")
@@ -245,15 +256,17 @@ def test_state_persists_between_runs(kernel: Analysis) -> None:
 def test_stdout_past_a_megabyte_is_cut_and_marked(kernel: Analysis) -> None:
     summary = kernel.run("print('x' * 1_200_000)\n")
     result = kernel.result()
-    assert result["stdoutTruncated"] is True and len(result["stdout"]) == 1_000_000
-    assert len(summary["stdout"]) == 4000
+    assert result["stdoutTruncated"] is True and len(result["stdout"]) == STDOUT_CAP
+    assert len(summary["stdout"]) == SUMMARY_STDOUT
 
 
 def test_the_analysis_folder_is_cwd_and_first_on_the_path(kernel: Analysis) -> None:
     (kernel.dir / "lib").mkdir(exist_ok=True)
     (kernel.dir / "lib" / "__init__.py").write_text("")
     (kernel.dir / "lib" / "helpers.py").write_text("ANSWER = 42\n")
-    summary = kernel.run("import os\nfrom lib.helpers import ANSWER\nprint(ANSWER)\nprint(os.path.basename(os.getcwd()))\n")
+    summary = kernel.run(
+        "import os\nfrom lib.helpers import ANSWER\nprint(ANSWER)\nprint(os.path.basename(os.getcwd()))\n"
+    )
     assert summary["status"] == "ok", summary
     assert summary["stdout"].splitlines() == ["42", "analysis"]
 
@@ -296,8 +309,13 @@ def test_q_step_reads_a_steps_csv_by_number_or_name_and_final_is_the_runs_own(ke
     (queries / "095_spend.csv").write_text("id\n1\n")
     (queries / "095.1_orders_clean.csv").write_text("a\n10\n20\n")
     (queries / "095.2_orders_by_day.csv").write_text("a\n5\n")
-    (queries / "095.steps.json").write_text(json.dumps({"steps": [{"name": "orders_clean"}, {"name": "orders_by_day"}, {"name": "final"}]}))
-    summary = kernel.run("a = q(95, step=1)\nb = q(95, step='orders_by_day')\nc = q(95, step=3)\nd = q(95, step='final')\nprint(len(a), len(b), list(c.id), list(d.id))\n")
+    (queries / "095.steps.json").write_text(
+        json.dumps({"steps": [{"name": "orders_clean"}, {"name": "orders_by_day"}, {"name": "final"}]})
+    )
+    summary = kernel.run(
+        "a = q(95, step=1)\nb = q(95, step='orders_by_day')\nc = q(95, step=3)\nd = q(95, step='final')\n"
+        "print(len(a), len(b), list(c.id), list(d.id))\n"
+    )
     assert summary["status"] == "ok", summary
     assert summary["stdout"].endswith("2 1 [1] [1]\n")
     assert summary["reads"] == [95]
@@ -305,7 +323,11 @@ def test_q_step_reads_a_steps_csv_by_number_or_name_and_final_is_the_runs_own(ke
 
 def test_q_step_that_does_not_exist_raises_lookup_error(kernel: Analysis) -> None:
     (kernel.dir / "queries" / "096_spend.csv").write_text("id\n1\n")
-    for call, message in (("q(96, step=3)", "Run 096 has no step 3"), ("q(96, step='nope')", "Run 096 has no step nope"), ("q(97, step=1)", "Run 097 has no step 1")):
+    for call, message in (
+        ("q(96, step=3)", "Run 096 has no step 3"),
+        ("q(96, step='nope')", "Run 096 has no step nope"),
+        ("q(97, step=1)", "Run 097 has no step 1"),
+    ):
         summary = kernel.run(call + "\n")
         assert summary["status"] == "error" and summary["error"]["name"] == "LookupError"
         assert summary["error"]["message"] == message
@@ -348,9 +370,25 @@ def test_a_run_against_no_kernel_exits_non_zero_with_an_error_file(tmp_path: Pat
     (folder / "queries").mkdir(parents=True)
     (folder / "queries" / "001_x.py").write_text("1\n")
     done = subprocess.run(
-        [sys.executable, str(SCRIPT), "run", "--connection", str(tmp_path / "nope.json"), "--analysis", str(folder),
-         "--code-file", "queries/001_x.py", "--timeout", "5", "--serve-pid", "1"],
-        capture_output=True, text=True, timeout=DEADLINE,
+        [
+            sys.executable,
+            str(SCRIPT),
+            "run",
+            "--connection",
+            str(tmp_path / "nope.json"),
+            "--analysis",
+            str(folder),
+            "--code-file",
+            "queries/001_x.py",
+            "--timeout",
+            "5",
+            "--serve-pid",
+            "1",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=DEADLINE,
+        check=False,
     )
     assert done.returncode != 0
     assert json.loads(done.stdout)["error"]["name"] == "KernelUnreachable"
@@ -403,8 +441,10 @@ def test_serve_stops_when_its_parent_dies(tmp_path: Path) -> None:
     launcher = (
         "import subprocess, sys\n"
         f"p = subprocess.Popen([sys.executable, {str(SCRIPT)!r}, 'serve', '--analysis', {str(tmp_path)!r},"
-        f" '--connection', {str(tmp_path / 'c.json')!r}], stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdout=open({str(out)!r}, 'w'))\n"
-        f"import time\nwhile 'ready' not in open({str(out)!r}).read():\n    time.sleep(0.1)\n"  # the parent must be recorded first
+        f" '--connection', {str(tmp_path / 'c.json')!r}], stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL,"
+        f" stdout=open({str(out)!r}, 'w'))\n"
+        # the parent must be recorded first
+        f"import time\nwhile 'ready' not in open({str(out)!r}).read():\n    time.sleep(0.1)\n"
         "print(p.pid, flush=True)\n"
     )
     done = subprocess.run([sys.executable, "-c", launcher], capture_output=True, text=True, check=True)
@@ -419,10 +459,8 @@ def test_serve_stops_when_its_parent_dies(tmp_path: Path) -> None:
             pytest.fail("serve kept running after its parent died")
         assert '"stopped"' in out.read_text()
     finally:
-        try:
+        with contextlib.suppress(ProcessLookupError):
             os.kill(pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
 
 
 def test_a_serve_pid_of_zero_signals_nobody(fresh: Analysis) -> None:
@@ -431,14 +469,16 @@ def test_a_serve_pid_of_zero_signals_nobody(fresh: Analysis) -> None:
     cmd[cmd.index("--serve-pid") + 1] = "0"
     cmd[cmd.index("--timeout") + 1] = "1"
     started = time.monotonic()
-    done = subprocess.run(cmd, capture_output=True, text=True, timeout=DEADLINE)
+    done = subprocess.run(cmd, capture_output=True, text=True, timeout=DEADLINE, check=False)
     assert json.loads(done.stdout)["status"] in ("error", "interrupted")  # gave up after the grace, no signal sent
     assert time.monotonic() - started < DEADLINE
     assert fresh.serve.events.empty()  # serve was never interrupted
 
 
 def test_serve_reports_a_kernel_that_dies_by_itself(fresh: Analysis) -> None:
-    pids = subprocess.run(["pgrep", "-P", str(fresh.serve.proc.pid)], capture_output=True, text=True).stdout.split()
+    pids = subprocess.run(
+        ["pgrep", "-P", str(fresh.serve.proc.pid)], capture_output=True, text=True, check=False
+    ).stdout.split()
     assert pids
     for pid in pids:
         os.kill(int(pid), signal.SIGKILL)
@@ -461,6 +501,6 @@ def test_serve_says_missing_when_ipykernel_is_not_installed(tmp_path: Path) -> N
         assert event["message"] == (
             "ipykernel is not installed in this Python. Assay's venv has it: open Settings and see the Doctor."
         )
-        assert serve.proc.wait(timeout=30) == 2
+        assert serve.proc.wait(timeout=30) == EXIT_NO_IPYKERNEL
     finally:
         serve.stop()
