@@ -7,6 +7,8 @@ import { test } from 'node:test'
 import { promisify } from 'node:util'
 
 import { expect } from '../testing/expect.ts'
+import { byCodeUnit } from './codeUnitOrder.ts'
+import { parseFactLine, rewriteBody } from './migrateNotes.ts'
 
 const run = promisify(execFile)
 const at = (h: number, m: number, s: number) => new Date(2026, 5, 1, h, m, s)
@@ -90,7 +92,7 @@ test('an org-mode #+title: prefix on a link line or fact is left out of the titl
   await put(root, 'analyses/alpha/notes.md', `${link}\n#+TITLE:Upper case fact\n[#+title: ](<x.org>)\n`, at(10, 0, 0))
   await migrate(root, '--apply')
   const notes = await tree(root, 'notes')
-  expect(Object.keys(notes).map(name => name.replace(/^notes\/\d{8}T\d{6}-/, '')).sort()).toEqual(['engage-discounted-counters-matured-completes-and-returns.md', 'title.md', 'upper-case-fact.md'])
+  expect(Object.keys(notes).map(name => name.replace(/^notes\/\d{8}T\d{6}-/, '')).sort(byCodeUnit)).toEqual(['engage-discounted-counters-matured-completes-and-returns.md', 'title.md', 'upper-case-fact.md'])
   const engage = Object.entries(notes).find(([name]) => name.includes('engage'))?.[1]
   expect(engage).toBe(`# Engage discounted counters: matured, completes and returns\n\n${link}\n`)
 })
@@ -107,7 +109,7 @@ test('a rerun changes nothing', async () => {
 test('it refuses while slice 6 is not applied', async () => {
   const root = await scratchRoot()
   await put(root, 'investigations/old/.analysis', '')
-  const failed = await migrate(root, '--apply').then(() => undefined, (error: { code: number; stderr: string }) => error)
+  const failed = await migrate(root, '--apply').then(() => undefined, (error: unknown) => error as { code: number; stderr: string })
   expect(failed?.code).toBe(2)
   expect(failed?.stderr).toContain('migrate:root')
   expect(await readdir(join(root, 'analyses/alpha'))).toContain('notes.md')
@@ -147,4 +149,31 @@ test('a rerun after a crash at any point ends where an uninterrupted run ends', 
     // And a further rerun finds nothing to do.
     expect((await planNotes(nodeFsPort, root)).analyses).toEqual([])
   }
+})
+
+test('a fact line gives up its trailing label and keeps the query it cited', () => {
+  const body = (line: string) => parseFactLine(line).body('alpha')
+  expect(parseFactLine('Churn is 4% [trusted q 3]').title).toBe('Churn is 4%')
+  expect(body('Churn is 4% [trusted q 3]')).toBe('Churn is 4% [alpha q 3]')
+  expect(body('Churn   \t[q 12]')).toBe('Churn [alpha q 12]')
+  expect(body('Churn [unverified]')).toBe('Churn')
+  // `[trusted]` without a query is not a label the mod wrote: the line stays whole.
+  expect(body('Churn [trusted]')).toBe('Churn [trusted]')
+  expect(body('[q 5]')).toBe('[q 5] [alpha q 5]')
+  // The tag is the last `[`, and a line break before it keeps the line whole.
+  expect(body('a [x] [q 2]')).toBe('a [x] [alpha q 2]')
+  expect(body('a\rb [q 2]')).toBe('a\rb [q 2]')
+  expect(body('a [q 2] tail')).toBe('a [q 2] tail')
+  expect(parseFactLine('[text](<x.md>)').title).toBe('text')
+})
+
+test('[[target]] links resolve outside fences, and a run of opening brackets stays linear', () => {
+  const idOf = (target: string) => (target === 'one' ? '20260601T100000' : undefined)
+  const done = rewriteBody('see [[one]] and [[ one ]], [[none]] [q 4]\n```\n[[one]]\n```\n', 'alpha', idOf)
+  expect(done.text).toBe('see [[20260601T100000]] and [[20260601T100000]], [[none]] [alpha q 4]\n```\n[[one]]\n```\n')
+  expect(done.unresolved).toEqual(['none'])
+  expect(rewriteBody('[[]] [[a\nb]] [[[one]]', 'alpha', idOf).text).toBe('[[]] [[a\nb]] [[[one]]')
+  expect(rewriteBody('[[[one]]', 'alpha', () => 'X').text).toBe('[[X]]')
+  const long = '[['.repeat(50000)
+  expect(rewriteBody(long, 'alpha', idOf).text).toBe(long)
 })

@@ -35,46 +35,93 @@ const isEqual = (a: unknown, b: unknown) => {
   }
 }
 
-function matchers(actual: unknown, negate: boolean): Matchers {
-  const check = (ok: boolean, message: string) => {
-    if (ok === negate) assert.fail(`${negate ? 'not: ' : ''}${message}`)
+/** How a matcher set reports: `check` fails when the claim's truth is not the one wanted; `toBe` and `toEqual` may use assert's own diffs. */
+type Mode = {
+  check: (ok: boolean, message: string) => void
+  toBe: (actual: unknown, expected: unknown, message: string) => void
+  toEqual: (actual: unknown, expected: unknown, message: string) => void
+}
+
+const positive: Mode = {
+  check: (ok, message) => {
+    if (!ok) assert.fail(message)
+  },
+  toBe: (actual, expected) => {
+    assert.equal(actual, expected)
+  },
+  toEqual: (actual, expected) => {
+    assert.deepStrictEqual(actual, expected)
+  },
+}
+
+const negated: Mode = {
+  check: (ok, message) => {
+    if (ok) assert.fail(`not: ${message}`)
+  },
+  toBe: (actual, expected, message) => {
+    negated.check(Object.is(actual, expected), message)
+  },
+  toEqual: (actual, expected, message) => {
+    negated.check(isEqual(actual, expected), message)
+  },
+}
+
+const show = (v: unknown): string => {
+  try {
+    return typeof v === 'string' ? JSON.stringify(v) : JSON.stringify(v, (_key: string, x: unknown) => (x instanceof Set ? [...x] : x))
+  } catch {
+    return String(v)
   }
-  const show = (v: unknown) => {
-    try {
-      return typeof v === 'string' ? JSON.stringify(v) : JSON.stringify(v, (_, x) => (x instanceof Set ? [...x] : x))
-    } catch {
-      return String(v)
-    }
+}
+
+function ordering(actual: unknown, check: Mode['check']): Pick<Matchers, 'toBeGreaterThan' | 'toBeGreaterThanOrEqual' | 'toBeLessThan' | 'toBeLessThanOrEqual'> {
+  const compare = (op: string, test: (n: number) => boolean) => (n: number) => {
+    check(test(n), `expected ${show(actual)} ${op} ${String(n)}`)
   }
   return {
+    toBeGreaterThan: compare('>', n => (actual as number) > n),
+    toBeGreaterThanOrEqual: compare('>=', n => (actual as number) >= n),
+    toBeLessThan: compare('<', n => (actual as number) < n),
+    toBeLessThanOrEqual: compare('<=', n => (actual as number) <= n),
+  }
+}
+
+function matchers(actual: unknown, mode: Mode): Matchers {
+  const { check } = mode
+  return {
+    ...ordering(actual, check),
     toBe: expected => {
-      if (!negate) assert.equal(actual, expected)
-      else check(Object.is(actual, expected), `expected ${show(actual)} to be ${show(expected)}`)
+      mode.toBe(actual, expected, `expected ${show(actual)} to be ${show(expected)}`)
     },
     toEqual: expected => {
-      if (!negate) assert.deepStrictEqual(actual, expected)
-      else check(isEqual(actual, expected), `expected ${show(actual)} to equal ${show(expected)}`)
+      mode.toEqual(actual, expected, `expected ${show(actual)} to equal ${show(expected)}`)
     },
-    toMatchObject: expected => check(matches(actual, expected), `expected ${show(actual)} to match ${show(expected)}`),
+    toMatchObject: expected => {
+      check(matches(actual, expected), `expected ${show(actual)} to match ${show(expected)}`)
+    },
     toContain: expected => {
       const ok = typeof actual === 'string' ? actual.includes(String(expected)) : Array.isArray(actual) && actual.includes(expected)
       check(ok, `expected ${show(actual)} to contain ${show(expected)}`)
     },
-    toContainEqual: expected => check(Array.isArray(actual) && actual.some(each => isEqual(each, expected)), `expected ${show(actual)} to contain ${show(expected)}`),
+    toContainEqual: expected => {
+      check(Array.isArray(actual) && actual.some(each => isEqual(each, expected)), `expected ${show(actual)} to contain ${show(expected)}`)
+    },
     toMatch: expected => {
       const text = String(actual)
       check(typeof expected === 'string' ? text.includes(expected) : expected.test(text), `expected ${show(actual)} to match ${String(expected)}`)
     },
-    toBeUndefined: () => check(actual === undefined, `expected ${show(actual)} to be undefined`),
-    toBeDefined: () => check(actual !== undefined, 'expected a value, got undefined'),
-    toHaveLength: length => check((actual as { length?: unknown } | null)?.length === length, `expected ${show(actual)} to have length ${length}`),
-    toBeGreaterThan: n => check((actual as number) > n, `expected ${show(actual)} > ${n}`),
-    toBeGreaterThanOrEqual: n => check((actual as number) >= n, `expected ${show(actual)} >= ${n}`),
-    toBeLessThan: n => check((actual as number) < n, `expected ${show(actual)} < ${n}`),
-    toBeLessThanOrEqual: n => check((actual as number) <= n, `expected ${show(actual)} <= ${n}`),
+    toBeUndefined: () => {
+      check(actual === undefined, `expected ${show(actual)} to be undefined`)
+    },
+    toBeDefined: () => {
+      check(actual !== undefined, 'expected a value, got undefined')
+    },
+    toHaveLength: length => {
+      check((actual as { length?: unknown } | null)?.length === length, `expected ${show(actual)} to have length ${String(length)}`)
+    },
   }
 }
 
 export function expect(actual: unknown): Matchers & { not: Matchers } {
-  return { ...matchers(actual, false), not: matchers(actual, true) }
+  return { ...matchers(actual, positive), not: matchers(actual, negated) }
 }

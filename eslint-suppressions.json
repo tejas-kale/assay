@@ -1,14 +1,4 @@
 {
-  "scripts/import-denote.ts": {
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 2
-    }
-  },
-  "scripts/postinstall.mjs": {
-    "sonarjs/no-os-command-from-path": {
-      "count": 3
-    }
-  },
   "src/core/age.ts": {
     "@typescript-eslint/restrict-template-expressions": {
       "count": 6
@@ -492,75 +482,6 @@
     },
     "sonarjs/no-nested-conditional": {
       "count": 1
-    }
-  },
-  "src/migrate/importDenote.test.ts": {
-    "sonarjs/no-alphabetical-sort": {
-      "count": 1
-    }
-  },
-  "src/migrate/importDenote.ts": {
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 3
-    },
-    "sonarjs/no-alphabetical-sort": {
-      "count": 2
-    },
-    "sonarjs/super-linear-regex": {
-      "count": 1
-    }
-  },
-  "src/migrate/migrateNotes.test.ts": {
-    "@typescript-eslint/use-unknown-in-catch-callback-variable": {
-      "count": 1
-    },
-    "sonarjs/no-alphabetical-sort": {
-      "count": 1
-    }
-  },
-  "src/migrate/migrateNotes.ts": {
-    "@typescript-eslint/no-meaningless-void-operator": {
-      "count": 2
-    },
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 6
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    },
-    "sonarjs/no-alphabetical-sort": {
-      "count": 1
-    },
-    "sonarjs/no-nested-conditional": {
-      "count": 3
-    },
-    "sonarjs/super-linear-regex": {
-      "count": 4
-    },
-    "sonarjs/void-use": {
-      "count": 2
-    }
-  },
-  "src/migrate/migrateRoot.test.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 13
-    }
-  },
-  "src/migrate/migrateRoot.ts": {
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    },
-    "sonarjs/no-alphabetical-sort": {
-      "count": 1
-    },
-    "sonarjs/no-nested-conditional": {
-      "count": 3
     }
   },
   "src/preload/index.ts": {
@@ -1213,25 +1134,6 @@
     },
     "sonarjs/no-os-command-from-path": {
       "count": 1
-    }
-  },
-  "src/testing/bundle.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/testing/expect.ts": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 9
-    },
-    "@typescript-eslint/no-unsafe-return": {
-      "count": 1
-    },
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 5
-    },
-    "sonarjs/no-selector-parameter": {
-      "count": 2
     }
   }
 }

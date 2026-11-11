@@ -6,6 +6,7 @@
 import { readdir, readFile, stat, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
+import { byCodeUnit } from './codeUnitOrder.ts'
 import { isNoteId, noteFileName, noteIds, noteLines, noteSegments, noteText, NOTES_DIR } from '../core/rootNotes.ts'
 
 const SKIP_TAGS = ['recap', 'source']
@@ -26,11 +27,20 @@ function scalar(value: string): string {
   }
 }
 
+/** A `key: value` line: a lower-case key, its colon, then the value after any white space; not a line whose value holds a line break character. */
+export function parseField(line: string): { key: string; value: string } | undefined {
+  const match = /^([a-z_]+):([\s\S]*)$/.exec(line)
+  const key = match?.[1]
+  const value = match?.[2]?.trimStart()
+  if (!key || value === undefined || /[\n\r\u2028\u2029]/.test(value)) return undefined
+  return { key, value }
+}
+
 function frontMatter(yaml: string): Record<string, string> {
   const fields: Record<string, string> = {}
   for (const line of yaml.split('\n')) {
-    const match = /^([a-z_]+):\s*(.*)$/.exec(line)
-    if (match?.[1]) fields[match[1]] = match[2] ?? ''
+    const field = parseField(line)
+    if (field) fields[field.key] = field.value
   }
   return fields
 }
@@ -69,7 +79,7 @@ export function convertDenote(name: string, text: string): Converted {
 export async function planImport(from: string, root: string): Promise<ImportPlan> {
   const existing = new Set(noteIds(await readdir(join(root, NOTES_DIR)).catch(() => [] as string[])))
   const plan: ImportPlan = { notes: [], skipped: [], unresolved: [] }
-  for (const name of (await readdir(from)).filter(each => each.endsWith('.md')).sort()) {
+  for (const name of (await readdir(from)).filter(each => each.endsWith('.md')).sort(byCodeUnit)) {
     const path = join(from, name)
     const converted = convertDenote(name, await readFile(path, 'utf8'))
     if (!converted.ok) plan.skipped.push({ from: name, reason: converted.reason })
@@ -78,7 +88,7 @@ export async function planImport(from: string, root: string): Promise<ImportPlan
   }
   const known = new Set([...existing, ...plan.notes.map(note => note.id)])
   const linked = plan.notes.flatMap(note => noteSegments(note.text).flatMap(segment => (segment.type === 'link' ? [segment.id] : [])))
-  plan.unresolved = [...new Set(linked.filter(id => !known.has(id)))].sort()
+  plan.unresolved = [...new Set(linked.filter(id => !known.has(id)))].sort(byCodeUnit)
   return plan
 }
 
@@ -95,9 +105,9 @@ export function printImportReport(plan: ImportPlan, applied: boolean): string {
   const reasons = new Map<string, number>()
   for (const each of plan.skipped) reasons.set(each.reason, (reasons.get(each.reason) ?? 0) + 1)
   return [
-    `${applied ? 'Wrote' : 'Would write'} ${plan.notes.length} notes.`,
-    ...[...reasons].map(([reason, count]) => `Not imported (${reason}): ${count}`),
-    ...(plan.unresolved.length > 0 ? [`Links to notes not imported (they show as written): ${plan.unresolved.length}: ${plan.unresolved.join(', ')}`] : []),
+    `${applied ? 'Wrote' : 'Would write'} ${String(plan.notes.length)} notes.`,
+    ...[...reasons].map(([reason, count]) => `Not imported (${reason}): ${String(count)}`),
+    ...(plan.unresolved.length > 0 ? [`Links to notes not imported (they show as written): ${String(plan.unresolved.length)}: ${plan.unresolved.join(', ')}`] : []),
     ...(applied ? [] : ['Dry run: pass --apply to write.']),
     '',
   ].join('\n')

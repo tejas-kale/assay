@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
-import { applyImport, convertDenote, planImport } from './importDenote.ts'
+import { byCodeUnit } from './codeUnitOrder.ts'
+import { applyImport, convertDenote, parseField, planImport } from './importDenote.ts'
 
 const FINDING = `---
 title: "PS-8420 removes \\"dynamic\\" models from vw_panel"
@@ -79,8 +80,24 @@ test('import writes new notes only, never over an existing ID, and reports links
   assert.deepEqual(plan.unresolved, ['20261006T090118'])
 
   await applyImport(root, plan)
-  assert.deepEqual((await readdir(join(root, 'notes'))).sort(), ['20261006T100001-ps-8420-removes-dynamic-models-from-vw-panel.md', '20261006T100003-already.md'])
+  assert.deepEqual((await readdir(join(root, 'notes'))).sort(byCodeUnit), ['20261006T100001-ps-8420-removes-dynamic-models-from-vw-panel.md', '20261006T100003-already.md'])
   assert.equal(await readFile(join(root, 'notes', '20261006T100003-already.md'), 'utf8'), '# Already\n')
   // A rerun finds nothing new.
   assert.equal((await planImport(from, root)).notes.length, 0)
+})
+
+test('a front matter field is a lower-case key, a colon, and the value after any white space', () => {
+  assert.deepEqual(parseField('title: A "b"'), { key: 'title', value: 'A "b"' })
+  assert.deepEqual(parseField('as_of:2026-10-06'), { key: 'as_of', value: '2026-10-06' })
+  assert.deepEqual(parseField('status:  \t spaced  '), { key: 'status', value: 'spaced  ' })
+  assert.deepEqual(parseField('tags:'), { key: 'tags', value: '' })
+  // White space that is a line break counts as the gap, so an empty value with a carriage return still has a key.
+  assert.deepEqual(parseField('tags:\r'), { key: 'tags', value: '' })
+  assert.deepEqual(parseField('a:  b'), { key: 'a', value: 'b' })
+  // A line break after the value, or a key that is not lower case, is not a field.
+  assert.equal(parseField('title: x\r'), undefined)
+  assert.equal(parseField('title: x y'), undefined)
+  assert.equal(parseField('Title: x'), undefined)
+  assert.equal(parseField(': x'), undefined)
+  assert.equal(parseField('  title: x'), undefined)
 })

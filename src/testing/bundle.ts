@@ -21,7 +21,7 @@ export function bundle(): Promise<string> {
 /** Runs a script with `node`, the given stdin and environment; its stdout, stderr and exit code. */
 export function runNode(script: string, input: string, env: Record<string, string | undefined>): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise(done => {
-    const child = execFile(process.execPath, [script], { env: env as NodeJS.ProcessEnv }, (error, stdout, stderr) => {
+    const child = execFile(process.execPath, [script], { env }, (error, stdout, stderr) => {
       done({ code: error ? Number((error as { code?: unknown }).code ?? 1) : 0, stdout, stderr })
     })
     child.stdin?.end(input)

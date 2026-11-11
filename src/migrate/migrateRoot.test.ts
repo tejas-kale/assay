@@ -10,6 +10,12 @@ import { expect } from '../testing/expect.ts'
 
 const run = promisify(execFile)
 const MARK = '# Marks this folder for the analysis mod.\n'
+/** A tree entry that must be there. */
+function entry(tree: Record<string, string>, path: string): string {
+  const value = tree[path]
+  if (value === undefined) throw new Error(`no entry ${path}`)
+  return value
+}
 const at = (y: number, m: number, d: number) => new Date(y, m - 1, d, 12)
 
 async function put(root: string, path: string, text: string, when?: Date) {
@@ -77,36 +83,36 @@ test('--apply writes analysis.yaml, moves marked folders into analyses/, removes
   const out = await migrate(root, '--apply')
   expect(out).toContain('Applied: 5 folders.')
   const after = await tree(root)
-  const time = (path: string) => before[path]
+  const time = (path: string) => entry(before, path)
   expect(after).toEqual({
     'analyses/alpha/analysis.yaml': 'title: Alpha\ncreated: 2026-03-05\nprofile: DEFAULT\nwarehouse: w1 # mine\n',
     'analyses/alpha/notes.md': 'a fact\n',
     'analyses/alpha/queries/001_a.sql': 'SELECT 1\n',
     'analyses/alpha/queries/002_b.sql': 'SELECT 2\n',
-    'analyses/alpha/queries/': before['analyses/alpha/queries/']!,
-    'analyses/alpha/': time('analyses/alpha/')!,
+    'analyses/alpha/queries/': entry(before, 'analyses/alpha/queries/'),
+    'analyses/alpha/': time('analyses/alpha/'),
     'analyses/alpha-2/analysis.yaml': 'title: Alpha\ncreated: 2026-02-03\npg_database: panel\n',
     'analyses/alpha-2/notes.md': 'the other alpha\n',
-    'analyses/alpha-2/': time('investigations/alpha/')!,
+    'analyses/alpha-2/': time('investigations/alpha/'),
     'analyses/beta-two/analysis.yaml': 'title: Beta two\ncreated: 2026-04-02\n',
-    'analyses/beta-two/': time('analyses/beta_two/')!,
+    'analyses/beta-two/': time('analyses/beta_two/'),
     'analyses/delta/analysis.yaml': 'title: Delta\ncreated: 2026-05-06\n',
     'analyses/delta/lib/__init__.py': '',
-    'analyses/delta/lib/': before['explorations/delta/lib/']!,
-    'analyses/delta/': time('explorations/delta/')!,
+    'analyses/delta/lib/': entry(before, 'explorations/delta/lib/'),
+    'analyses/delta/': time('explorations/delta/'),
     'analyses/done/analysis.yaml': 'title: Already done\n',
-    'analyses/done/': time('analyses/done/')!,
+    'analyses/done/': time('analyses/done/'),
     'analyses/gamma-run/analysis.yaml': 'title: Gamma run\ncreated: 2026-01-10\n',
     'analyses/gamma-run/threads.md': '## Open\n\n## Closed\n',
-    'analyses/gamma-run/': time('investigations/gamma-run/')!,
+    'analyses/gamma-run/': time('investigations/gamma-run/'),
     'analyses/plain/notes.md': 'no marker\n',
-    'analyses/plain/': time('analyses/plain/')!,
+    'analyses/plain/': time('analyses/plain/'),
     'investigations/CLAUDE.md': 'old mod text\n',
     'investigations/bare/notes.md': 'unmarked\n',
-    'investigations/bare/': time('investigations/bare/')!,
-    'investigations/': after['investigations/']!,
-    'explorations/': after['explorations/']!,
-    'analyses/': after['analyses/']!,
+    'investigations/bare/': time('investigations/bare/'),
+    'investigations/': entry(after, 'investigations/'),
+    'explorations/': entry(after, 'explorations/'),
+    'analyses/': entry(after, 'analyses/'),
   })
 })
 
