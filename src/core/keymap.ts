@@ -86,14 +86,28 @@ export function paletteCommands({ isUpdateReady }: { isUpdateReady: boolean }): 
 /** What a tab or pane command does under the user's tab settings. */
 export type TabAction = { type: 'show'; tab: TabId; pane: Pane } | { type: 'toast'; text: string }
 
-const FOCUS_PANE: Partial<Record<CommandId, Pane>> = { 'focus.notes': 'notes', 'focus.data': 'data' }
+/** Commands carried out by a pane, which a hidden pane cannot do. */
+const PANE_OF: Partial<Record<CommandId, Pane>> = {
+  'focus.notes': 'notes',
+  'focus.data': 'data',
+  'code.run': 'data',
+  'pin.toggle': 'data',
+  'run.interrupt': 'data',
+  'kernel.restart': 'data',
+  'replay.open': 'data',
+}
+/** Commands that open a tab of their own. */
+const OPENS_TAB: Partial<Record<CommandId, TabId>> = { 'code.edit': 'code', 'code.new': 'code' }
 
 /**
- * A `tab.*` command shows its tab, or the toast while that tab is off; Ctrl+2 or Ctrl+3 aimed at a pane whose tabs
- * are all off gives that pane's toast. Undefined for every other command, and for a pane that has a tab on.
+ * A `tab.*` command shows its tab, or the toast while that tab is off. A command that opens a tab (⌘E opens Code)
+ * gives that tab's toast while it is off, and one a pane carries out (Ctrl+2, Ctrl+3, ⌘↩, ...) gives the pane's toast
+ * while every tab of it is off. Undefined for every other command, and whenever the command can go ahead.
  */
 export function tabAction(id: CommandId, prefs: TabPrefs): TabAction | undefined {
-  const pane = FOCUS_PANE[id]
+  const opens = OPENS_TAB[id]
+  if (opens) return isTabOn(prefs, opens) ? undefined : { type: 'toast', text: tabOffText(opens) }
+  const pane = PANE_OF[id]
   if (pane) return isPaneHidden(prefs, pane) ? { type: 'toast', text: paneOffText(pane) } : undefined
   const tab = TABS.find(t => id === `tab.${t.id}`)
   if (!tab) return undefined

@@ -1,4 +1,5 @@
 // Settings > Tabs and Settings > Strip (docs/slice-11.md, 11e). Each change is saved at once and every analysis follows.
+import { useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
 
 import type { StripPrefs, StripShow } from '../../core/strip.ts'
@@ -36,7 +37,8 @@ function TabRow(props: Readonly<{ id: TabId; on: boolean; first: boolean; last: 
     >
       <label>
         <input type="checkbox" checked={on} onChange={e => {
-            onChange(prefs => setTabOn(prefs, id, e.target.checked))
+            const checked = e.target.checked
+            onChange(prefs => setTabOn(prefs, id, checked))
           }} />
         {tabSpec(id).title}
       </label>
@@ -54,10 +56,25 @@ function TabRow(props: Readonly<{ id: TabId; on: boolean; first: boolean; last: 
   )
 }
 
-export function TabSettings({ tabs }: Readonly<{ tabs: TabPrefs }>) {
-  const change = (update: (prefs: TabPrefs) => TabPrefs) => {
-    void window.app.settings.setTabs(update(tabs))
+/**
+ * Saves `next` and keeps it as the base of the following change, so a second click before the first save comes back
+ * builds on the first rather than undoing it. A broadcast from main replaces the base.
+ */
+function useLatest<T>(saved: T, save: (next: T) => void): (update: (current: T) => T) => void {
+  const latest = useRef(saved)
+  useEffect(() => {
+    latest.current = saved
+  }, [saved])
+  return update => {
+    latest.current = update(latest.current)
+    save(latest.current)
   }
+}
+
+export function TabSettings({ tabs }: Readonly<{ tabs: TabPrefs }>) {
+  const change = useLatest(tabs, next => {
+    void window.app.settings.setTabs(next)
+  })
   return (
     <section className="settings-section">
       <h2>Tabs</h2>
@@ -81,9 +98,9 @@ export function TabSettings({ tabs }: Readonly<{ tabs: TabPrefs }>) {
 const SHOW_LABEL: Record<keyof StripShow, string> = { title: 'Title', state: 'Claude state', run: 'Run in progress', number: 'Number (⌘1…⌘9)' }
 
 export function StripSettings({ strip }: Readonly<{ strip: StripPrefs }>) {
-  const save = (next: StripPrefs) => {
+  const change = useLatest(strip, next => {
     void window.app.settings.setStrip(next)
-  }
+  })
   return (
     <section className="settings-section">
       <h2>Analysis strip</h2>
@@ -91,7 +108,7 @@ export function StripSettings({ strip }: Readonly<{ strip: StripPrefs }>) {
         {(['bottom', 'left'] as const).map(side => (
           <label key={side}>
             <input type="radio" name="strip-side" checked={strip.side === side} onChange={() => {
-                save({ ...strip, side })
+                change(s => ({ ...s, side }))
               }} />
             {side === 'bottom' ? 'Bottom' : 'Left'}
           </label>
@@ -101,7 +118,8 @@ export function StripSettings({ strip }: Readonly<{ strip: StripPrefs }>) {
         {(Object.keys(SHOW_LABEL) as (keyof StripShow)[]).map(part => (
           <label key={part}>
             <input type="checkbox" checked={strip.show[part]} onChange={e => {
-                save({ ...strip, show: { ...strip.show, [part]: e.target.checked } })
+                const on = e.target.checked
+                change(s => ({ ...s, show: { ...s.show, [part]: on } }))
               }} />
             {SHOW_LABEL[part]}
           </label>
@@ -109,7 +127,8 @@ export function StripSettings({ strip }: Readonly<{ strip: StripPrefs }>) {
       </div>
       <label>
         <input type="checkbox" checked={strip.autoHide} onChange={e => {
-            save({ ...strip, autoHide: e.target.checked })
+            const on = e.target.checked
+            change(s => ({ ...s, autoHide: on }))
           }} />
         Hide the strip while one analysis is open
       </label>

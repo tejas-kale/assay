@@ -68,14 +68,16 @@ export function Workspace({ state, tabPrefs, notesTab, dataTab, onNotesTab, onDa
   // Runs after the commit, so a just-switched tab already has its focus target.
   useEffect(() => {
     if (!focusRequest) return
-    if (focusRequest.pane === 'terminal') {
+    // A pane hidden by Settings > Tabs cannot take the keys: they go to Claude instead.
+    const hiddenPane = focusRequest.pane !== 'terminal' && isPaneHidden(tabPrefs, focusRequest.pane)
+    if (focusRequest.pane === 'terminal' || hiddenPane) {
       terminalRef.current?.focus()
       return
     }
     const section = focusRequest.pane === 'notes' ? notesRef.current : dataRef.current
     const target = section?.querySelector<HTMLElement>('[data-focus-target]') ?? section
     target?.focus()
-  }, [focusRequest])
+  }, [focusRequest, tabPrefs])
 
   return (
     <div className={['workspace', zoomed && 'zoomed', ...hidden].filter(Boolean).join(' ')}>

@@ -198,3 +198,15 @@ test('focusing a pane whose tabs are all off resolves to the toast; other comman
   assert.equal(tabAction('focus.notes', prefs), undefined)
   assert.equal(tabAction('palette.open', prefs), undefined)
 })
+
+test('a command that opens Code toasts while Code is off; one aimed at the data pane toasts while that pane is hidden', () => {
+  const codeOff = setTabOn(defaultTabPrefs(), 'code', false)
+  assert.deepEqual(tabAction('code.edit', codeOff), { type: 'toast', text: 'Code tab is off: Settings (⌘,)' })
+  assert.deepEqual(tabAction('code.new', codeOff), { type: 'toast', text: 'Code tab is off: Settings (⌘,)' })
+  assert.equal(tabAction('code.edit', defaultTabPrefs()), undefined)
+  let hidden = defaultTabPrefs()
+  for (const id of ['data', 'plots', 'code', 'history', 'steps', 'trust'] as const) hidden = setTabOn(hidden, id, false)
+  for (const id of ['code.run', 'pin.toggle', 'run.interrupt', 'kernel.restart', 'replay.open'] as const) {
+    assert.deepEqual(tabAction(id, hidden), { type: 'toast', text: 'Every Data pane tab is off: Settings (⌘,)' }, id)
+  }
+})
