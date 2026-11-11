@@ -11,12 +11,20 @@ import { CHANNELS } from '../shared/ipc.ts'
 import type { EditResult, NoteCreateResult, NoteReadResult, OpenResult, PlotResult, RequestResult, SetRootResult, SettingsView } from '../shared/ipc.ts'
 import { analysisRoot, chooseRootPath, readSettings, saveRoot, saveStrip, saveTabs } from './settings.ts'
 import { listFiles, openChart, openFile, previewFile } from './browse.ts'
-import { THREADS, editFile, fsPort, loadState, markOverviewRead, readPlot, readRun, readSearchContents, rootOf, writeRequest } from './files.ts'
+import { fsPort, rootOf } from './fsAccess.ts'
+import { THREADS, loadState } from './files.ts'
+import { readSearchContents } from './noteFiles.ts'
+import { markOverviewRead } from './overviewFiles.ts'
+import { editFile, writeRequest } from './requestFiles.ts'
+import { readPlot, readRun } from './runFiles.ts'
 import { addRootNote, readCitedRun, readRootNote, saveRootNote } from './notes.ts'
 import { doctorView, openBlocker, recheck } from './runtime.ts'
 import { forgetToken, requestRestart, saveToken, updateView } from './update.ts'
-import { attachAnalysis, contextFor, hostWindow, openPicker, publishSettings, pushState, requestClose, retitle, showAnalysis, startPty, toggleStripSide } from './windows.ts'
-import type { WindowCtx } from './windows.ts'
+import { attachAnalysis, pushState, startPty } from './windows.ts'
+import { contextFor, hostWindow } from './windowState.ts'
+import type { WindowCtx } from './windowState.ts'
+import { publishSettings, toggleStripSide } from './windowStrip.ts'
+import { openPicker, requestClose, retitle, showAnalysis } from './windowViews.ts'
 
 const MAX_WRITE = 1 << 20
 const MAX_TEXT = 100_000
@@ -65,7 +73,7 @@ const asClosed = (v: unknown): ClosedThread | undefined => {
 
 const NO_ROOT = 'Set the analysis folder in Settings first.'
 
-export function registerIpc() {
+function registerSettingsIpc() {
   handle(CHANNELS.analysesList, async () => {
     const root = await analysisRoot()
     return root ? listAnalyses(fsPort, root) : []
@@ -101,7 +109,9 @@ export function registerIpc() {
   handle(CHANNELS.updateRestart, () => {
     requestRestart()
   })
+}
 
+function registerAnalysisIpc() {
   handle(CHANNELS.analysesCreate, async (ctx, title): Promise<OpenResult> => {
     if (typeof title !== 'string' || title.length > 200) return { ok: false, message: 'Invalid title' }
     const blocker = openBlocker()
@@ -141,7 +151,9 @@ export function registerIpc() {
       return { ok: false, message: err instanceof Error ? err.message : String(err) }
     }
   })
+}
 
+function registerPtyIpc() {
   handle(CHANNELS.ptyStart, (ctx, cols, rows) => {
     if (isSize(cols) && isSize(rows)) void startPty(ctx, cols, rows)
   })
@@ -153,7 +165,9 @@ export function registerIpc() {
   listen(CHANNELS.ptyResize, (ctx, cols, rows) => {
     if (isSize(cols) && isSize(rows)) ctx.session?.resize(cols, rows)
   })
+}
 
+function registerThreadIpc() {
   handle(CHANNELS.stateGet, ctx => (ctx.analysis ? loadState(ctx.analysis) : undefined))
 
   handle(CHANNELS.threadsAdd, (ctx, thread) =>
@@ -183,7 +197,9 @@ export function registerIpc() {
       ? edit(ctx, THREADS, () => text => moveOpen(text, index, expected, delta))
       : invalid('Invalid input'),
   )
+}
 
+function registerFileIpc() {
   handle(CHANNELS.filesList, ctx => (ctx.analysis ? listFiles(ctx.analysis.path) : []))
   handle(CHANNELS.filesOpen, (ctx, path) => {
     if (!ctx.analysis || typeof path !== 'string' || path.length > 4096) return { ok: false, message: 'Invalid path' }
@@ -195,7 +211,7 @@ export function registerIpc() {
   })
   handle(CHANNELS.filesOpenChart, (ctx, path, svg, colors) => {
     const color = (key: string) => {
-      const value = typeof colors === 'object' && colors !== null ? Reflect.get(colors, key) : undefined
+      const value: unknown = typeof colors === 'object' && colors !== null ? Reflect.get(colors, key) : undefined
       return typeof value === 'string' && /^#[0-9a-f]{3,8}$/i.test(value) ? value : undefined
     }
     const [bg, text] = [color('bg'), color('text')]
@@ -204,9 +220,12 @@ export function registerIpc() {
     return openChart(ctx.analysis.path, path, svg, { bg, text })
   })
   handle(CHANNELS.searchContents, ctx => (ctx.analysis ? readSearchContents(ctx.analysis.path) : { notes: [], runs: [] }))
+}
+
+function registerRunIpc() {
   handle(CHANNELS.runRead, (ctx, number, options) => {
     if (!ctx.analysis || !isIndex(number)) return undefined
-    const option = (key: string) => (typeof options === 'object' && options !== null ? Reflect.get(options, key) : undefined)
+    const option = (key: string): unknown => (typeof options === 'object' && options !== null ? Reflect.get(options, key) : undefined)
     const table = option('table')
     const step = option('step')
     return readRun(ctx.analysis.path, number, { ...(isIndex(table) && { table }), ...(isIndex(step) && { step }) })
@@ -220,13 +239,16 @@ export function registerIpc() {
     const parsed = parseRunRequest(request)
     return 'error' in parsed ? { ok: false, message: parsed.error } : writeRequest(ctx.analysis.path, parsed)
   })
+}
+
+function registerNoteIpc() {
   handle(CHANNELS.notesRead, (ctx, name): Promise<NoteReadResult> | NoteReadResult => {
     if (!ctx.analysis || typeof name !== 'string' || name.length > 255) return { ok: false, message: 'Invalid name' }
     return readRootNote(rootOf(ctx.analysis.path), name)
   })
   handle(CHANNELS.notesAdd, async (ctx, title, text): Promise<NoteCreateResult> => {
     if (!ctx.analysis || !isText(title) || !isText(text)) return { ok: false, message: 'Invalid input' }
-    const result = await addRootNote(rootOf(ctx.analysis.path), ctx.analysis, title, text)
+    const result = await addRootNote(rootOf(ctx.analysis.path), ctx.analysis, { title, body: text })
     await pushState(ctx)
     return result
   })
@@ -246,7 +268,9 @@ export function registerIpc() {
     if (!ctx.analysis || typeof analysis !== 'string' || analysis.length > 200 || !isIndex(number)) return undefined
     return readCitedRun(rootOf(ctx.analysis.path), analysis, number)
   })
+}
 
+function registerWindowIpc() {
   handle(CHANNELS.windowNew, () => {
     openPicker()
   })
@@ -261,4 +285,15 @@ export function registerIpc() {
   handle(CHANNELS.stripSide, () => {
     toggleStripSide()
   })
+}
+
+export function registerIpc() {
+  registerSettingsIpc()
+  registerAnalysisIpc()
+  registerPtyIpc()
+  registerThreadIpc()
+  registerFileIpc()
+  registerRunIpc()
+  registerNoteIpc()
+  registerWindowIpc()
 }

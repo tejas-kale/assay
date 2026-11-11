@@ -12,7 +12,9 @@ import { StaleEdit } from '../core/errors.ts'
 import { noteCitations, parseNoteFileName, writeRootNote } from '../core/rootNotes.ts'
 import type { EditResult, NoteCreateResult, NoteReadResult, RunView } from '../shared/ipc.ts'
 import { currentCommit } from '../shared/trustedCommit.ts'
-import { editFile, notesDir, readRun } from './files.ts'
+import { notesDir } from './noteFiles.ts'
+import { editFile } from './requestFiles.ts'
+import { readRun } from './runFiles.ts'
 
 const MAX_NOTE_BYTES = 2 * 1024 * 1024
 const ANALYSES = 'analyses'
@@ -41,17 +43,22 @@ export async function readRootNote(root: string, name: string): Promise<NoteRead
   }
 }
 
+export type NewNote = { title: string; body: string; now?: Date }
+
 /**
  * Writes a new note for the analysis: its ID is the time now (a second later while taken), bare citations are
  * qualified with the analysis's slug, and the ID goes into `notes.written`. The file is never overwritten.
  */
-export async function addRootNote(root: string, analysis: AnalysisRef, title: string, body: string, now = new Date()): Promise<NoteCreateResult> {
+export async function addRootNote(root: string, analysis: AnalysisRef, note: NewNote): Promise<NoteCreateResult> {
+  const { title, body, now = new Date() } = note
   try {
     let failure: string | undefined
     const written = await writeRootNote(
       {
         readdir: path => readdir(path),
-        mkdir: async path => void (await mkdir(path, { recursive: true })),
+        mkdir: async path => {
+          await mkdir(path, { recursive: true })
+        },
         createFile: (path, text) => writeFile(path, text, { encoding: 'utf8', flag: 'wx' }),
         editYaml: async change => {
           const listed = await editFile(analysis.path, ANALYSIS_FILE, change)

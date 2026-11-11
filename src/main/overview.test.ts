@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
-import { loadState, markOverviewRead, overviewSignature, readOverview } from './files.ts'
+import { loadState } from './files.ts'
+import { markOverviewRead, overviewSignature, readOverview } from './overviewFiles.ts'
 
 async function scratch() {
   const root = await mkdtemp(join(tmpdir(), 'assay-overview-'))
@@ -52,7 +53,7 @@ test('mark read copies the shown text to the baseline, and refuses a text that c
 })
 
 test('a run notices file is read safely', async () => {
-  const { parseNotices } = await import('./files.ts')
+  const { parseNotices } = await import('./runFiles.ts')
   assert.deepEqual(parseNotices('{"rules": ["a"], "retype": ["b", 3]}'), { rules: ['a'], retype: ['b'] })
   assert.equal(parseNotices(''), undefined)
   assert.equal(parseNotices('{bad'), undefined)

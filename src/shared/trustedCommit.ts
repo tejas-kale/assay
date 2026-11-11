@@ -3,6 +3,7 @@
 import { execFile } from 'node:child_process'
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 
 import { TRUSTED } from '../core/calculations.ts'
 
@@ -11,10 +12,15 @@ const COMMIT_KEPT_MS = 20_000
 // The commit of a trusted calculation's file, kept briefly: git runs once per calculation, not once per citation.
 const commits = new Map<string, { at: number; commit: Promise<string | undefined> }>()
 
-const git = (folder: string, args: string[]) =>
-  new Promise<string | undefined>(resolve => {
-    execFile('git', ['-C', folder, ...args], { timeout: 20_000 }, (err, stdout) => resolve(err ? undefined : stdout.trim()))
-  })
+const run = promisify(execFile)
+
+async function git(folder: string, args: string[]): Promise<string | undefined> {
+  try {
+    return (await run('git', ['-C', folder, ...args], { timeout: 20_000 })).stdout.trim()
+  } catch {
+    return undefined
+  }
+}
 
 /**
  * The commit (12 hex digits, as a trusted run's header records it) that last changed trusted calculation `name`'s
