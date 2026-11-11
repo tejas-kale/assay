@@ -94,18 +94,31 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           npm version --no-git-tag-version --allow-same-version "$version"
           node scripts/next-version.ts --notes > "$RUNNER_TEMP/notes.md"
-      # Without the certificate, or with one it cannot use, electron-builder would ship an unsigned build; stop
-      # instead (here, and with forceCodeSigning in release:build).
+      # Without the Developer ID certificate electron-builder would ship an unsigned build, and without the API key it
+      # would skip notarization with only a warning; stop instead (here, and with forceCodeSigning in release:build).
       - if: steps.tip.outputs.current == 'true'
-        run: test -n "$CSC_LINK" || { echo "::error::The CSC_LINK secret is not set (docs/process/ci-release.md)"; exit 1; }
+        run: |
+          missing=""
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          [ -z "$missing" ] || { echo "::error::Secrets not set:$missing (docs/process/ci-release.md)"; exit 1; }
+          # electron-builder reads the API key from a file.
+          printf '%s\n' "$APPLE_API_KEY" > "$RUNNER_TEMP/notarize-key.p8"
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       - if: steps.tip.outputs.current == 'true'
         run: npm run release:build
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          CSC_NAME: ${{ vars.CSC_NAME }}
+          APPLE_API_KEY: ${{ runner.temp }}/notarize-key.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       # The tag and the release in one step: gh tags the pushed commit, not whatever main is by now.
       - if: steps.tip.outputs.current == 'true'
         run: |

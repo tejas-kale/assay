@@ -184,52 +184,57 @@ finish() {
 # ──────────────────────────────────────────────────────────────────────────
 
 TOTAL_STAGES=4
-CERT_NAME_DEFAULT="Assay Self-Signed"
 
-banner "Assay CI and release setup"
+banner "Assay release signing: Developer ID and notarization"
 
-stage "Install playwright-core"
-say "The app smoke test (tests/integration/app.test.ts) drives the built app with playwright-core."
-step "In a terminal on the Mac, in this repo, run:"
-note "    sandbox-pkg npm install -D playwright-core"
-step "Commit package.json and package-lock.json, or tell Claude it is installed."
-pause "Press Enter once it is installed."
-
-stage "Make a self-signed code-signing certificate"
-say "About 10 minutes. The release job signs each build with it, so macOS sees every update as the same app."
-step "Open Keychain Access (Spotlight: Keychain Access)."
-step "Menu: Keychain Access → Certificate Assistant → Create a Certificate…"
-step "Name: ${CERT_NAME_DEFAULT}   Identity Type: Self Signed Root   Certificate Type: Code Signing → Create."
-step "In the login keychain, My Certificates: right-click '${CERT_NAME_DEFAULT}' → Export… → format .p12."
-step "Save it outside the repo (e.g. ~/Desktop/assay-signing.p12) and set an export password."
+stage "Make the Developer ID Application certificate"
+say "About 10 minutes. Only the team's Account Holder can make one. The release job signs every build with it."
+step "Open Keychain Access → menu Keychain Access → Certificate Assistant → Request a Certificate From a Certificate Authority…"
+step "Your email and name, CA Email empty, 'Saved to disk' → Continue. Save the .certSigningRequest file."
+open_url "https://developer.apple.com/account/resources/certificates/add"
+step "Choose 'Developer ID Application' (Profile Type: G2 Sub-CA) → Continue → upload the request → Download."
+step "Double-click the downloaded .cer: it joins your login keychain, next to its private key."
+step "Keychain Access, login keychain, My Certificates: right-click 'Developer ID Application: …' → Export… → .p12."
+step "Save it outside the repo (e.g. ~/Desktop/assay-developer-id.p12) and set an export password."
 pause "Press Enter once the .p12 is saved."
 
-stage "Add the signing secrets to GitHub"
+stage "Make an App Store Connect API key for notarization"
+say "About 5 minutes. The .p8 downloads only once: keep the file until the secrets are set."
+open_url "https://appstoreconnect.apple.com/access/integrations/api"
+step "Team Keys tab (the first time: Request Access, then accept) → Generate API Key (+)."
+step "Name: Assay notarization   Access: Developer → Generate."
+step "Download the .p8. Note the Key ID in its row and the Issuer ID above the table."
+pause "Press Enter once the .p8 is downloaded."
+
+stage "Add the secrets to GitHub"
 ask CERT_PATH "Path to the .p12 file:"
 CERT_PATH="${CERT_PATH/#\~/$HOME}"
-if [[ ! -f "$CERT_PATH" ]]; then
-  warn "No file at $CERT_PATH. Re-run the wizard with the right path."
-  exit 1
-fi
+[[ -f "$CERT_PATH" ]] || { warn "No file at $CERT_PATH. Re-run the wizard with the right path."; exit 1; }
 ask_secret CERT_PASSWORD "The .p12's export password:"
-ask CERT_NAME "The certificate's name [${CERT_NAME_DEFAULT}]:"
-CERT_NAME="${CERT_NAME:-$CERT_NAME_DEFAULT}"
-note "Writes CSC_LINK and CSC_KEY_PASSWORD (secrets) and CSC_NAME (variable) to the repo of this checkout's origin."
+ask KEY_PATH "Path to the .p8 file:"
+KEY_PATH="${KEY_PATH/#\~/$HOME}"
+[[ -f "$KEY_PATH" ]] || { warn "No file at $KEY_PATH. Re-run the wizard with the right path."; exit 1; }
+ask KEY_ID "The key's Key ID:"
+ask ISSUER_ID "The Issuer ID:"
+note "Writes CSC_LINK, CSC_KEY_PASSWORD, APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER to the repo of this checkout's origin."
 if confirm "Set them now with gh?"; then
   set_secret CSC_LINK "$(base64 < "$CERT_PATH" | tr -d '\n')"
   set_secret CSC_KEY_PASSWORD "$CERT_PASSWORD"
-  set_var CSC_NAME "$CERT_NAME"
+  set_secret APPLE_API_KEY "$(cat "$KEY_PATH")"
+  set_secret APPLE_API_KEY_ID "$KEY_ID"
+  set_secret APPLE_API_ISSUER "$ISSUER_ID"
 else
-  SKIPPED+=("GitHub secrets CSC_LINK, CSC_KEY_PASSWORD and variable CSC_NAME")
+  SKIPPED+=("GitHub secrets CSC_LINK, CSC_KEY_PASSWORD, APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER")
 fi
-note "Delete the .p12 once the secrets are set; the key stays in your login keychain."
+note "Then delete the .p12 (the key stays in your login keychain) and move the .p8 to your password manager."
 
-stage "Install the first release"
-say "Push main. When CI is green, the release job publishes v0.1.0."
+stage "Release and install"
+say "Re-run the failed release job, or push main. When CI is green, the release job publishes v0.1.0."
+note "    gh run list -R tejas-kale/assay -L 1   then   gh run rerun <id> --failed -R tejas-kale/assay"
 open_url "https://github.com/tejas-kale/assay/releases"
 step "Download Assay-0.1.0-arm64.dmg, open it and drag Assay to Applications (replace the old copy)."
-step "Open Assay. macOS refuses it once: System Settings → Privacy & Security → Open Anyway."
-step "Record the release in docs/process/ci-release.md under 'First runs'."
+step "Open Assay: being notarized, it opens without a warning."
+step "Tell Claude the version, so it records the first green release in docs/process/ci-release.md."
 pause "Press Enter when Assay 0.1.0 runs."
 
 finish

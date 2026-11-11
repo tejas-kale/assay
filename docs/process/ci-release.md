@@ -8,7 +8,7 @@
 |---|---|---|---|
 | `unit` | ubuntu-latest | every push and pull request | `npm run check` (typecheck, ESLint, node tests, ruff, pytest, the ratchet); on main, the release filter |
 | `integration` | ubuntu-latest | every push, after `unit` | `npm run test:integration` under `xvfb-run`, with node-pty rebuilt for Electron |
-| `release` | macos-latest | a push to main, after both, unless the filter skips it | version, build, sign, tag, GitHub release |
+| `release` | macos-latest | a push to main, after both, unless the filter skips it | version, build, sign, notarize, tag, GitHub release |
 
 Node comes from `.node-version` (22, the lowest supported); Python and its dependencies from `uv sync --frozen`.
 
@@ -41,6 +41,7 @@ commit subject since the last tag.
 - The job then runs `gh release create v<version> --target <sha>`, which tags the pushed commit and uploads the DMG,
   the zip, the blockmaps and `latest-mac.yml`, with the notes. electron-builder does not publish: its GitHub publisher
   makes a draft, and the tag must name the commit CI tested.
+- `mac.notarize` is on: electron-builder notarizes the signed app with the API key below and staples the ticket.
 - `npm run install-app` still builds and installs a local copy, ad-hoc signed and without the hardened runtime.
 
 ## Two pushes close together
@@ -52,25 +53,27 @@ When the commits after it change only docs and tests, they release nothing, so i
 
 ## Secrets
 
-| Name | Kind | What |
-|---|---|---|
-| `CSC_LINK` | secret | the code-signing certificate and key, a .p12 in base64 |
-| `CSC_KEY_PASSWORD` | secret | the .p12's password |
-| `CSC_NAME` | variable | the certificate's common name, when electron-builder does not find the identity by itself |
+| Name | What |
+|---|---|
+| `CSC_LINK` | the Developer ID Application certificate and its key, a .p12 in base64 |
+| `CSC_KEY_PASSWORD` | the .p12's password |
+| `APPLE_API_KEY` | an App Store Connect API key (Team key, Developer access), the text of its .p8 |
+| `APPLE_API_KEY_ID` | that key's ID |
+| `APPLE_API_ISSUER` | the Issuer ID shown above the team keys |
 
-The release job stops when `CSC_LINK` is empty, and electron-builder fails when it cannot sign, so an unsigned build
-never ships. `scripts/ci-release-setup.sh` walks
-through making the certificate and adding these.
+The release job stops when any of these is empty: electron-builder would otherwise ship an unsigned build, or skip
+notarization with only a warning. It writes the .p8 to a file for electron-builder, which signs the app with the
+Developer ID, notarizes it with `notarytool` and staples the ticket. `scripts/ci-release-setup.sh` walks through
+making the certificate and the key and adding these.
 
-## The certificate switch
+The certificate expires after five years, and only the team's Account Holder can make a new one. The API key does not
+expire; revoke it in App Store Connect if it leaks.
 
-Today the certificate is self-signed. The Developer ID, later, changes these secrets, plus notarization's, and
-`CSC_NAME`: set it to the Developer ID's name or delete it, or it keeps choosing the old certificate's name. A
-build signed by a new identity is a different app to macOS: install the first Developer ID build by hand once, from
-its DMG, and allow it in System Settings > Privacy & Security, as with the first self-signed build.
+## Installing
 
-If node-pty will not load under the self-signed identity (library validation), add
-`com.apple.security.cs.disable-library-validation` to the entitlements, and drop it again with the Developer ID.
+A notarized build opens without a warning. The first Developer ID build replaces any copy installed before it
+(`npm run install-app`'s ad-hoc build): install it by hand once, from its DMG. Later releases update it (slice 11d).
+`npm run install-app` still builds an ad-hoc signed local copy, which notarization skips.
 
 ## When main is red
 
