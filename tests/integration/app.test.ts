@@ -95,10 +95,12 @@ test('the built app opens an analysis, runs SQL from the Code tab, and shows it 
   t.after(() => rm(s.dir, { recursive: true, force: true, maxRetries: 3 }))
   // --no-sandbox: CI's runners cannot give Chromium's sandbox helper its setuid bit.
   const app = await _electron.launch({ args: [REPO, '--no-sandbox'], cwd: REPO, env: s.env })
-  // The close flow waits for each Claude to exit; a stuck one must not hang the run.
+  // The close flow waits for each Claude to exit; a stuck one must not hang the run. The process is taken now:
+  // app.process() throws once close() has finished.
+  const electronProcess = app.process()
   t.after(async () => {
     await Promise.race([app.close(), new Promise(done => setTimeout(done, 15_000))])
-    app.process().kill('SIGKILL')
+    if (electronProcess.exitCode === null && electronProcess.signalCode === null) electronProcess.kill('SIGKILL')
   })
 
   // Nothing is pressed until the app is known to use the scratch folder.
