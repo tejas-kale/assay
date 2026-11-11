@@ -84,4 +84,5 @@ longer than a day.
 
 The workflow is verified by its first runs. Record the first green release here: its version, date and run link.
 
-- Not yet run.
+- v0.1.0, 2026-11-11: the first green release, signed with the Developer ID and notarized, on the fourth attempt of
+  https://github.com/tejas-kale/assay/actions/runs/43033377311 (the first three stopped on missing or wrong secrets).
