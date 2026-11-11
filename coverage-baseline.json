@@ -23,10 +23,6 @@
     "lines": 100,
     "branches": 88.88
   },
-  "src/server/assay.ts": {
-    "lines": 99.3,
-    "branches": 89.87
-  },
   "src/server/main.ts": {
     "lines": 67.18,
     "branches": 87.5

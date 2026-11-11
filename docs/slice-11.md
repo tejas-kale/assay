@@ -447,7 +447,10 @@ until it is green).
 - Progress: `analysis_sql.py` (2026-11-11, 51 ruff entries to none) is the command line and the names other helpers
   import, over `analysis_sqlread` (how a query is read), `analysis_lint`, `analysis_lineage`, `analysis_steps`,
   `analysis_include` and `analysis_retype`. Their outputs matched the old module's on every SQL text in the tests.
-  Next: `assay.ts`.
+- Progress: `assay.ts` (2026-11-11, 39 suppressions to none) is the session's files, runs, helpers and status;
+  the kernel is `kernel.ts` (`assay.kernels`), and each kind of run its own module: `sqlRun.ts`, `pythonRun.ts`,
+  `trustedRun.ts` and `stepsRun.ts`. A kernel's connection file name takes its random part from `node:crypto`.
+  Next: `windows.ts`.
 
 ## Slice 11g: security audit
 

@@ -22,5 +22,5 @@ process.on('exit', () => session.close())
 // handshake Claude Code waits for.
 await session.assay?.setUp().catch(() => undefined)
 await session.server.connect(new StdioServerTransport())
-await session.assay?.startKernel().catch(() => undefined)
+await session.assay?.kernels.start().catch(() => undefined)
 session.requests?.start()

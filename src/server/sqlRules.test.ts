@@ -4,7 +4,8 @@ import { test } from 'node:test'
 
 import { expect } from '../testing/expect.ts'
 import { VENV_MISSING } from '../core/venv.ts'
-import type { SqlLint } from './assay.ts'
+import { runSql } from './sqlRun.ts'
+import type { SqlLint } from './sqlRun.ts'
 import type { RunOptions, RunResult } from './proc.ts'
 import { answering, fake } from './testing.ts'
 import type { Fake } from './testing.ts'
@@ -77,7 +78,7 @@ test('a lint that cannot run does not block: the query runs and the reply says w
 test("the analyst's own runs are not linted", async () => {
   const ws = await fake(FILES)
   scripted(ws, { errors: ['never'], warnings: [] })
-  expect(await ws.assay.runSql(CTE_SQL, 'mine', 'databricks')).toBe('Query 001: 1 row. Columns: x\nx\n1')
+  expect(await runSql(ws.assay, { sql: CTE_SQL, slug: 'mine', engine: 'databricks' })).toBe('Query 001: 1 row. Columns: x\nx\n1')
   expect(lintRuns(ws)).toEqual([])
   await ws.done()
 })

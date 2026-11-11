@@ -8,6 +8,9 @@ import { parseRequestFile, isUrgent } from '../core/requests.ts'
 import type { Proposal, ServerRequest } from '../core/requests.ts'
 import { pythonBody, pythonHeader } from '../core/pythonRuns.ts'
 import { Assay } from './assay.ts'
+import { runPython, runPythonNow } from './pythonRun.ts'
+import { runSql } from './sqlRun.ts'
+import { lineage, runSteps } from './stepsRun.ts'
 import { TrustReviews } from './trust.ts'
 
 const REQUESTS = '.assay/requests'
@@ -88,34 +91,37 @@ export class Requests {
       case 'sql': {
         let number: number | undefined
         const header = `-- author: user\n${request.from ? `-- from: ${queryLabel(request.from)}\n` : ''}`
-        const said = await assay.runSql(request.sql, request.slug, request.engine, header, claimed => (number = claimed)).catch(() => undefined)
+        const onClaim = (claimed: number) => {
+          number = claimed
+        }
+        const said = await runSql(assay, { sql: request.sql, slug: request.slug, engine: request.engine, header, onClaim }).catch(() => undefined)
         if (number === undefined) return { error: said?.startsWith('Not run:') ? said : 'The run could not start.' }
         await assay.recordUserRun({ number, language: 'sql', ...(request.from ? { from: request.from } : {}) })
         return { number }
       }
       case 'python': {
         const header = pythonHeader({ author: 'user', ...(request.from ? { from: request.from } : {}) })
-        const ran = await assay.runPython(request.code, request.slug, header).catch(() => undefined)
+        const ran = await runPython(assay, request.code, request.slug, header).catch(() => undefined)
         if (ran?.number === undefined) return { error: ran?.text ?? 'The run could not start.' }
         await assay.recordUserRun({ number: ran.number, language: 'python', ...(request.from ? { from: request.from } : {}) })
         return { number: ran.number }
       }
       case 'interrupt': {
-        const failed = await assay.interruptKernel()
+        const failed = await assay.kernels.interrupt()
         return failed ? { error: failed } : { ok: true }
       }
       case 'restart': {
-        const failed = await assay.restartKernel()
+        const failed = await assay.kernels.restart()
         return failed ? { error: failed } : { ok: true }
       }
       case 'replay':
         return this.replay(request.runs)
       case 'lineage': {
-        const failed = await assay.lineage(request.run)
+        const failed = await lineage(assay, request.run)
         return failed ? { error: failed } : { ok: true }
       }
       case 'steps': {
-        const failed = await assay.runSteps(request.run)
+        const failed = await runSteps(assay, request.run)
         return failed ? { error: failed } : { ok: true }
       }
       case 'trust-list':
@@ -145,11 +151,11 @@ export class Requests {
       chosen.push(query)
     }
     return assay.inKernel(async () => {
-      const failed = await assay.restartKernel()
+      const failed = await assay.kernels.restart()
       if (failed) return { error: failed }
       for (const query of chosen) {
         const code = pythonBody(await assay.readText(Assay.codeFile(query)))
-        const ran = await assay.runPythonNow(code, query.slug, pythonHeader({ author: 'user', replay: query.number }))
+        const ran = await runPythonNow(assay, code, query.slug, pythonHeader({ author: 'user', replay: query.number }))
         if (ran.number !== undefined) await assay.recordUserRun({ number: ran.number, language: 'python', replay: query.number })
         if (ran.status !== 'ok') {
           const made = ran.number === undefined ? 'a new run' : `run ${queryLabel(ran.number)}`

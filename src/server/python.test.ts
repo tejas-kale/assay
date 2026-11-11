@@ -18,7 +18,7 @@ const project = (ws: Fake) => `${ws.analysis}/.venv/bin/python`
 test('a session starts the kernel: serve is spawned with the analysis and a connection file', async () => {
   const ws = await fake(VENV)
   ws.autoReady = false
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   const [serve] = ws.serves
   expect(serve?.argv.slice(0, 5)).toEqual([project(ws), RUNNER, 'serve', '--analysis', ws.analysis])
   expect(serve?.argv[5]).toBe('--connection')
@@ -33,15 +33,15 @@ test('a session starts the kernel: serve is spawned with the analysis and a conn
 
 test('the serve process is stopped when the session ends', async () => {
   const ws = await fake(VENV)
-  await ws.assay.startKernel()
-  ws.assay.stopKernel()
+  await ws.assay.kernels.start()
+  ws.assay.kernels.stop()
   expect(ws.serves[0]?.isStopped).toBe(true)
   await ws.done()
 })
 
 test('neither a project .venv nor venv-assay: the kernel is missing with the hint, and the python tool says what to do', async () => {
   const ws = await fake({ 'analysis.yaml': 'title: Feature\n' })
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   expect((await ws.status())?.kernel).toEqual({ state: 'missing', message: HINT })
   expect(await ws.call('python', { code: 'print(1)', slug: 'x' })).toBe(`The Python kernel is not available: ${HINT}`)
   expect(await ws.list('queries')).toEqual([])
@@ -52,7 +52,7 @@ test('neither a project .venv nor venv-assay: the kernel is missing with the hin
 
 test("while the app builds Assay's venv, the python and trusted tools say it is still building", async () => {
   const ws = await fake({ 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay.status.json': '{"state":"building"}' })
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   expect((await ws.status())?.kernel).toEqual({ state: 'missing', message: VENV_BUILDING })
   expect(await ws.call('python', { code: '1', slug: 'x' })).toBe(`The Python kernel is not available: ${VENV_BUILDING}`)
   expect(await ws.call('trusted', { name: 'nope' })).toBe(`Cannot list the trusted calculations: ${VENV_BUILDING}`)
@@ -61,7 +61,7 @@ test("while the app builds Assay's venv, the python and trusted tools say it is 
 
 test("a venv uv is still filling is not used, though its python already exists", async () => {
   const ws = await fake({ 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay/bin/python': '', '/opt/venv-assay.status.json': '{"state":"building"}' })
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   expect((await ws.status())?.kernel).toEqual({ state: 'missing', message: VENV_BUILDING })
   expect(ws.serves).toEqual([])
   expect(await ws.call('trusted', { name: 'nope' })).toBe(`Cannot list the trusted calculations: ${VENV_BUILDING}`)
@@ -76,21 +76,21 @@ test('a failed build that left its python behind is not used', async () => {
 
 test("a launcher's venv has no status file: its python is enough", async () => {
   const ws = await fake({ 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay/bin/python': '' })
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   expect(ws.serves[0]?.argv[0]).toBe(`${ws.venv}/bin/python`)
   await ws.done()
 })
 
 test("a failed build of Assay's venv: the tools return the build's error", async () => {
   const ws = await fake({ 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay.status.json': '{"state":"failed","error":"uv: no network"}' })
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   expect(await ws.call('python', { code: '1', slug: 'x' })).toBe("The Python kernel is not available: Assay could not build its Python environment: uv: no network")
   await ws.done()
 })
 
 test('once the venv is built, the next python call starts the kernel with it', async () => {
   const ws = await fake({ 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay.status.json': '{"state":"building"}' })
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   await ws.put('/opt/venv-assay/bin/python', '')
   await ws.put('/opt/venv-assay.status.json', '{"state":"ready"}')
   ws.setRun(argv => (isRun(argv) ? printed({ stdout: '1\n' }) : {}))
@@ -106,7 +106,7 @@ test("a project .venv that imports ipykernel runs the kernel, with Assay's own r
     if (importsIpykernel(argv)) checks.push(argv)
     return {}
   })
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   expect(ws.serves[0]?.argv.slice(0, 2)).toEqual([project(ws), RUNNER])
   expect(checks).toEqual([[project(ws), '-c', 'import ipykernel']])
   await ws.done()
@@ -115,7 +115,7 @@ test("a project .venv that imports ipykernel runs the kernel, with Assay's own r
 test('a project .venv that cannot import ipykernel falls back to venv-assay', async () => {
   const ws = await fake({ ...VENV, ...ASSAY })
   ws.setRun(argv => (importsIpykernel(argv) ? { exitCode: 1, stderr: 'ModuleNotFoundError' } : {}))
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   expect(ws.serves[0]?.argv.slice(0, 2)).toEqual([`${ws.venv}/bin/python`, RUNNER])
   await ws.done()
 })
@@ -126,14 +126,14 @@ test('a project .venv whose import check fails to run falls back too', async () 
     if (importsIpykernel(argv)) throw new Error('spawn failed')
     return {}
   })
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   expect(ws.serves[0]?.argv[0]).toBe(`${ws.venv}/bin/python`)
   await ws.done()
 })
 
 test('no project .venv: venv-assay runs the kernel, and no import check runs', async () => {
   const ws = await fake({ 'analysis.yaml': 'title: Feature\n', ...ASSAY })
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   expect(ws.serves[0]?.argv.slice(0, 2)).toEqual([`${ws.venv}/bin/python`, RUNNER])
   expect(ws.runs.some(importsIpykernel)).toBe(false)
   await ws.done()
@@ -142,7 +142,7 @@ test('no project .venv: venv-assay runs the kernel, and no import check runs', a
 test('a project .venv without ipykernel and no venv-assay: missing with the hint', async () => {
   const ws = await fake(VENV)
   ws.setRun(argv => (importsIpykernel(argv) ? { exitCode: 1 } : {}))
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   expect((await ws.status())?.kernel).toEqual({ state: 'missing', message: HINT })
   expect(ws.serves).toEqual([])
   await ws.done()
@@ -151,7 +151,7 @@ test('a project .venv without ipykernel and no venv-assay: missing with the hint
 test('ipykernel missing, said by the runner, is the missing state with its message', async () => {
   const ws = await fake(VENV)
   ws.autoReady = false
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   const said = "ipykernel is not installed in this Python. Assay's venv has it: open Settings and see the Doctor."
   ws.serves[0]?.emit({ event: 'missing', message: said })
   await until(async () => (await kernelState(ws)) === 'missing')
@@ -178,7 +178,7 @@ test('the python tool saves the .py, runs it in the kernel and replies with the 
     })
   }
   ws.setRun(run)
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   const reply = await ws.call('python', { code: '  print("hello")  ', slug: 'Stats!' })
   expect(await ws.file('queries/003_stats.py')).toBe('print("hello")\n')
   expect(reply).toBe('Run 003: ok (0.0 s).\nhello\nTable 1 (analyses/feature/queries/003_stats.t1.csv): 1 row. Columns: a, b\na  b\n1  x\nPlot: analyses/feature/queries/003_stats.p1.png (Read it to check the chart.)')
@@ -195,7 +195,7 @@ test('the python tool saves the .py, runs it in the kernel and replies with the 
 test('Python and SQL runs share one number sequence', async () => {
   const ws = await fake(VENV)
   ws.setRun(argv => (isRun(argv) ? printed() : { stdout: JSON.stringify([{ state: 'SUCCEEDED', columns: ['n'], rows: [['1']] }, { state: 'SUCCEEDED', columns: ['1'], rows: [['1']] }]) }))
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   expect(await ws.call('sql', { sql: 'SELECT 1', slug: 'a' })).toMatch(/^Query 001/)
   expect(await ws.call('python', { code: '1', slug: 'b' })).toMatch(/^Run 002/)
   expect(await ws.call('sql', { sql: 'SELECT 1', slug: 'c' })).toMatch(/^Query 003/)
@@ -205,7 +205,7 @@ test('Python and SQL runs share one number sequence', async () => {
 test('an error run and an empty call', async () => {
   const ws = await fake(VENV)
   ws.setRun(argv => (isRun(argv) ? printed({ status: 'error', error: { name: 'KeyError', message: "'x'", traceback: "Traceback\nKeyError: 'x'" } }) : {}))
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   expect(await ws.call('python', { code: 'd["x"]', slug: 'boom' })).toBe("Run 001: error (0.0 s).\nTraceback\nKeyError: 'x'")
   expect(await ws.call('python', { code: '  ', slug: 'none' })).toBe('Give the Python code to run.')
   expect(await ws.file('queries/002_none.py')).toBeUndefined()
@@ -215,7 +215,7 @@ test('an error run and an empty call', async () => {
 test('a runner that cannot reach the kernel is a failed run, recorded in runs.json', async () => {
   const ws = await fake(VENV)
   ws.setRun(argv => (isRun(argv) ? { exitCode: 2, stderr: 'no connection file\n' } : {}))
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   expect(await ws.call('python', { code: '1', slug: 'x' })).toBe('Run 001 failed (saved analyses/feature/queries/001_x.py):\nno connection file')
   expect((await ws.status())?.failed).toEqual({ '1': 'no connection file' })
   await ws.done()
@@ -235,7 +235,7 @@ test('runs go one at a time, in arrival order', async () => {
     active--
     return printed()
   })
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   const replies = await Promise.all(['a', 'b', 'c'].map(slug => ws.call('python', { code: '1', slug })))
   expect(replies.map(reply => reply.slice(0, 7))).toEqual(['Run 001', 'Run 002', 'Run 003'])
   expect(most).toBe(1)
@@ -246,7 +246,7 @@ test('runs go one at a time, in arrival order', async () => {
 test('a dead kernel is started again on the next run, with a note', async () => {
   const ws = await fake(VENV)
   ws.setRun(argv => (isRun(argv) ? printed() : {}))
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   await until(async () => (await kernelState(ws)) === 'idle')
   ws.serves[0]?.emit({ event: 'dead', message: 'The kernel died' })
   await until(async () => (await kernelState(ws)) === 'dead')
@@ -259,7 +259,7 @@ test('a dead kernel is started again on the next run, with a note', async () => 
 
 test('a serve process that ends by itself is a dead kernel with what it printed', async () => {
   const ws = await fake(VENV)
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   await until(async () => (await kernelState(ws)) === 'idle')
   ws.serves[0]?.print('Traceback\nImportError: nope\n', 'stderr')
   ws.serves[0]?.end(1)
@@ -271,7 +271,7 @@ test('a serve process that ends by itself is a dead kernel with what it printed'
 test('the runner time is the one shown, and exit 3 (kernel unreachable) marks the kernel dead', async () => {
   const ws = await fake(VENV)
   ws.setRun(argv => (isRun(argv) ? printed({ durationMs: 2300 }) : {}))
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   expect(await ws.call('python', { code: '1', slug: 'a' })).toBe('Run 001: ok (2.3 s).')
   ws.setRun(argv => (isRun(argv) ? { exitCode: 3, ...printed({ status: 'error', error: { name: 'KernelUnreachable', message: 'No kernel answers', traceback: '' } }) } : {}))
   expect(await ws.call('python', { code: '1', slug: 'b' })).toBe('Run 002: error (0.0 s).\nKernelUnreachable: No kernel answers')
@@ -283,7 +283,7 @@ test('a ready without a pid means no run: the reply says the kernel is not runni
   const ws = await fake(VENV)
   ws.autoReady = false
   ws.setRun(argv => (isRun(argv) ? printed() : {}))
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   ws.serves[0]?.emit({ event: 'ready', kernel: 'k1', pid: 0 })
   await until(async () => (await kernelState(ws)) === 'idle')
   expect(await ws.call('python', { code: '1', slug: 'x' })).toBe('The Python kernel is not running: it has no pid.')
@@ -294,8 +294,8 @@ test('a ready without a pid means no run: the reply says the kernel is not runni
 test('a serve that never says ready is stopped and the kernel is dead', async () => {
   const ws = await fake(VENV)
   ws.autoReady = false
-  await ws.assay.startKernel()
-  await ws.assay.kernelSettled(50)
+  await ws.assay.kernels.start()
+  await ws.assay.kernels.settled(50)
   expect(ws.serves[0]?.isStopped).toBe(true)
   expect((await ws.status())?.kernel).toEqual({ state: 'dead', message: 'The kernel did not start within 0.05 s.' })
   await ws.done()

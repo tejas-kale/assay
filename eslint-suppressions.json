@@ -998,43 +998,10 @@
     }
   },
   "src/server/assay.ts": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 2
-    },
-    "@typescript-eslint/no-dynamic-delete": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 5
-    },
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 10
-    },
-    "max-lines": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "max-params": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    },
-    "sonarjs/different-types-comparison": {
-      "count": 1
-    },
-    "sonarjs/no-nested-conditional": {
-      "count": 3
-    },
     "sonarjs/no-nested-template-literals": {
-      "count": 11
+      "count": 1
     },
     "sonarjs/no-redundant-optional": {
-      "count": 1
-    },
-    "sonarjs/pseudo-random": {
       "count": 1
     }
   },

@@ -27,7 +27,7 @@ async function sqlSession(files: Record<string, string> = {}) {
 async function pythonSession(files: Record<string, string> = {}) {
   const ws = await fake({ 'analysis.yaml': 'title: Feature\n', '.venv/bin/python': '', ...files })
   ws.setRun(argv => (isRun(argv) ? printed() : {}))
-  await ws.assay.startKernel()
+  await ws.assay.kernels.start()
   await until(async () => (await ws.status())?.kernel?.state === 'idle')
   return ws
 }

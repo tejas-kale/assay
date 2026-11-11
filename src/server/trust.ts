@@ -8,7 +8,8 @@ import { DICTIONARIES, DRAFT_DICTIONARIES, DRAFT_TRUSTED, PROPOSAL_NAME, splitCh
 import type { CheckAnswer, CheckEvent, TrustFile } from '../core/calculations.ts'
 import type { Proposal, TrustAnswer } from '../core/requests.ts'
 import type { TrustState } from '../core/trust.ts'
-import { Assay, QUERY_TIMEOUT_MS } from './assay.ts'
+import { Assay } from './assay.ts'
+import { QUERY_TIMEOUT_MS } from './sqlRun.ts'
 
 const TRUST_DIR = '.assay/trust'
 

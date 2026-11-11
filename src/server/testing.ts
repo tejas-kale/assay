@@ -159,7 +159,7 @@ export async function fake(files: Record<string, string> = { 'analysis.yaml': 't
     },
     done: async () => {
       requests.stop()
-      assay.stopKernel()
+      assay.kernels.stop()
       for (const serve of serves) serve.end(null)
       await rm(dir, { recursive: true, force: true })
     },

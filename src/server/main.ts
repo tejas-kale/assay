@@ -58,7 +58,7 @@ export function createSession(config: Config | undefined): Session {
     ...(requests ? { requests } : {}),
     close: () => {
       requests?.stop()
-      assay?.stopKernel()
+      assay?.kernels.stop()
     },
   }
 }

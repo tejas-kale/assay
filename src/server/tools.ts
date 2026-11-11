@@ -5,6 +5,9 @@ import { oneLine } from '../core/text.ts'
 import { closeThread, focusThread, orderThreads, parkThread } from '../core/threads.ts'
 import { ANALYSIS_FILE } from '../core/analyses.ts'
 import { Assay } from './assay.ts'
+import { runPython } from './pythonRun.ts'
+import { runClaudeSql } from './sqlRun.ts'
+import { runTrusted } from './trustedRun.ts'
 import { linkNotes, noteLabels, reviseNote, searchHint, writeNote } from './notes.ts'
 
 export type ToolSpec = { name: string; description: string; inputSchema: { type: 'object'; properties: Record<string, object>; required: readonly string[] } }
@@ -183,17 +186,17 @@ async function dispatch(assay: Assay, name: string, args: Args): Promise<string>
     case 'sql': {
       const sql = field(args, 'sql')
       const engine: Engine = field(args, 'engine') === 'postgres' ? 'postgres' : 'databricks'
-      return sql.trim() ? assay.runClaudeSql(sql, field(args, 'slug'), engine) : 'Give the SQL to run.'
+      return sql.trim() ? runClaudeSql(assay, sql, field(args, 'slug'), engine) : 'Give the SQL to run.'
     }
     case 'python': {
       const code = field(args, 'code')
       if (!code.trim()) return 'Give the Python code to run.'
-      return (await assay.runPython(code, field(args, 'slug'), '')).text
+      return (await runPython(assay, code, field(args, 'slug'), '')).text
     }
     case 'trusted': {
       const calc = field(args, 'name').trim()
       if (!calc) return 'Give the trusted calculation by name.'
-      return assay.runTrusted(calc, args.args)
+      return runTrusted(assay, calc, args.args)
     }
     case 'park': {
       const thread = oneLine(field(args, 'thread'))
