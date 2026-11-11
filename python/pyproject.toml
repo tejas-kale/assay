@@ -51,6 +51,9 @@ py-modules = [
   "analysis_pytest",
   "analysis_blocks",
   "analysis_review",
+  "analysis_kernel_preload",
+  "analysis_kernel_run",
+  "analysis_kernel_serve",
 ]
 packages = []
 

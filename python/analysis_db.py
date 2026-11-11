@@ -11,6 +11,7 @@ It lives in the Assay repo (``python/``); the app installs it into Assay's venv 
 
 from __future__ import annotations
 
+import importlib
 import json
 import re
 from pathlib import Path
@@ -20,6 +21,15 @@ from urllib.parse import urlencode
 DEFAULT_PROFILE = "Cint mkt"
 DEFAULT_WAREHOUSE = "455a178462311474"
 MARKER = "analysis.yaml"
+
+
+def heavy(module: str, name: str) -> Any:
+    """``name`` from ``module``, imported on first use.
+
+    SQLAlchemy, the Databricks SDK and pandas take seconds to load, and ``python -m analysis_trust list`` imports this
+    module without ever reaching a warehouse: so they are not imported at the top.
+    """
+    return getattr(importlib.import_module(module), name)
 
 
 def find_marker(start: Path) -> Path | None:
@@ -34,7 +44,8 @@ def find_marker(start: Path) -> Path | None:
 def read_target(text: str) -> dict[str, str]:
     """``profile`` and ``warehouse`` from a ``analysis.yaml`` file's ``key: value`` lines, defaults filled in.
 
-    Read as the server reads them (``readTarget`` in ``src/core/engines.ts``): the first top-level line naming each key, any case, quotes and a trailing ``# comment`` dropped.
+    Read as the server reads them (``readTarget`` in ``src/core/engines.ts``): the first top-level line naming each
+    key, any case, quotes and a trailing ``# comment`` dropped.
     """
 
     def value(key: str) -> str | None:
@@ -82,13 +93,10 @@ def engine(start: str | Path | None = None, *, catalog: str | None = None, schem
     sandbox proxy does not allow) and telemetry, and checks a pooled connection before use, since the
     warehouse drops idle sessions.
     """
-    from databricks.sdk.core import Config
-    from sqlalchemy import create_engine
-
     marker = find_marker(Path(start) if start is not None else Path.cwd())
     target = read_target(marker.read_text() if marker else "")
-    cfg = Config(profile=target["profile"], auth_type="databricks-cli")
-    return create_engine(
+    cfg = heavy("databricks.sdk.core", "Config")(profile=target["profile"], auth_type="databricks-cli")
+    return heavy("sqlalchemy", "create_engine")(
         engine_url(cfg.host, target["warehouse"], catalog, schema),
         connect_args={
             "credentials_provider": lambda: cfg.authenticate,
@@ -108,8 +116,6 @@ def sql(query: str, start: str | Path | None = None, *, catalog: str | None = No
     The statement goes to the connector as written, so ``:`` and ``%`` need no escaping. The engine is
     kept per ``analysis.yaml`` file, catalog and schema.
     """
-    import pandas as pd
-
     origin = Path(start) if start is not None else Path.cwd()
     marker = find_marker(origin)
     key = (str(marker), catalog, schema)
@@ -122,6 +128,6 @@ def sql(query: str, start: str | Path | None = None, *, catalog: str | None = No
         if cursor.description is None:
             return None
         columns = [column[0] for column in cursor.description]
-        return pd.DataFrame([tuple(row) for row in cursor.fetchall()], columns=columns)
+        return heavy("pandas", "DataFrame")([tuple(row) for row in cursor.fetchall()], columns=columns)
     finally:
         connection.close()
