@@ -8,7 +8,10 @@ import { CHANNELS } from '../shared/ipc.ts'
 import { registerIpc } from './ipc.ts'
 import { onDoctorChange, prepareBackend } from './runtime.ts'
 import { installAndRelaunch, onUpdateChange, setOnRestart, startUpdater } from './update.ts'
-import { allContexts, broadcast, closeAll, ensureWindow, followSystemTheme, hostWindow, isLive, setOnClosed } from './windows.ts'
+import { ensureWindow } from './windows.ts'
+import { followSystemTheme } from './windowPages.ts'
+import { allContexts, broadcast, hostWindow, isLive, setOnClosed } from './windowState.ts'
+import { closeAll } from './windowViews.ts'
 
 // Only standard roles. Shortcuts of the app's own commands (Cmd+W, Cmd+N, ...) live in core/keymap.ts
 // and are caught in before-input-event; a duplicate accelerator here would fire twice.
@@ -63,7 +66,9 @@ app.on('activate', () => {
 void app.whenReady().then(() => {
   // Terminal paste needs the clipboard; everything else stays denied.
   const allowed = (permission: string) => permission === 'clipboard-read' || permission === 'clipboard-sanitized-write'
-  electronSession.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => callback(allowed(permission)))
+  electronSession.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(allowed(permission))
+  })
   electronSession.defaultSession.setPermissionCheckHandler((_wc, permission) => allowed(permission))
   // v1 runs unpackaged, so the Dock icon is set here rather than from an app bundle.
   app.dock?.setIcon(fileURLToPath(new URL('../../resources/icon.png', import.meta.url)))

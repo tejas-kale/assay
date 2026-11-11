@@ -7,15 +7,27 @@ import { CHANNELS } from '../shared/ipc.ts'
 import type { AppApi, Unsubscribe } from '../shared/ipc.ts'
 
 /** Subscribes to a main -> renderer event. The IpcRendererEvent is dropped, and the returned function removes this exact listener. */
-function subscribe<T>(channel: string, cb: (value: T) => void): Unsubscribe {
-  const listener = (_event: IpcRendererEvent, value: T) => cb(value)
+function subscribe(channel: string, cb: (value: never) => void): Unsubscribe {
+  const listener = (_event: IpcRendererEvent, value: unknown) => {
+    // The payload's type is the AppApi callback's own (shared/ipc.ts); main sends what that type says.
+    cb(value as never)
+  }
   ipcRenderer.on(channel, listener)
   return () => {
     ipcRenderer.removeListener(channel, listener)
   }
 }
 
-const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> => ipcRenderer.invoke(channel, ...args) as Promise<T>
+/**
+ * Calls a main handler. Its answer is typed by the AppApi member that returns it (shared/ipc.ts), which is the one
+ * contract both sides follow; `never` lets each member's own return type stand.
+ */
+const invoke = (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args) as Promise<never>
+
+/** Sends to main without waiting for an answer. */
+const send = (channel: string, ...args: unknown[]) => {
+  ipcRenderer.send(channel, ...args)
+}
 
 const api: AppApi = {
   analyses: {
@@ -26,8 +38,12 @@ const api: AppApi = {
   },
   pty: {
     start: (cols, rows) => invoke(CHANNELS.ptyStart, cols, rows),
-    write: data => ipcRenderer.send(CHANNELS.ptyWrite, data),
-    resize: (cols, rows) => ipcRenderer.send(CHANNELS.ptyResize, cols, rows),
+    write: data => {
+      send(CHANNELS.ptyWrite, data)
+    },
+    resize: (cols, rows) => {
+      send(CHANNELS.ptyResize, cols, rows)
+    },
     onData: cb => subscribe(CHANNELS.ptyData, cb),
     onExit: cb => subscribe(CHANNELS.ptyExit, cb),
   },

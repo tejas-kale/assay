@@ -381,98 +381,6 @@
       "count": 2
     }
   },
-  "src/main/files.ts": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 1
-    },
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 2
-    },
-    "max-lines": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    },
-    "sonarjs/no-alphabetical-sort": {
-      "count": 2
-    },
-    "sonarjs/no-nested-conditional": {
-      "count": 1
-    }
-  },
-  "src/main/index.ts": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 1
-    }
-  },
-  "src/main/ipc.ts": {
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 3
-    },
-    "@typescript-eslint/no-unsafe-return": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
-  "src/main/notes.test.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 3
-    },
-    "sonarjs/no-os-command-from-path": {
-      "count": 1
-    }
-  },
-  "src/main/notes.ts": {
-    "@typescript-eslint/no-meaningless-void-operator": {
-      "count": 1
-    },
-    "max-params": {
-      "count": 1
-    },
-    "sonarjs/void-use": {
-      "count": 1
-    }
-  },
-  "src/main/session.ts": {
-    "@typescript-eslint/unbound-method": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
-  "src/main/windows.ts": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 10
-    },
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    },
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 2
-    },
-    "@typescript-eslint/unbound-method": {
-      "count": 1
-    },
-    "@typescript-eslint/use-unknown-in-catch-callback-variable": {
-      "count": 1
-    },
-    "max-lines": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 2
-    },
-    "sonarjs/no-nested-conditional": {
-      "count": 1
-    }
-  },
   "src/migrate/importDenote.test.ts": {
     "sonarjs/no-alphabetical-sort": {
       "count": 1
@@ -540,14 +448,6 @@
     },
     "sonarjs/no-nested-conditional": {
       "count": 3
-    }
-  },
-  "src/preload/index.ts": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 3
-    },
-    "@typescript-eslint/no-unnecessary-type-parameters": {
-      "count": 1
     }
   },
   "src/renderer/App.tsx": {
@@ -1178,19 +1078,6 @@
       "count": 3
     },
     "sonarjs/no-nested-template-literals": {
-      "count": 1
-    }
-  },
-  "src/shared/trustedCommit.test.ts": {
-    "sonarjs/no-os-command-from-path": {
-      "count": 1
-    }
-  },
-  "src/shared/trustedCommit.ts": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 1
-    },
-    "sonarjs/no-os-command-from-path": {
       "count": 1
     }
   },
