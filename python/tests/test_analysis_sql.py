@@ -12,7 +12,7 @@ import sqlglot
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import analysis_sql as sql_rules  # noqa: E402
+import analysis_sql as sql_rules
 
 GOOD = """
 WITH
@@ -65,7 +65,10 @@ def test_a_cte_without_grain_and_a_cryptic_name_are_rejected() -> None:
     -- grain: customer_id
     SELECT customer_id FROM ow
     """
-    assert lint(text)["errors"] == ['CTE ow: no "-- grain:" line above it.', "CTE ow: name too short; say what it holds."]
+    assert lint(text)["errors"] == [
+        'CTE ow: no "-- grain:" line above it.',
+        "CTE ow: name too short; say what it holds.",
+    ]
 
 
 @pytest.mark.parametrize("name", ["step1", "cte_2", "temp", "tmp_3", "sub1", "q_12"])
@@ -89,7 +92,9 @@ def test_a_grain_column_that_is_not_an_output_column_is_rejected() -> None:
     -- grain: customer_id
     SELECT customer_id FROM daily_spend
     """
-    assert lint(text)["errors"] == ["CTE daily_spend: grain order_day is not one of its output columns (customer_id, order_date, spend)."]
+    assert lint(text)["errors"] == [
+        "CTE daily_spend: grain order_day is not one of its output columns (customer_id, order_date, spend)."
+    ]
 
 
 def test_grain_none_a_column_list_and_star_are_accepted() -> None:
@@ -131,7 +136,8 @@ CREATE_AS = {
     "create or replace temporary view with": "CREATE OR REPLACE TEMPORARY VIEW spend_view AS\n" + CTE_BODY,
     "create or replace table with": "CREATE OR REPLACE TABLE spend_table AS\n" + CTE_BODY,
     "create view, no with, join": "CREATE VIEW names_view AS\n" + JOIN_BODY,
-    "comments between as and with": "CREATE OR REPLACE VIEW spend_view AS\n-- spend per customer, rebuilt nightly\n-- owner: analytics\n" + CTE_BODY,
+    "comments between as and with": "CREATE OR REPLACE VIEW spend_view AS\n"
+    "-- spend per customer, rebuilt nightly\n-- owner: analytics\n" + CTE_BODY,
 }
 FINAL_GRAIN = "-- grain: customer_id\n"
 
@@ -156,7 +162,9 @@ def test_create_as_without_a_final_grain_line_is_rejected(name: str, dialect: st
 
 def test_create_as_checks_the_final_grain_against_its_output_columns() -> None:
     text = CREATE_AS["create view with"].format(final_grain="-- grain: customer_key\n")
-    assert lint(text)["errors"] == ["Final SELECT: grain customer_key is not one of its output columns (customer_id, spend)."]
+    assert lint(text)["errors"] == [
+        "Final SELECT: grain customer_key is not one of its output columns (customer_id, spend)."
+    ]
 
 
 def test_a_grain_line_above_create_does_not_count_for_the_final_select() -> None:
@@ -190,7 +198,9 @@ def test_a_cross_join_needs_its_line_too() -> None:
 SELECT t.id, d.day FROM t
 CROSS JOIN days d
 """
-    assert lint(text)["errors"] == ['Final SELECT, JOIN days (line 3): no "-- join:" line above it. For a CROSS JOIN: "-- join: many:many on none".']
+    assert lint(text)["errors"] == [
+        'Final SELECT, JOIN days (line 3): no "-- join:" line above it. For a CROSS JOIN: "-- join: many:many on none".'
+    ]
     fixed = text.replace("CROSS JOIN", "-- join: many:many on none\nCROSS JOIN")
     assert lint(fixed)["errors"] == []
 
@@ -201,7 +211,10 @@ SELECT t.id FROM t
 -- join: one to many
 JOIN u ON u.id = t.id
 """
-    assert lint(text)["errors"] == ['Final SELECT, JOIN u (line 4): the "-- join:" line reads "one to many"; write "-- join: <1:1|1:many|many:1|many:many> on <key>[, <key>...]".']
+    assert lint(text)["errors"] == [
+        'Final SELECT, JOIN u (line 4): the "-- join:" line reads "one to many"; write "-- join: '
+        '<1:1|1:many|many:1|many:many> on <key>[, <key>...]".'
+    ]
 
 
 @pytest.mark.parametrize("dialect", ["databricks", "postgres"])
@@ -232,7 +245,12 @@ def test_a_cte_that_joins_and_aggregates_is_a_warning() -> None:
     -- grain: customer_id
     SELECT customer_id FROM spend_per_customer
     """
-    assert lint(text) == {"errors": [], "warnings": ["CTE spend_per_customer: filters and joins and aggregates; do one of filter, join, aggregate per CTE."]}
+    assert lint(text) == {
+        "errors": [],
+        "warnings": [
+            "CTE spend_per_customer: filters and joins and aggregates; do one of filter, join, aggregate per CTE."
+        ],
+    }
 
 
 def test_a_where_on_a_single_source_cte_is_just_the_filter_job() -> None:
@@ -254,25 +272,34 @@ FROM orders o
 JOIN order_lines l ON l.order_id = o.order_id
 GROUP BY o.customer_id
 """
-    assert lint(text)["warnings"] == ["Final SELECT, JOIN order_lines (line 5): a 1:many join feeds SUM in the same SELECT; aggregate before joining."]
+    assert lint(text)["warnings"] == [
+        "Final SELECT, JOIN order_lines (line 5): a 1:many join feeds SUM in the same SELECT; aggregate before joining."
+    ]
     assert lint(text.replace("1:many", "many:1"))["warnings"] == []
 
 
-def test_the_command_reads_stdin_and_prints_json(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_the_command_reads_stdin_and_prints_json(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(sys, "stdin", io.StringIO("WITH ow AS (SELECT 1 AS x) SELECT x FROM ow"))
     assert sql_rules.main(["lint", "postgres"]) == 0
     answer = json.loads(capsys.readouterr().out)
     assert answer["errors"][0] == 'CTE ow: no "-- grain:" line above it.'
 
 
-def test_the_command_says_when_the_sql_does_not_parse(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_the_command_says_when_the_sql_does_not_parse(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(sys, "stdin", io.StringIO("SELECT * FROM ("))
     assert sql_rules.main(["lint", "databricks"]) == 1
     assert json.loads(capsys.readouterr().out)["error"].startswith("the SQL does not parse")
 
 
 def test_template_parameters_bind_to_dummies_but_casts_stay() -> None:
-    assert sql_rules.bind_dummies("SELECT a::int FROM t WHERE d >= :start AND s = '12:30'") == "SELECT a::int FROM t WHERE d >= NULL AND s = '12:30'"
+    assert (
+        sql_rules.bind_dummies("SELECT a::int FROM t WHERE d >= :start AND s = '12:30'")
+        == "SELECT a::int FROM t WHERE d >= NULL AND s = '12:30'"
+    )
 
 
 SPEC_EXAMPLE = """
@@ -309,26 +336,39 @@ def test_lineage_of_the_spec_example(dialect: str) -> None:
         ],
         "edges": [
             {"from": "shop.sales.orders", "to": "daily_spend"},
-            {"from": "shop.sales.order_lines", "to": "daily_spend", "join": {"cardinality": "1:many", "keys": ["order_id"]}},
+            {
+                "from": "shop.sales.order_lines",
+                "to": "daily_spend",
+                "join": {"cardinality": "1:many", "keys": ["order_id"]},
+            },
             {"from": "daily_spend", "to": "final"},
         ],
     }
 
 
 def test_a_table_used_in_two_ctes_is_one_node() -> None:
-    found = lineage("WITH\n-- grain: a\nfirst_cte AS (SELECT a FROM Orders),\n-- grain: a\nsecond_cte AS (SELECT a FROM orders)\nSELECT 1 FROM first_cte")
+    found = lineage(
+        "WITH\n-- grain: a\nfirst_cte AS (SELECT a FROM Orders),\n-- grain: a\n"
+        "second_cte AS (SELECT a FROM orders)\nSELECT 1 FROM first_cte"
+    )
     assert [n["id"] for n in found["nodes"] if n["kind"] == "table"] == ["orders"]
     assert edge(found, "orders", "first_cte") and edge(found, "orders", "second_cte")
 
 
 def test_two_joins_of_one_table_give_two_edges_and_a_missing_line_gives_empty_join() -> None:
     found = lineage("SELECT 1 FROM a\n-- join: many:1 on x\nJOIN b ON 1=1\nJOIN b b2 ON 1=1")
-    assert edge(found, "b", "final") == [{"from": "b", "to": "final", "join": {"cardinality": "many:1", "keys": ["x"]}}, {"from": "b", "to": "final", "join": {}}]
+    assert edge(found, "b", "final") == [
+        {"from": "b", "to": "final", "join": {"cardinality": "many:1", "keys": ["x"]}},
+        {"from": "b", "to": "final", "join": {}},
+    ]
     assert edge(found, "a", "final") == [{"from": "a", "to": "final"}]
 
 
 def test_grain_is_absent_empty_or_columns() -> None:
-    found = lineage("WITH\nplain AS (SELECT 1 FROM t),\n-- grain: none\ntotal AS (SELECT 1 FROM t),\n-- grain: `a`, B\nkeyed AS (SELECT 1 FROM t)\nSELECT 1 FROM plain")
+    found = lineage(
+        "WITH\nplain AS (SELECT 1 FROM t),\n-- grain: none\ntotal AS (SELECT 1 FROM t),\n-- grain: `a`, B\n"
+        "keyed AS (SELECT 1 FROM t)\nSELECT 1 FROM plain"
+    )
     nodes = {n["id"]: n for n in found["nodes"]}
     assert "grain" not in nodes["plain"] and "grain" not in nodes["final"]
     assert nodes["total"]["grain"] == [] and nodes["keyed"]["grain"] == ["a", "b"]
@@ -342,7 +382,11 @@ def test_a_subquery_table_is_an_edge_without_join() -> None:
 
 def test_a_cte_named_final_leaves_the_id_to_the_cte() -> None:
     found = lineage("WITH final AS (SELECT 1 FROM t) SELECT 1 FROM final")
-    assert [(n["id"], n["kind"]) for n in found["nodes"]] == [("t", "table"), ("final", "cte"), ("final_select", "final")]
+    assert [(n["id"], n["kind"]) for n in found["nodes"]] == [
+        ("t", "table"),
+        ("final", "cte"),
+        ("final_select", "final"),
+    ]
     assert edge(found, "final", "final_select")
 
 
@@ -356,7 +400,9 @@ def test_template_binds_placeholders() -> None:
     assert lineage("SELECT 1 FROM t WHERE d > :since", template=True)["nodes"][0]["id"] == "t"
 
 
-def test_lineage_command_prints_json_and_a_parse_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_lineage_command_prints_json_and_a_parse_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(sys, "stdin", io.StringIO("SELECT 1 FROM t WHERE d > :since"))
     assert sql_rules.main(["lineage", "postgres", "--template"]) == 0
     assert json.loads(capsys.readouterr().out)["nodes"][0]["id"] == "t"
@@ -393,11 +439,25 @@ def parses(text: str, dialect: str) -> None:
 @pytest.mark.parametrize("dialect", ["databricks", "postgres"])
 def test_steps_follow_the_written_order_and_each_with_holds_only_the_ctes_it_needs(dialect: str) -> None:
     found = plan(THREE, dialect)
-    assert [(s["k"], s["name"]) for s in found["steps"]] == [(1, "base_orders"), (2, "unrelated_totals"), (3, "customer_orders"), (4, "final")]
+    assert [(s["k"], s["name"]) for s in found["steps"]] == [
+        (1, "base_orders"),
+        (2, "unrelated_totals"),
+        (3, "customer_orders"),
+        (4, "final"),
+    ]
     nodes = found["lineage"]["nodes"]
-    assert [nodes[s["node"]]["id"] for s in found["steps"]] == ["base_orders", "unrelated_totals", "customer_orders", "final"]
+    assert [nodes[s["node"]]["id"] for s in found["steps"]] == [
+        "base_orders",
+        "unrelated_totals",
+        "customer_orders",
+        "final",
+    ]
     preview = step(found, "customer_orders")["preview"]
-    assert preview.index("base_orders AS") < preview.index("customer_orders AS") and "unrelated_totals" not in preview and "payments" not in preview
+    assert (
+        preview.index("base_orders AS") < preview.index("customer_orders AS")
+        and "unrelated_totals" not in preview
+        and "payments" not in preview
+    )
     assert preview.endswith("SELECT * FROM customer_orders LIMIT 50")
     assert "base_orders AS" not in step(found, "unrelated_totals")["counts"]
     for each in found["steps"]:
@@ -425,7 +485,10 @@ everything AS (SELECT * FROM t),
 plain AS (SELECT a FROM t)
 SELECT 1 FROM keyed"""
     found = plan(sql)
-    assert "SELECT DISTINCT a, b FROM keyed" in step(found, "keyed")["counts"] and "AS assay_grain_rows" in step(found, "keyed")["counts"]
+    assert (
+        "SELECT DISTINCT a, b FROM keyed" in step(found, "keyed")["counts"]
+        and "AS assay_grain_rows" in step(found, "keyed")["counts"]
+    )
     assert step(found, "keyed")["grain"] == ["a", "b"]
     assert step(found, "total")["grain"] == [] and "assay_grain_rows" not in step(found, "total")["counts"]
     assert "assay_grain_rows" not in step(found, "everything")["counts"]
@@ -460,7 +523,10 @@ def test_join_counts_name_each_side_by_the_on_columns(dialect: str) -> None:
     counts = step(found, "spend")["counts"]
     for column in ("left_rows", "left_keys", "right_rows", "right_keys"):
         assert f"AS assay_j1_{column}" in counts
-    assert "SELECT DISTINCT order_id, shop FROM shop.orders" in counts and "SELECT DISTINCT order_id, shop FROM shop.lines" in counts
+    assert (
+        "SELECT DISTINCT order_id, shop FROM shop.orders" in counts
+        and "SELECT DISTINCT order_id, shop FROM shop.lines" in counts
+    )
     parses(counts, dialect)
 
 
@@ -472,17 +538,28 @@ def test_unchecked_joins_say_why_and_have_no_counts() -> None:
     assert joins[5]["checked"] is False and "more than two" in joins[5]["reason"]
     assert joins[6]["checked"] is False and "join:" in joins[6]["reason"] and "declared" not in joins[6]
     counts = step(plan(JOINS), "spend")["counts"]
-    assert "assay_j3_" not in counts and "assay_j4_" not in counts and "assay_j5_" not in counts and "assay_j6_" not in counts
+    assert (
+        "assay_j3_" not in counts
+        and "assay_j4_" not in counts
+        and "assay_j5_" not in counts
+        and "assay_j6_" not in counts
+    )
 
 
 def test_using_is_read_only_for_the_first_join() -> None:
-    later = plan("WITH\n-- grain: a\nx AS (SELECT 1 AS a FROM p\n-- join: 1:1 on a\nJOIN q ON q.a = p.a\n-- join: 1:1 on a\nJOIN r USING (a))\nSELECT 1 FROM x")
+    later = plan(
+        "WITH\n-- grain: a\nx AS (SELECT 1 AS a FROM p\n-- join: 1:1 on a\nJOIN q ON q.a = p.a\n"
+        "-- join: 1:1 on a\nJOIN r USING (a))\nSELECT 1 FROM x"
+    )
     first, second = step(later, "x")["joins"]
     assert "checked" not in first and second["checked"] is False and "USING" in second["reason"]
 
 
 def test_final_select_joins_are_counted_too() -> None:
-    found = plan("WITH\n-- grain: a\nx AS (SELECT a FROM p)\n-- grain: a\nSELECT x.a FROM x\n-- join: 1:1 on a\nJOIN y ON y.a = x.a")
+    found = plan(
+        "WITH\n-- grain: a\nx AS (SELECT a FROM p)\n-- grain: a\nSELECT x.a FROM x\n-- join: 1:1 on a\n"
+        "JOIN y ON y.a = x.a"
+    )
     assert step(found, "final")["joins"][0]["declared"] == "1:1"
     assert "AS assay_j1_left_rows" in step(found, "final")["counts"]
 
@@ -512,7 +589,9 @@ def test_the_last_statement_is_stepped() -> None:
     assert [s["name"] for s in found["steps"]] == ["y", "final"] and "note" in found["lineage"]
 
 
-def test_steps_command_prints_json_and_a_parse_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_steps_command_prints_json_and_a_parse_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(sys, "stdin", io.StringIO("WITH x AS (SELECT 1 FROM t WHERE d > :since) SELECT 1 FROM x"))
     assert sql_rules.main(["steps", "postgres", "--template"]) == 0
     assert [s["name"] for s in json.loads(capsys.readouterr().out)["steps"]] == ["x", "final"]

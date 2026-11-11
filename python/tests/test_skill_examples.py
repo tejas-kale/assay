@@ -14,6 +14,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import analysis_db
 import analysis_fixtures as fixtures
 import analysis_review as review
 import analysis_runner as runner
@@ -63,7 +64,9 @@ def check_without_live(monkeypatch: pytest.MonkeyPatch, check, *args):
     return check(*args)
 
 
-def test_the_sql_template_passes_form_transpile_and_fixture_cases(analysis: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_sql_template_passes_form_transpile_and_fixture_cases(
+    analysis: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     folder = analysis / "lib" / "trusted"
     answer = check_without_live(monkeypatch, review.check, folder, "completes_by_site", analysis)
     assert steps_before_live(answer) == [("form", True), ("transpile", True), ("test", True)]
@@ -78,7 +81,9 @@ def test_the_python_function_passes_form_and_its_own_pytest(analysis: Path, monk
     assert answer["ok"] is True
 
 
-def test_the_dictionary_entry_passes_form_transpile_and_its_definition_case(analysis: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_dictionary_entry_passes_form_transpile_and_its_definition_case(
+    analysis: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     draft = analysis / "lib" / "dictionaries" / "main.panel.surveys.yaml"
     answer = check_without_live(monkeypatch, review.check_entry, draft, analysis)
     assert steps_before_live(answer) == [("form", True), ("transpile", True), ("test", True)]
@@ -93,8 +98,6 @@ def test_an_invalid_example_fails(analysis: Path, monkeypatch: pytest.MonkeyPatc
 
 
 def test_the_block_passes_every_step_on_fixture_tables(analysis: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import analysis_db
-
     tables = {
         "main_.panel.surveys": "id,site_id,status,day\n1,10,C,2026-01-02\n2,11,S,2026-01-03\n3,10,C,2026-02-01\n",
         "main_.panel.sites": "site_id,name\n10,North\n11,South\n",
@@ -106,5 +109,11 @@ def test_the_block_passes_every_step_on_fixture_tables(analysis: Path, monkeypat
         path.write_text(path.read_text().replace("main.panel", "main_.panel"))
     answer = review.check(analysis / "lib" / "trusted", "site_surveys", analysis)
     assert [(step["step"], step["ok"]) for step in answer["steps"]] == [
-        ("form", True), ("transpile", True), ("rules", True), ("contract", True), ("live", True), ("grain", True), ("rebuild", True),
+        ("form", True),
+        ("transpile", True),
+        ("rules", True),
+        ("contract", True),
+        ("live", True),
+        ("grain", True),
+        ("rebuild", True),
     ]

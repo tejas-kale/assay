@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import analysis_calc as calc
+import analysis_db
 import analysis_dictionary as entries
 import analysis_fixtures as fixtures
 import analysis_library as library
@@ -19,6 +22,10 @@ import analysis_pytest as pyt
 import analysis_review as review
 import analysis_runner as runner
 import analysis_trust as trust
+
+SHORT_COMMIT = 12  # characters of a commit hash in a recorded source
+SAMPLE_ROWS = 2
+SHOWN_DIFF_LINES = 41  # 40 lines of a long diff and the "… N more" line
 
 
 def test_table_names_skip_ctes_and_keep_the_parts_written() -> None:
@@ -59,7 +66,9 @@ def test_dictionary_resolves_full_and_unique_partial_names(notes_src: Path) -> N
     assert found["glossary"] == {"complete": "A finished survey."}
 
 
-def test_the_command_prints_json_and_an_error_on_bad_sql(notes_src: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_the_command_prints_json_and_an_error_on_bad_sql(
+    notes_src: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     sql = tmp_path / "q.sql"
     sql.write_text("SELECT * FROM main.panel.sites\n")
     assert trust.main(["dictionary", str(notes_src), str(sql)]) == 0
@@ -110,12 +119,15 @@ from sqlalchemy import text
 
 def top_sites(engine, limit: int = 2):
     """The sites with the most completes, most first."""
-    query = text("SELECT site_id, count(*) AS completes FROM panel.surveys GROUP BY site_id ORDER BY completes DESC, site_id LIMIT :limit")
+    query = text(
+        "SELECT site_id, count(*) AS completes FROM panel.surveys "
+        "GROUP BY site_id ORDER BY completes DESC, site_id LIMIT :limit"
+    )
     with engine.connect() as connection:
         return pd.read_sql(query, connection, params={"limit": limit})
 '''
 
-FUNCTION_TEST = '''import analysis_trust
+FUNCTION_TEST = """import analysis_trust
 from top_sites import top_sites
 
 TABLES = {"panel.surveys": "id,site_id\\n1,10\\n2,10\\n3,11\\n"}
@@ -124,12 +136,10 @@ TABLES = {"panel.surveys": "id,site_id\\n1,10\\n2,10\\n3,11\\n"}
 def test_top_site_first():
     frame = top_sites(analysis_trust.fixture_engine(TABLES), limit=1)
     assert frame["site_id"].tolist() == [10]
-'''
+"""
 
 
 def commit_all(folder: Path) -> None:
-    import subprocess
-
     for args in (["init", "-q"], ["add", "."], ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "x"]):
         subprocess.run(["git", "-C", str(folder), *args], check=True)
 
@@ -158,11 +168,13 @@ def test_list_describes_each_calculation_with_its_commit(trusted: Path) -> None:
         {"name": "end", "type": "date", "required": True},
         {"name": "status", "type": "string", "required": False},
     ]
-    assert len(sql["commit"]) == 12 and sql["dirty"] is False
+    assert len(sql["commit"]) == SHORT_COMMIT and sql["dirty"] is False
     py = by_name["top_sites"]
     assert py["kind"] == "python" and py["parameters"] == [{"name": "limit", "type": "integer", "required": False}]
     assert py["dirty"] is True
-    assert listed["problems"] == ["broken: no front matter: start the file with a /*--- ... ---*/ block holding description and parameters"]
+    assert listed["problems"] == [
+        "broken: no front matter: start the file with a /*--- ... ---*/ block holding description and parameters"
+    ]
 
 
 def test_arguments_are_checked_against_their_types() -> None:
@@ -200,22 +212,28 @@ def test_a_python_calculation_runs_its_own_tests(trusted: Path) -> None:
 
 def test_without_tests_nothing_passes(trusted: Path) -> None:
     (trusted / "test_top_sites.py").unlink()
-    assert pyt.run_tests(trusted, "top_sites") == {"passed": False, "output": "no tests: add cases to top_sites.test.yaml or write test_top_sites.py"}
+    assert pyt.run_tests(trusted, "top_sites") == {
+        "passed": False,
+        "output": "no tests: add cases to top_sites.test.yaml or write test_top_sites.py",
+    }
 
 
 def test_check_runs_every_step_and_a_live_run(trusted: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    import analysis_db
-
     tables = yaml_tables()
     on_cint(trusted)
     monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: fixtures.fixture_engine(tables))
     answer = review.check(trusted, "completes_by_site", tmp_path)
-    assert [(step["step"], step["ok"]) for step in answer["steps"]] == [("form", True), ("transpile", True), ("test", True), ("live", True)]
+    assert [(step["step"], step["ok"]) for step in answer["steps"]] == [
+        ("form", True),
+        ("transpile", True),
+        ("test", True),
+        ("live", True),
+    ]
     assert answer["steps"][0]["text"] == "SQL template, 3 parameters"
     assert answer["steps"][2]["name"] == "case 1"
     assert answer["ok"] is True
     sample = answer["sample"]
-    assert sample["columns"] == ["site_id", "completes"] and sample["total"] == 2
+    assert sample["columns"] == ["site_id", "completes"] and sample["total"] == SAMPLE_ROWS
     assert sorted(sample["rows"]) == [["10", "2"], ["11", "1"]]
     assert answer["files"] == ["completes_by_site.sql", "completes_by_site.test.yaml"]
     assert answer["code"] == TEMPLATE.replace("main.panel", "cint.panel")
@@ -223,8 +241,6 @@ def test_check_runs_every_step_and_a_live_run(trusted: Path, monkeypatch: pytest
 
 def yaml_tables() -> dict[str, str]:
     """The fixture tables under catalog cint: a live engine on DuckDB cannot have a catalog named main."""
-    import yaml
-
     return {name.replace("main.", "cint."): text for name, text in yaml.safe_load(TEMPLATE_TESTS)["tables"].items()}
 
 
@@ -238,11 +254,16 @@ def test_check_stops_at_a_template_whose_parameters_do_not_match(trusted: Path, 
     (trusted / "completes_by_site.sql").write_text(TEMPLATE.replace("  status: {type: string, default: C}\n", ""))
     answer = review.check(trusted, "completes_by_site", tmp_path)
     assert answer["ok"] is False
-    assert answer["steps"][-1] == {"step": "transpile", "ok": False, "text": "uses :end, :start, :status but declares end, start"}
+    assert answer["steps"][-1] == {
+        "step": "transpile",
+        "ok": False,
+        "text": "uses :end, :start, :status but declares end, start",
+    }
 
 
 CTE_TEMPLATE = TEMPLATE.replace(
-    "SELECT site_id, count(*) AS completes\nFROM main.panel.surveys\nWHERE status = :status AND day BETWEEN :start AND :end\nGROUP BY site_id\n",
+    "SELECT site_id, count(*) AS completes\nFROM main.panel.surveys\n"
+    "WHERE status = :status AND day BETWEEN :start AND :end\nGROUP BY site_id\n",
     "WITH sv AS (SELECT * FROM main.panel.surveys WHERE status = :status AND day BETWEEN :start AND :end)\n"
     "SELECT site_id, count(*) AS completes FROM sv GROUP BY site_id\n",
 )
@@ -252,15 +273,24 @@ def test_check_fails_a_template_that_breaks_the_sql_rules(trusted: Path, tmp_pat
     (trusted / "completes_by_site.sql").write_text(CTE_TEMPLATE)
     answer = review.check(trusted, "completes_by_site", tmp_path)
     assert answer["ok"] is False
-    assert [(step["step"], step["ok"]) for step in answer["steps"]] == [("form", True), ("transpile", True), ("rules", False)]
+    assert [(step["step"], step["ok"]) for step in answer["steps"]] == [
+        ("form", True),
+        ("transpile", True),
+        ("rules", False),
+    ]
     assert answer["steps"][-1]["text"] == (
-        '- CTE sv: no "-- grain:" line above it.\n- CTE sv: name too short; say what it holds.\n- Final SELECT: no "-- grain:" line above it.'
+        '- CTE sv: no "-- grain:" line above it.\n- CTE sv: name too short; say what it holds.\n'
+        '- Final SELECT: no "-- grain:" line above it.'
     )
 
 
 def test_a_template_that_follows_the_rules_passes_its_rules_step() -> None:
     steps: list[dict[str, Any]] = []
-    body = calc.split_template(CTE_TEMPLATE)[1].replace("WITH sv AS", "WITH\n-- grain: id\nrecent_surveys AS").replace("FROM sv", "FROM recent_surveys")
+    body = (
+        calc.split_template(CTE_TEMPLATE)[1]
+        .replace("WITH sv AS", "WITH\n-- grain: id\nrecent_surveys AS")
+        .replace("FROM sv", "FROM recent_surveys")
+    )
     body = body.replace("SELECT site_id, count", "-- grain: site_id\nSELECT site_id, count")
     assert review.rules_step(body, steps.append) is True
     assert steps == [{"step": "rules", "ok": True, "text": "grain, joins and names as the rules ask"}]
@@ -269,25 +299,31 @@ def test_a_template_that_follows_the_rules_passes_its_rules_step() -> None:
 
 
 def test_check_needs_live_arguments_for_required_parameters(trusted: Path, tmp_path: Path) -> None:
-    (trusted / "completes_by_site.test.yaml").write_text(TEMPLATE_TESTS.split("live:")[0])
+    (trusted / "completes_by_site.test.yaml").write_text(TEMPLATE_TESTS.split("live:", maxsplit=1)[0])
     answer = review.check(trusted, "completes_by_site", tmp_path)
-    assert answer["steps"][-1] == {"step": "live", "ok": False, "text": "no live: arguments in completes_by_site.test.yaml for the live run"}
+    assert answer["steps"][-1] == {
+        "step": "live",
+        "ok": False,
+        "text": "no live: arguments in completes_by_site.test.yaml for the live run",
+    }
 
 
 def test_run_binds_arguments_as_parameters(trusted: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    import analysis_db
-
     tables = {**yaml_tables(), "panel.surveys": "id,site_id\n1,10\n2,10\n3,11\n"}
     on_cint(trusted)
     monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: fixtures.fixture_engine(tables))
     # A value that would break SQL pasted in is only a value.
-    result = runner.run(trusted, "completes_by_site", {"start": "2026-01-01", "end": "2026-01-31", "status": "C' OR '1'='1"}, tmp_path)
+    result = runner.run(
+        trusted, "completes_by_site", {"start": "2026-01-01", "end": "2026-01-31", "status": "C' OR '1'='1"}, tmp_path
+    )
     assert result == {"columns": ["site_id", "completes"], "rows": []}
     top = runner.run(trusted, "top_sites", {"limit": 1}, tmp_path)
     assert top == {"columns": ["site_id", "completes"], "rows": [["10", "2"]]}
 
 
-def test_the_run_command_reports_a_problem_as_json(trusted: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_the_run_command_reports_a_problem_as_json(
+    trusted: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     assert trust.main(["run", str(tmp_path), "completes_by_site", '{"start": 1}', str(tmp_path)]) == 1
     assert json.loads(capsys.readouterr().out) == {"error": "argument start must be a date"}
 
@@ -353,18 +389,18 @@ cases:
 
 
 def test_a_definition_renders_with_checked_names_only() -> None:
-    import yaml
-
     data = yaml.safe_load(ENTRY)
     t = "main.panel.surveys"
     assert entries.render_definition(data, t, "completes", {"by": ["Site_Id"]}) == (
-        "-- grain: site_id\nSELECT `site_id`, count_if(status = 'C') AS `completes` FROM `main`.`panel`.`surveys` GROUP BY `site_id`"
+        "-- grain: site_id\n"
+        "SELECT `site_id`, count_if(status = 'C') AS `completes` FROM `main`.`panel`.`surveys` GROUP BY `site_id`"
     )
     assert entries.render_definition(data, t, "is_complete", {}) == (
         "-- grain: none\nSELECT count(*) AS `is_complete` FROM `main`.`panel`.`surveys` WHERE (status = 'C')"
     )
     assert entries.render_definition(data, t, "site_label", {"filters": ["is_complete"]}) == (
-        "SELECT *, concat('site ', site_id) AS `site_label` FROM `main`.`panel`.`surveys` WHERE (status = 'C') LIMIT 100"
+        "SELECT *, concat('site ', site_id) AS `site_label` FROM `main`.`panel`.`surveys` WHERE (status "
+        "= 'C') LIMIT 100"
     )
     with pytest.raises(calc.TrustError, match="by: x; DROP is not a column"):
         entries.render_definition(data, t, "completes", {"by": ["x; DROP"]})
@@ -377,20 +413,29 @@ def draft(tmp_path: Path) -> Path:
     folder = tmp_path / "lib" / "dictionaries"
     folder.mkdir(parents=True)
     (folder / "main.panel.surveys.yaml").write_text(ENTRY)
-    (folder / "main.panel.surveys.test.yaml").write_text(ENTRY_TESTS.replace("cases:", "live:\n  completes: {by: [site_id]}\ncases:"))
+    (folder / "main.panel.surveys.test.yaml").write_text(
+        ENTRY_TESTS.replace("cases:", "live:\n  completes: {by: [site_id]}\ncases:")
+    )
     return folder
 
 
-def test_a_draft_with_definitions_runs_their_cases_and_a_live_run_each(draft: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    import analysis_db
-
+def test_a_draft_with_definitions_runs_their_cases_and_a_live_run_each(
+    draft: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     tables = {"cint.panel.surveys": "id,site_id,status\n1,10,C\n"}
     (draft / "main.panel.surveys.yaml").write_text(ENTRY)
     monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: fixtures.fixture_engine(tables))
     # The live engine is DuckDB here, with no catalog named main: point the draft's live runs at cint.
     monkeypatch.setattr(runner, "run_live_sql", lambda sql, _: _on_duckdb(sql.replace("`main`", "`cint`"), tables))
     answer = review.check_entry(draft / "main.panel.surveys.yaml", tmp_path)
-    assert [(step["step"], step["ok"]) for step in answer["steps"]] == [("form", True), ("transpile", True), ("test", True), ("test", True), ("test", True), ("live", True)]
+    assert [(step["step"], step["ok"]) for step in answer["steps"]] == [
+        ("form", True),
+        ("transpile", True),
+        ("test", True),
+        ("test", True),
+        ("test", True),
+        ("live", True),
+    ]
     assert answer["steps"][-1]["text"] == "completes 1 row, is_complete 1 row, site_label 1 row"
     assert answer["ok"] is True
     assert answer["files"] == ["main.panel.surveys.yaml", "main.panel.surveys.test.yaml"]
@@ -404,10 +449,14 @@ def _on_duckdb(sql: str, tables: dict[str, str]) -> dict[str, Any]:
 
 
 def test_a_definition_without_a_case_cannot_pass(draft: Path, tmp_path: Path) -> None:
-    (draft / "main.panel.surveys.test.yaml").write_text(ENTRY_TESTS.split("  - definition: site_label")[0])
+    (draft / "main.panel.surveys.test.yaml").write_text(ENTRY_TESTS.split("  - definition: site_label", maxsplit=1)[0])
     answer = review.check_entry(draft / "main.panel.surveys.yaml", tmp_path)
     assert answer["ok"] is False
-    assert answer["steps"][-1] == {"step": "tests", "ok": False, "text": "no case in main.panel.surveys.test.yaml for site_label"}
+    assert answer["steps"][-1] == {
+        "step": "tests",
+        "ok": False,
+        "text": "no case in main.panel.surveys.test.yaml for site_label",
+    }
 
 
 def test_a_failing_definition_case_fails(draft: Path, tmp_path: Path) -> None:
@@ -431,7 +480,7 @@ def test_definitions_are_listed_as_calculations_with_their_entry_commit(tmp_path
     assert first["description"] == "metric on main.panel.surveys: Surveys finished."
     assert [p["name"] for p in first["parameters"]] == ["by", "filters"]
     assert [p["name"] for p in listed["calculations"][2]["parameters"]] == ["by", "filters", "limit"]
-    assert first["dirty"] is False and len(first["commit"]) == 12
+    assert first["dirty"] is False and len(first["commit"]) == SHORT_COMMIT
     assert runner.render(tmp_path, "main.panel.surveys:completes", {"by": ["site_id"]}).endswith("GROUP BY `site_id`")
     with pytest.raises(calc.TrustError, match="argument by must be a list of names"):
         runner.render(tmp_path, "main.panel.surveys:completes", {"by": "site_id"})
@@ -446,9 +495,9 @@ def stream(capsys: pytest.CaptureFixture[str], *argv: str) -> list[dict[str, Any
     return [json.loads(line) for line in capsys.readouterr().out.splitlines()]
 
 
-def test_a_stream_prints_start_then_each_step_then_done(trusted: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    import analysis_db
-
+def test_a_stream_prints_start_then_each_step_then_done(
+    trusted: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     tables = yaml_tables()
     on_cint(trusted)
     monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: fixtures.fixture_engine(tables))
@@ -463,7 +512,9 @@ def test_a_stream_prints_start_then_each_step_then_done(trusted: Path, monkeypat
     assert done["ok"] is True and done["steps"] == [event["step"] for event in events[1:5]]
 
 
-def test_a_failing_case_streams_a_diff_of_expected_and_got(trusted: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_a_failing_case_streams_a_diff_of_expected_and_got(
+    trusted: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     (trusted / "completes_by_site.test.yaml").write_text(TEMPLATE_TESTS.replace("10,2", "10,3"))
     events = stream(capsys, "check", str(trusted), "completes_by_site", str(tmp_path))
     failed = next(event["step"] for event in events if event["event"] == "step" and event["step"]["step"] == "test")
@@ -476,10 +527,12 @@ def test_a_failing_case_streams_a_diff_of_expected_and_got(trusted: Path, tmp_pa
 def test_a_long_diff_is_cut(trusted: Path) -> None:
     lines = [f"{n}" for n in range(100)]
     diff = fixtures.line_diff(lines, [])
-    assert diff.splitlines()[-1] == "… 60 more" and len(diff.splitlines()) == 41
+    assert diff.splitlines()[-1] == "… 60 more" and len(diff.splitlines()) == SHOWN_DIFF_LINES
 
 
-def test_a_calculations_own_test_is_named_in_a_step(trusted: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_a_calculations_own_test_is_named_in_a_step(
+    trusted: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     events = stream(capsys, "check", str(trusted), "top_sites", str(tmp_path))
     tests = [event["step"] for event in events if event["event"] == "step" and event["step"]["step"] == "test"]
     assert tests == [{"step": "test", "ok": True, "text": "PASSED", "name": "test_top_sites.py::test_top_site_first"}]
@@ -487,20 +540,30 @@ def test_a_calculations_own_test_is_named_in_a_step(trusted: Path, tmp_path: Pat
     assert form["text"] == "Python function, 1 parameter"
 
 
-def test_a_stream_without_any_test_fails_with_a_tests_step(trusted: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_a_stream_without_any_test_fails_with_a_tests_step(
+    trusted: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     (trusted / "test_top_sites.py").unlink()
     events = stream(capsys, "check", str(trusted), "top_sites", str(tmp_path))
-    assert events[-2]["step"] == {"step": "tests", "ok": False, "text": "no tests: add cases to top_sites.test.yaml or write test_top_sites.py"}
+    assert events[-2]["step"] == {
+        "step": "tests",
+        "ok": False,
+        "text": "no tests: add cases to top_sites.test.yaml or write test_top_sites.py",
+    }
     assert events[-1]["answer"]["ok"] is False
 
 
-def test_a_form_failure_streams_a_step_then_done_without_start(trusted: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_a_form_failure_streams_a_step_then_done_without_start(
+    trusted: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     events = stream(capsys, "check", str(trusted), "nothing", str(tmp_path))
     assert [event["event"] for event in events] == ["step", "done"]
     assert events[0]["step"]["step"] == "form" and events[0]["step"]["ok"] is False
 
 
-def test_a_dictionary_entrys_cases_stream_by_number(draft: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_a_dictionary_entrys_cases_stream_by_number(
+    draft: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     events = stream(capsys, "check-entry", str(draft / "main.panel.surveys.yaml"), str(tmp_path))
     assert events[0]["event"] == "start" and events[0]["kind"] == "dictionary"
     names = [event["step"]["name"] for event in events if event["event"] == "step" and event["step"]["step"] == "test"]
@@ -508,15 +571,21 @@ def test_a_dictionary_entrys_cases_stream_by_number(draft: Path, tmp_path: Path,
     assert events[-1]["event"] == "done"
 
 
-def test_an_unexpected_error_streams_done_with_an_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_an_unexpected_error_streams_done_with_an_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     def boom(*_: Any, **__: Any) -> Any:
         raise RuntimeError("boom")
 
     monkeypatch.setattr(review, "check", boom)
-    assert [event for event in stream(capsys, "check", str(tmp_path), "x", str(tmp_path))] == [{"event": "done", "answer": {"error": "RuntimeError: boom"}}]
+    assert [event for event in stream(capsys, "check", str(tmp_path), "x", str(tmp_path))] == [
+        {"event": "done", "answer": {"error": "RuntimeError: boom"}}
+    ]
 
 
-def test_without_stream_the_output_is_one_object(trusted: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_without_stream_the_output_is_one_object(
+    trusted: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     trust.main(["check", str(trusted), "top_sites", str(tmp_path)])
     out = capsys.readouterr().out.splitlines()
     assert len(out) == 1 and json.loads(out[0])["name"] == "top_sites"
