@@ -11,16 +11,16 @@ function deps(files: Record<string, string>, currentCommit?: LabelDeps['currentC
   return {
     root: '/root',
     fs: {
-      readdir: async path => {
+      readdir: path => {
         const prefix = `${path}/`
         const names = Object.keys(files).filter(each => each.startsWith(prefix)).map(each => each.slice(prefix.length).split('/')[0] ?? '')
-        if (names.length === 0) throw new Error('ENOENT')
-        return [...new Set(names)]
+        if (names.length === 0) return Promise.reject(new Error('ENOENT'))
+        return Promise.resolve([...new Set(names)])
       },
-      readFile: async path => {
+      readFile: path => {
         const text = files[path]
-        if (text === undefined) throw new Error('ENOENT')
-        return text
+        if (text === undefined) return Promise.reject(new Error('ENOENT'))
+        return Promise.resolve(text)
       },
     },
     ...(currentCommit ? { currentCommit } : {}),
@@ -57,11 +57,11 @@ test('label: a Python run is computed when it ended ok, else unverified', async 
 test('label: a trusted run with a result is trusted; stale when the calculation has a newer commit', async () => {
   const cite = { analysis: 'churn-q3', number: 3 }
   assert.equal(await citationLabel(deps(files), cite), 'trusted')
-  assert.equal(await citationLabel(deps(files, async () => 'abc123'), cite), 'trusted')
-  assert.equal(await citationLabel(deps(files, async () => 'def456'), cite), 'stale')
-  assert.equal(await citationLabel(deps(files, async () => undefined), cite), 'trusted')
+  assert.equal(await citationLabel(deps(files, () => Promise.resolve('abc123')), cite), 'trusted')
+  assert.equal(await citationLabel(deps(files, () => Promise.resolve('def456')), cite), 'stale')
+  assert.equal(await citationLabel(deps(files, () => Promise.resolve(undefined)), cite), 'trusted')
   // No result, no trust.
-  assert.equal(await citationLabel(deps(files, async () => 'def456'), { analysis: 'churn-q3', number: 7 }), 'unverified')
+  assert.equal(await citationLabel(deps(files, () => Promise.resolve('def456')), { analysis: 'churn-q3', number: 7 }), 'unverified')
 })
 
 test('label: an unknown analysis or run is missing', async () => {

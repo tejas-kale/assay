@@ -135,10 +135,10 @@ test('the shortcuts overlay lists pin in Data, Code and History, edit in Code, a
 
 test('Cmd+1 to Cmd+9 switch to analyses 1 to 9; Ctrl+1 to Ctrl+3 focus the panes and Ctrl+4 up is not claimed', () => {
   for (let n = 1; n <= 9; n++) {
-    assert.equal(commandForInput(input({ code: `Digit${n}`, meta: true })), `analysis.${n}`)
+    assert.equal(commandForInput(input({ code: `Digit${String(n)}`, meta: true })), `analysis.${String(n)}`)
   }
   assert.equal(commandForInput(input({ code: 'Digit0', meta: true })), undefined)
-  for (const n of [4, 5, 9]) assert.equal(commandForInput(input({ code: `Digit${n}`, ctrl: true })), undefined, `ctrl ${n}`)
+  for (const n of [4, 5, 9]) assert.equal(commandForInput(input({ code: `Digit${String(n)}`, ctrl: true })), undefined, `ctrl ${String(n)}`)
   assert.equal(commandForInput(input({ code: 'KeyP', ctrl: true })), undefined)
 })
 

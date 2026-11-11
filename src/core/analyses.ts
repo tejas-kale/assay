@@ -23,12 +23,27 @@ export type Analysis = AnalysisRef & { modifiedMs: number }
 export const ANALYSIS_FILE = 'analysis.yaml'
 const ANALYSES = 'analyses'
 
-const join = (root: string, ...parts: string[]) => [root.replace(/\/+$/, ''), ...parts].join('/')
+/** The path without the `/`s at its end (a loop, not a regex: `/+$` is slow on a long run of slashes). */
+export function stripTrailingSlashes(path: string): string {
+  let end = path.length
+  while (end > 0 && path[end - 1] === '/') end--
+  return path.slice(0, end)
+}
+
+const join = (root: string, ...parts: string[]) => [stripTrailingSlashes(root), ...parts].join('/')
 
 /** The keys of analysis.yaml this app reads; any other key stays in the file untouched. */
 export type AnalysisFile = { title?: string; created?: string; profile?: string; warehouse?: string; pgDatabase?: string }
 
-const KEY_LINE = /^([A-Za-z_][\w-]*)[ \t]*:(?:[ \t]+(.*))?$/
+const KEY_LINE = /^([A-Za-z_][\w-]*)[ \t]*:(.*)$/
+
+/** A `key: value` line, the key lowercased and the value as written; the colon must end the line or be followed by a space or tab. */
+function keyLine(line: string): { key: string; value: string } | undefined {
+  const match = KEY_LINE.exec(line)
+  const value = match?.[2] ?? ''
+  if (!match?.[1] || (value !== '' && !/^[ \t]/.test(value))) return undefined
+  return { key: match[1].toLowerCase(), value }
+}
 
 /** A scalar as YAML writes it: quoted with '' or "", else up to a ` #` comment. Undefined when empty. */
 function scalar(raw: string): string | undefined {
@@ -55,11 +70,10 @@ function scalar(raw: string): string | undefined {
 export function parseAnalysisFile(text: string): AnalysisFile {
   const found: Record<string, string> = {}
   for (const line of text.split(/\r?\n/)) {
-    const match = KEY_LINE.exec(line)
-    const key = match?.[1]?.toLowerCase()
-    if (!match || !key || key in found) continue
-    const value = scalar(match[2] ?? '')
-    if (value !== undefined) found[key] = value
+    const entry = keyLine(line)
+    if (!entry || entry.key in found) continue
+    const value = scalar(entry.value)
+    if (value !== undefined) found[entry.key] = value
   }
   return {
     ...(found.title ? { title: found.title } : {}),
@@ -81,7 +95,7 @@ export function setTitle(text: string, title: string): string {
   const eol = text.includes('\r\n') ? '\r\n' : '\n'
   const line = `title: ${yamlScalar(title.trim())}`
   const lines = text.split('\n')
-  const at = lines.findIndex(each => KEY_LINE.exec(each.replace(/\r$/, ''))?.[1]?.toLowerCase() === 'title')
+  const at = lines.findIndex(each => keyLine(each.replace(/\r$/, ''))?.key === 'title')
   if (at < 0) return `${line}${eol}${text}`
   lines[at] = lines[at]?.endsWith('\r') ? `${line}\r` : line
   return lines.join('\n')
@@ -93,7 +107,7 @@ export function slugFor(title: string, taken: Iterable<string>): string {
   const used = new Set([...taken].map(name => name.toLowerCase()))
   const slug = slugify(title)
   if (!used.has(slug)) return slug
-  for (let n = 2; ; n++) if (!used.has(`${slug}-${n}`)) return `${slug}-${n}`
+  for (let n = 2; ; n++) if (!used.has(`${slug}-${String(n)}`)) return `${slug}-${String(n)}`
 }
 
 /** Every analysis under `root`, most recently changed first. Only folders holding analysis.yaml count. */
@@ -125,11 +139,11 @@ const titled = (raw: string) => {
 }
 
 /** A local calendar day as `YYYY-MM-DD`. */
-export const isoDay = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+export const isoDay = (date: Date) => `${String(date.getFullYear())}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
 /** The slug when `path` is exactly `<root>/analyses/<slug>`; undefined for anything else. */
 export function analysisSlug(path: string, root: string): string | undefined {
-  const prefix = `${root.replace(/\/+$/, '')}/${ANALYSES}/`
+  const prefix = `${stripTrailingSlashes(root)}/${ANALYSES}/`
   const slug = path.startsWith(prefix) ? path.slice(prefix.length) : ''
   return slug === '' || slug.includes('/') || slug.startsWith('.') ? undefined : slug
 }
@@ -147,7 +161,7 @@ export async function createAnalysis(port: FsPort, root: string, title: string, 
 }
 
 /** The folder name (the slug) of an analysis path. */
-export const folderName = (path: string) => path.replace(/\/+$/, '').split('/').at(-1) ?? path
+export const folderName = (path: string) => stripTrailingSlashes(path).split('/').at(-1) ?? path
 
 /** The analysis in `path` and its analysis.yaml text; a folder without the file is refused, pointing at the migration. */
 async function read(port: Pick<FsPort, 'readFile'>, path: string): Promise<{ ref: AnalysisRef; text: string }> {

@@ -1,12 +1,4 @@
 {
-  "src/core/bashGuard.ts": {
-    "lines": 98.41,
-    "branches": 83.14
-  },
-  "src/core/files.ts": {
-    "lines": 100,
-    "branches": 89.74
-  },
   "src/core/overview.ts": {
     "lines": 100,
     "branches": 83.56

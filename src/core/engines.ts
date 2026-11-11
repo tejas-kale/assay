@@ -50,7 +50,7 @@ function parseCsvAll(text: string): Table {
   let cell = ''
   let isQuoted = false
   for (let i = 0; i < text.length; i++) {
-    const char = text[i]
+    const char = text[i] ?? ''
     if (isQuoted) {
       if (char === '"' && text[i + 1] === '"') {
         cell += '"'
@@ -80,7 +80,7 @@ function parseCsvAll(text: string): Table {
 export function parsePsqlOutput(exitCode: number, stdout: string, stderr: string): Table | { error: string } {
   if (exitCode !== 0) {
     const said = stderr.replace(/^psql:[^:\n]*:\d+: /gm, '').trim() || stdout.trim()
-    return { error: said || `psql exited with ${exitCode}.` }
+    return { error: said || `psql exited with ${String(exitCode)}.` }
   }
   return parseCsvAll(stdout)
 }

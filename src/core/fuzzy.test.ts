@@ -13,7 +13,7 @@ test('an empty query returns the input unchanged', () => {
 
 test('only subsequence matches stay, ignoring case', () => {
   const found = fuzzyRank(['Alpha Beta', 'gamma', 'abc'], 'AB', id)
-  assert.deepEqual([...found].sort(), ['Alpha Beta', 'abc'])
+  assert.deepEqual(new Set(found), new Set(['Alpha Beta', 'abc']))
   assert.deepEqual(fuzzyRank(['gamma', 'delta'], 'xz', id), [])
   assert.deepEqual(fuzzyRank(['cba'], 'abc', id), [])
 })

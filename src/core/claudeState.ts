@@ -10,7 +10,7 @@ export const CLAUDE_STATE = '.assay/claude.json'
 const STATES: readonly ClaudeState[] = ['working', 'waiting', 'idle']
 const WAITING_NOTIFICATIONS = ['permission_prompt', 'elicitation_dialog']
 
-const text = (input: Record<string, unknown>, key: string) => (typeof input[key] === 'string' ? (input[key] as string) : '')
+const text = (input: Record<string, unknown>, key: string) => (typeof input[key] === 'string' ? input[key] : '')
 
 /** The state a hook event moves Claude to, or undefined when the event says nothing about it. */
 export function claudeStateForHook(input: Record<string, unknown>): ClaudeState | undefined {

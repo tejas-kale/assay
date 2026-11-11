@@ -2,9 +2,9 @@
 import { test } from 'node:test'
 
 import { expect } from '../testing/expect.ts'
-import { checkArgs, dictionaryText, draftHint, isGuarded, newSeen, parseTrustedHeader, runHeader, signature, splitCheckEvents } from './calculations.ts'
+import { blockSignature, checkArgs, dictionaryText, draftHint, isGuarded, newSeen, normalPath, otherAnalysis, parseTrustedHeader, runHeader, signature, splitCheckEvents } from './calculations.ts'
 import type { Param } from './calculations.ts'
-import { calculationRules, trustRules } from './rules.ts'
+import { calculationRules } from './rules.ts'
 import { parseRunHeader } from './runs.ts'
 
 const PARAMS: Param[] = [
@@ -14,7 +14,7 @@ const PARAMS: Param[] = [
   { name: 'flag', type: 'boolean', required: false },
 ]
 
-test('arguments are checked against the declared types', async () => {
+test('arguments are checked against the declared types', () => {
   expect(checkArgs(PARAMS, { start: '2026-01-02', n: 3, rate: 0.5, flag: true })).toEqual({ args: { start: '2026-01-02', n: 3, rate: 0.5, flag: true } })
   expect(checkArgs([], undefined)).toEqual({ args: {} })
   expect(checkArgs(PARAMS, {})).toEqual({ error: 'Missing argument: start (date).' })
@@ -25,14 +25,14 @@ test('arguments are checked against the declared types', async () => {
   expect(signature({ name: 'f', parameters: PARAMS })).toBe('f(start: date, n?: integer, rate?: number, flag?: boolean)')
 })
 
-test("a trusted run's header round-trips, and the app reads its name from it", async () => {
+test("a trusted run's header round-trips, and the app reads its name from it", () => {
   const header = { name: 'f', args: { start: '2026-01-02' }, commit: 'abc' }
   expect(parseTrustedHeader(`${runHeader(header)}\nSELECT 1\n`)).toEqual(header)
   expect(parseTrustedHeader('SELECT 1\n')).toBeUndefined()
   expect(parseRunHeader(`${runHeader(header)}\nSELECT 1\n`).trusted).toBe('f')
 })
 
-test('only paths inside dictionaries/ and trusted/ of the shared folder are guarded', async () => {
+test('only paths inside dictionaries/ and trusted/ of the shared folder are guarded', () => {
   const home = '/c/notes-src'
   expect(isGuarded('/c/notes-src/trusted/x.sql', home, '/')).toBe(true)
   expect(isGuarded('../../dictionaries/a.yaml', home, '/c/notes-src/analyses/a')).toBe(true)
@@ -40,7 +40,7 @@ test('only paths inside dictionaries/ and trusted/ of the shared folder are guar
   expect(isGuarded('/c/notes-src/analyses/a/lib/trusted/x.sql', home, '/')).toBe(false)
 })
 
-test('dictionary text names each table and term once per session', async () => {
+test('dictionary text names each table and term once per session', () => {
   const seen = newSeen()
   const answer = { tables: [{ name: 's', entry: 'm.p.s', text: 'description: S.\n', terms: ['q'] }, { name: 'm.p.t' }], glossary: { q: 'Q.' } }
   expect(dictionaryText(answer, seen)?.split('\n').slice(0, 5)).toEqual(['Data dictionary (first use this session):', '## m.p.s', 'description: S.', 'Glossary:', '- q: Q.'])
@@ -83,4 +83,77 @@ test('blocks are listed apart, with their contract', () => {
   expect(text).toContain('- entry_sessions(start: date) -> grain session_id: session_id, buyer: Entry sessions.')
   expect(text).toContain('- completes(start: date): Completes.')
   expect(text).not.toContain('- entry_sessions(start: date): Entry sessions.')
+})
+
+test('a missing entry is hinted by what the name can say: a full name drafts, a short one asks for its catalog', () => {
+  expect(draftHint('m.p.t')).toBe("No data dictionary entry for m.p.t. Draft it with the assay:propose-trusted skill and the table's full name: m.p.t.")
+  expect(draftHint('t')).toBe('No data dictionary entry for t. To draft one, find its catalog and schema: its entry is named catalog.schema.table.')
+})
+
+test('dictionary text gives each missing table its hint, each term its glossary line, and nothing for what was seen', () => {
+  const seen = newSeen()
+  const answer = {
+    tables: [{ name: 'a', entry: 'm.p.a', text: 'A\n', terms: ['x', 'y'] }, { name: 'b', entry: 'm.p.b', text: 'B', terms: ['x'] }, { name: 'c', entry: 'm.p.c' }, { name: 'd' }],
+    glossary: { x: 'X.' },
+  }
+  const text = dictionaryText(answer, seen)?.split('\n')
+  expect(text).toEqual([
+    'Data dictionary (first use this session):',
+    '## m.p.a\nA',
+    '## m.p.b\nB',
+    'Glossary:',
+    '- x: X.',
+    '- y: ',
+    draftHint('c'),
+    draftHint('d'),
+  ].flatMap(line => line.split('\n')))
+  expect(seen.terms).toEqual(new Set(['x', 'y']))
+  expect(dictionaryText({ tables: [], glossary: {} }, newSeen())).toBeUndefined()
+})
+
+test('every parameter type has its check and its name in the message', () => {
+  const params: Param[] = [
+    { name: 's', type: 'string', required: false },
+    { name: 'l', type: 'list', required: false },
+    { name: 'r', type: 'number', required: false },
+  ]
+  expect(checkArgs(params, { s: 'a', l: ['a', 'b'], r: 2 })).toEqual({ args: { s: 'a', l: ['a', 'b'], r: 2 } })
+  expect(checkArgs(params, { s: 1 })).toEqual({ error: 'Argument s must be a string.' })
+  expect(checkArgs(params, { l: ['a', 1] })).toEqual({ error: 'Argument l must be a list of names.' })
+  expect(checkArgs(params, { l: 'a' })).toEqual({ error: 'Argument l must be a list of names.' })
+  expect(checkArgs(params, { r: Infinity })).toEqual({ error: 'Argument r must be a number.' })
+  expect(checkArgs(params, { r: '2' })).toEqual({ error: 'Argument r must be a number.' })
+  expect(checkArgs(params, { z: 1 })).toEqual({ error: 'Unknown arguments: z. It takes s, l, r.' })
+  expect(checkArgs([], { z: 1 })).toEqual({ error: 'Unknown arguments: z. It takes none.' })
+  expect(checkArgs(params, null)).toEqual({ error: 'Give args as an object of named arguments.' })
+  expect(checkArgs(params, 'x')).toEqual({ error: 'Give args as an object of named arguments.' })
+})
+
+test('a parameter of a type the list does not know is read as a date', () => {
+  const odd = [{ name: 'w', type: 'weird', required: false }] as unknown as Param[]
+  expect(checkArgs(odd, { w: '2026-01-02' })).toEqual({ args: { w: '2026-01-02' } })
+  expect(checkArgs(odd, { w: 'x' })).toEqual({ error: 'Argument w must be a weird.' })
+})
+
+test('a block is named with its grain and columns', () => {
+  const calc = { name: 'b', parameters: PARAMS.slice(0, 1), block: { grain: ['id', 'day'], columns: ['id', 'day', 'n'] } }
+  expect(blockSignature(calc)).toBe('b(start: date) -> grain id, day: id, day, n')
+  expect(blockSignature({ ...calc, block: { grain: [], columns: ['n'] } })).toBe('b(start: date) -> grain one row: n')
+})
+
+test('paths are resolved against the base, and another analysis is named by its folder', () => {
+  expect(normalPath('../x/./y', '/a/b')).toBe('/a/x/y')
+  expect(normalPath('/a//b/../c', '/z')).toBe('/a/c')
+  expect(normalPath('../../..', '/a')).toBe('/')
+  const home = '/c/root'
+  expect(otherAnalysis('/c/root/analyses/other/q.sql', home, '/c/root/analyses/mine', '/')).toBe('analyses/other')
+  expect(otherAnalysis('/c/root/analyses/MINE/q.sql', home, '/c/root/analyses/mine', '/')).toBeUndefined()
+  expect(otherAnalysis('/c/root/notes/x.md', home, '/c/root/analyses/mine', '/')).toBeUndefined()
+  expect(otherAnalysis('../other/q.sql', home, '/c/root/analyses/mine', '/c/root/analyses/mine')).toBe('analyses/other')
+})
+
+test('an unreadable or non-object args line still names the trusted calculation', () => {
+  expect(parseTrustedHeader('-- trusted: f\n-- args: {oops\n')).toEqual({ name: 'f', args: {}, commit: '' })
+  expect(parseTrustedHeader('-- trusted: f\n-- args: null\n-- commit: abc\n')).toEqual({ name: 'f', args: {}, commit: 'abc' })
+  expect(parseTrustedHeader('-- trusted: f\n')).toEqual({ name: 'f', args: {}, commit: '' })
 })

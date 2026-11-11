@@ -29,7 +29,7 @@ export type CommandId =
 export type TabCommand = `tab.${TabId}`
 
 /** Cmd+1 to Cmd+9: show that analysis in the window's set (core/analysisSet.ts). */
-export type AnalysisSwitch = `analysis.${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`
+export type AnalysisSwitch = `analysis.${'1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'}`
 
 /** The number an analysis-switch command shows, or undefined for any other command. */
 export function analysisNumber(id: CommandId): number | undefined {
@@ -71,7 +71,7 @@ export const COMMANDS: readonly Command[] = [
   { id: 'analysis.rename', title: 'Rename analysis' },
   { id: 'strip.side', title: 'Move analysis strip: bottom / left' },
   { id: 'update.restart', title: 'Restart to update' },
-  ...([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map(n => ({
+  ...(['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const).map(n => ({
     id: `analysis.${n}` as const,
     title: `Show analysis ${n}`,
     accelerator: { code: `Digit${n}` },
