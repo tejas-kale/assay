@@ -388,6 +388,9 @@ test('no search line when the analysis already has notes, or when no run happene
 test('two runs at once claim two numbers', async () => {
   const ws = await fake()
   await Promise.all([ws.call('sql', { sql: 'SELECT 1', slug: 'a' }), ws.call('sql', { sql: 'SELECT 2', slug: 'b' })])
-  expect((await ws.list('queries')).filter(name => name.endsWith('.sql'))).toEqual(['queries/001_a.sql', 'queries/002_b.sql'])
+  // Either run may claim 001: only that each claims its own number matters.
+  const names = (await ws.list('queries')).filter(name => name.endsWith('.sql')).sort((x, y) => x.localeCompare(y))
+  expect(names.map(name => name.slice('queries/'.length, -'_x.sql'.length))).toEqual(['001', '002'])
+  expect(names.map(name => name.slice(-'x.sql'.length, -'.sql'.length)).sort((x, y) => x.localeCompare(y))).toEqual(['a', 'b'])
   await ws.done()
 })
