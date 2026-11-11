@@ -412,7 +412,7 @@ export function DataPane({ tab, runs, status, trust, onTab, command, onToast }: 
   else if (!current) {
     body =
       tab === 'code' ? (
-        <Placeholder text="No runs yet. n: new SQL query." onKey={key => key === 'n' && startNew()} />
+        <Placeholder text="No runs yet. n: new SQL query." onKey={key => key === 'n' && (startNew(), true)} />
       ) : (
         <Placeholder text="No runs yet. Claude's queries appear here." />
       )
@@ -530,13 +530,14 @@ function useRunView(run: Run | undefined, runs: Run[], table: number): RunView |
   return view?.run.number === run?.number ? view : undefined
 }
 
-const Placeholder = ({ text, onKey }: { text: string; onKey?: (key: string) => void }) => (
+/** onKey returns true for a key it used, so the key's own text does not land in the editor it may have opened. */
+const Placeholder = ({ text, onKey }: { text: string; onKey?: (key: string) => boolean }) => (
   <div
     className="list placeholder"
     tabIndex={-1}
     data-focus-target
     onKeyDown={e => {
-      if (onKey && isPaneKey(e)) onKey(e.key)
+      if (onKey && isPaneKey(e) && onKey(e.key)) e.preventDefault()
     }}
   >
     <div className="empty">{text}</div>

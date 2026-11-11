@@ -636,7 +636,7 @@
   },
   "src/renderer/components/DataPane.tsx": {
     "@typescript-eslint/no-confusing-void-expression": {
-      "count": 37
+      "count": 36
     },
     "@typescript-eslint/restrict-template-expressions": {
       "count": 8
