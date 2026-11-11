@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { chartPage, ghosttyArgs, ghosttyTabArgs, isMermaidFile, kindByBytes, kindByName, walkFiles } from './files.ts'
+import { chartPage, ghosttyArgs, ghosttyTabArgs, isMermaidFile, kindByBytes, kindByName, MAX_FILES, walkFiles } from './files.ts'
 import type { WalkPort } from './files.ts'
 
 test('kindByName knows images, text and binary data by extension, and leaves the rest to the bytes', () => {
@@ -34,7 +34,7 @@ test('walkFiles lists files newest first and skips tooling folders and .DS_Store
   const mtimes: Record<string, number> = { '/a/notes.md': 1, '/a/queries/001_x.sql': 2 }
   const port: WalkPort = {
     list: async path => tree[path] ?? Promise.reject(new Error('no')),
-    stat: async path => (path in mtimes ? { size: 3, mtimeMs: mtimes[path] ?? 0 } : undefined),
+    stat: path => Promise.resolve(path in mtimes ? { size: 3, mtimeMs: mtimes[path] ?? 0 } : undefined),
   }
   assert.deepEqual(await walkFiles(port, '/a'), [
     { path: 'queries/001_x.sql', size: 3, mtimeMs: 2 },
@@ -71,4 +71,33 @@ test('chartPage holds the SVG, escapes the title and allows no scripts', () => {
   assert.ok(page.includes('<title>a &#60;b&#62; &#38; &#34;c&#34;</title>'))
   assert.ok(page.includes("default-src 'none'"))
   assert.ok(!page.includes('script-src'))
+})
+
+test('walkFiles leaves out entries that are neither files nor folders, files that vanish and folders it cannot read, and orders ties by path', async () => {
+  const file = (name: string) => ({ name, isDirectory: false, isFile: true })
+  const tree: Record<string, { name: string; isDirectory: boolean; isFile: boolean }[]> = {
+    '/a': [file('b.txt'), file('a.txt'), file('gone.txt'), { name: 'link', isDirectory: false, isFile: false }, { name: 'locked', isDirectory: true, isFile: false }],
+  }
+  const port: WalkPort = {
+    list: path => (path in tree ? Promise.resolve(tree[path] ?? []) : Promise.reject(new Error('EACCES'))),
+    stat: path => Promise.resolve(path.endsWith('gone.txt') ? undefined : { size: 1, mtimeMs: 5 }),
+  }
+  assert.deepEqual(await walkFiles(port, '/a'), [
+    { path: 'a.txt', size: 1, mtimeMs: 5 },
+    { path: 'b.txt', size: 1, mtimeMs: 5 },
+  ])
+})
+
+test('walkFiles stops at MAX_FILES, in the middle of a folder', async () => {
+  const entries = Array.from({ length: MAX_FILES + 10 }, (_, i) => ({ name: `f${String(i).padStart(5, '0')}`, isDirectory: false, isFile: true }))
+  const statted: string[] = []
+  const port: WalkPort = {
+    list: path => Promise.resolve(path === '/a' ? entries : [{ name: 'later', isDirectory: false, isFile: true }]),
+    stat: path => {
+      statted.push(path)
+      return Promise.resolve({ size: 1, mtimeMs: 1 })
+    },
+  }
+  assert.equal((await walkFiles(port, '/a')).length, MAX_FILES)
+  assert.equal(statted.length, MAX_FILES)
 })

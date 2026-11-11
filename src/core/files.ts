@@ -36,7 +36,7 @@ export function kindByName(name: string): FileKind | undefined {
 /** A Mermaid chart file: Enter draws it and opens the chart in the default browser, instead of Neovim. */
 export const isMermaidFile = (path: string) => /\.(mmd|mermaid)$/i.test(path)
 
-const escapeHtml = (text: string) => text.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, c => `&#${String(c.charCodeAt(0))};`)
 
 /**
  * A page holding one drawn chart, for the browser. Its policy allows no scripts, so the page shows the
@@ -61,29 +61,39 @@ ${svg}
 /** Text unless the first bytes hold a NUL. */
 export const kindByBytes = (head: Uint8Array): FileKind => (head.includes(0) ? 'other' : 'text')
 
-/** Every file under `root`, newest first, as paths relative to it. Stops at MAX_FILES. */
-export async function walkFiles(port: WalkPort, root: string): Promise<{ path: string; size: number; mtimeMs: number }[]> {
-  const found: { path: string; size: number; mtimeMs: number }[] = []
-  const queue = ['']
-  while (queue.length > 0 && found.length < MAX_FILES) {
-    const rel = queue.shift() ?? ''
-    const entries = await port.list(rel ? `${root}/${rel}` : root).catch(() => [])
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-      const path = rel ? `${rel}/${entry.name}` : entry.name
-      if (entry.isDirectory) {
-        if (!SKIP_DIRS.has(entry.name)) queue.push(path)
-      } else if (entry.isFile && !SKIP_FILES.has(entry.name)) {
-        const info = await port.stat(`${root}/${path}`)
-        if (info) found.push({ path, ...info })
-        if (found.length >= MAX_FILES) break
-      }
-    }
+type FoundFile = { path: string; size: number; mtimeMs: number }
+type WalkEntry = Awaited<ReturnType<WalkPort['list']>>[number]
+type Walk = { port: WalkPort; root: string; queue: string[]; found: FoundFile[] }
+
+/** Queues a folder for the walk, or adds a file's size and time to `found`. */
+async function visit(walk: Walk, rel: string, entry: WalkEntry) {
+  const path = rel ? `${rel}/${entry.name}` : entry.name
+  if (entry.isDirectory) {
+    if (!SKIP_DIRS.has(entry.name)) walk.queue.push(path)
+  } else if (entry.isFile && !SKIP_FILES.has(entry.name)) {
+    const info = await walk.port.stat(`${walk.root}/${path}`)
+    if (info) walk.found.push({ path, ...info })
   }
-  return found.sort((a, b) => b.mtimeMs - a.mtimeMs || a.path.localeCompare(b.path))
 }
 
+/** Every file under `root`, newest first, as paths relative to it. Stops at MAX_FILES. */
+export async function walkFiles(port: WalkPort, root: string): Promise<FoundFile[]> {
+  const walk: Walk = { port, root, queue: [''], found: [] }
+  while (walk.queue.length > 0 && walk.found.length < MAX_FILES) {
+    const rel = walk.queue.shift() ?? ''
+    const entries = await port.list(rel ? `${root}/${rel}` : root).catch(() => [])
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      await visit(walk, rel, entry)
+      if (walk.found.length >= MAX_FILES) break
+    }
+  }
+  return walk.found.sort((a, b) => b.mtimeMs - a.mtimeMs || a.path.localeCompare(b.path))
+}
+
+const QUOTE_ESCAPE = "'\\''"
+
 /** POSIX single-quoting, so a path with spaces or quotes stays one word. */
-const shellQuote = (word: string) => `'${word.replace(/'/g, `'\\''`)}'`
+const shellQuote = (word: string) => `'${word.replace(/'/g, QUOTE_ESCAPE)}'`
 
 const NEW_TAB_SCRIPT = `on run argv
   set cmd to item 1 of argv
