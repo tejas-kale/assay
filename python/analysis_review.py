@@ -113,9 +113,12 @@ class _CalculationCheck:
         self.answer: dict[str, Any] = {"name": name, "ok": False, "steps": step.steps}
 
     def run(self) -> None:
-        found = self._form()
-        if found is None:
+        try:
+            found = describe(self.folder, self.name)
+        except Exception as error:
+            self.step({"step": "form", "ok": False, "text": str(error)})
             return
+        self._record_form(found)
         code = self.answer["code"]
         contract = block_contract(split_template(code)[0]) if "block" in found else None
         if found["kind"] == "sql" and not self._sql_steps(found, contract):
@@ -133,13 +136,8 @@ class _CalculationCheck:
         else:
             self._live(live_args or {})
 
-    def _form(self) -> dict[str, Any] | None:
-        """The calculation described and its start event sent; None, after a failing ``form`` step, if it cannot be."""
-        try:
-            found = describe(self.folder, self.name)
-        except Exception as error:
-            self.step({"step": "form", "ok": False, "text": str(error)})
-            return None
+    def _record_form(self, found: dict[str, Any]) -> None:
+        """The described calculation into the answer, then the start event and a passing ``form`` step."""
         code = (self.folder / found["file"]).read_text()
         self.answer.update(kind=found["kind"], file=found["file"], description=found["description"], code=code)
         beside = (f"{self.name}.test.yaml", f"test_{self.name}.py", f"{self.name}.rebuild.sql")
@@ -149,7 +147,6 @@ class _CalculationCheck:
         self.step.start(self.answer)
         what = "SQL block" if "block" in found else "SQL template" if found["kind"] == "sql" else "Python function"
         self.step({"step": "form", "ok": True, "text": f"{what}, {plural(len(found['parameters']), 'parameter')}"})
-        return found
 
     def _sql_steps(self, found: dict[str, Any], contract: dict[str, Any] | None) -> bool:
         """transpile, rules and, for a block, contract; ``found["sql"]`` becomes the expanded SQL."""
@@ -228,9 +225,15 @@ class _EntryCheck:
         }
 
     def run(self) -> None:
-        data = self._form()
-        if data is None:
+        try:
+            # The text goes in the answer first: the Trust tab shows it even when it does not parse.
+            self.answer["code"] = self.path.read_text()
+            data = yaml.safe_load(self.answer["code"])
+            columns = self._check_form(data)
+        except Exception as error:
+            self.step({"step": "form", "ok": False, "text": str(error)})
             return
+        self._record_form(data, columns)
         definitions = self._transpile(data)
         if definitions is None:
             return
@@ -243,20 +246,13 @@ class _EntryCheck:
             return
         self.answer["ok"] = self._live(data, definitions, tests.get("live") or {})
 
-    def _form(self) -> dict[str, Any] | None:
-        try:
-            self.answer["code"] = self.path.read_text()
-            data = yaml.safe_load(self.answer["code"])
-            columns = self._check_form(data)
-        except Exception as error:
-            self.step({"step": "form", "ok": False, "text": str(error)})
-            return None
+    def _record_form(self, data: dict[str, Any], columns: list[Any]) -> None:
+        """The entry's description and files into the answer, then the start event and a passing ``form`` step."""
         self.answer["description"] = str(data["description"]).strip().splitlines()[0]
         tests = f"{self.name}.test.yaml"
         self.answer["files"] = [self.path.name, *([tests] if (self.path.parent / tests).is_file() else [])]
         self.step.start(self.answer)
         self.step({"step": "form", "ok": True, "text": plural(len(columns), "column")})
-        return data
 
     def _check_form(self, data: Any) -> list[Any]:
         """The entry's columns; a TrustError when its name, description or columns are not sound."""
