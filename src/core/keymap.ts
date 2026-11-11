@@ -141,14 +141,14 @@ export function shortcutLabel(id: CommandId): string {
 
 /** Single keys inside a pane, for the Show Shortcuts overlay. The panes no longer print them. */
 export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
-  { pane: 'Overview', keys: [['s', 'analysis / system overview'], ['d', 'diff since marked read, on / off'], ['m', 'mark read'], ['j / k', 'scroll'], ['g / G', 'top / bottom'], ['⌃2 again', 'switch to Threads']] },
+  { pane: 'Overview', keys: [['s', 'analysis / system overview'], ['d', 'diff since marked read, on / off'], ['m', 'mark read'], ['j / k', 'scroll'], ['g / G', 'top / bottom'], ['⌃2 again', 'next tab']] },
   {
     pane: 'Threads',
-    keys: [['⌃2 again', 'switch to Notes'], ['j / k', 'move'], ['/', 'search'], ['Tab', 'full text in a pop-up'], ['a', 'add'], ['e', 'edit'], ['c', 'close'], ['d', 'delete'], ['J / K', 'reorder'], ['z', 'show / hide closed threads']],
+    keys: [['⌃2 again', 'next tab'], ['j / k', 'move'], ['/', 'search'], ['Tab', 'full text in a pop-up'], ['a', 'add'], ['e', 'edit'], ['c', 'close'], ['d', 'delete'], ['J / K', 'reorder'], ['z', 'show / hide closed threads']],
   },
   {
     pane: 'Notes',
-    keys: [['⌃2 again', 'switch to Files'], ['j / k', 'move'], ['/', 'search'], ['Enter', 'read note'], ['a', 'add note (⌘Enter saves)'], ['e', 'edit']],
+    keys: [['⌃2 again', 'next tab'], ['j / k', 'move'], ['/', 'search'], ['Enter', 'read note'], ['a', 'add note (⌘Enter saves)'], ['e', 'edit']],
   },
   {
     pane: 'Note reader',
@@ -158,27 +158,27 @@ export const PANE_KEYS: { pane: string; keys: [string, string][] }[] = [
   { pane: 'Note editor', keys: [['⌘S', 'save'], ['Esc', 'leave (in Vim normal mode)']] },
   {
     pane: 'Data',
-    keys: [['h j k l', 'move cell'], ['J / K', 'page'], ['g / G  0 / $', 'first / last'], ['Enter', 'whole row'], ['y', 'copy cell'], [', / .', 'earlier / later run'], ['c', 'its Code'], ['p', 'pin / follow latest'], ['[ / ]', 'previous / next table'], ['s', 'stdout and error']],
+    keys: [['⌃3 again', 'next tab'], ['h j k l', 'move cell'], ['J / K', 'page'], ['g / G  0 / $', 'first / last'], ['Enter', 'whole row'], ['y', 'copy cell'], [', / .', 'earlier / later run'], ['c', 'its Code'], ['p', 'pin / follow latest'], ['[ / ]', 'previous / next table'], ['s', 'stdout and error']],
   },
-  { pane: 'Steps', keys: [['j / k', 'next / previous step'], ['click a box', 'select its step'], ['r', 'run the steps again'], [', / .', 'earlier / later run'], ['c', 'its Code'], ['p', 'pin / follow latest']] },
-  { pane: 'Plots', keys: [['j / k', 'next / previous plot'], [', / .', 'earlier / later run'], ['c', 'its Code'], ['p', 'pin / follow latest']] },
+  { pane: 'Steps', keys: [['⌃3 again', 'next tab'], ['j / k', 'next / previous step'], ['click a box', 'select its step'], ['r', 'run the steps again'], [', / .', 'earlier / later run'], ['c', 'its Code'], ['p', 'pin / follow latest']] },
+  { pane: 'Plots', keys: [['⌃3 again', 'next tab'], ['j / k', 'next / previous plot'], [', / .', 'earlier / later run'], ['c', 'its Code'], ['p', 'pin / follow latest']] },
   {
     pane: 'Replay',
     keys: [['j / k', 'move'], ['space', 'choose or drop'], ['a', 'all / none'], ['Enter', 'ask to replay'], ['y / n', 'confirm / back'], ['Esc', 'leave']],
   },
   {
     pane: 'Code',
-    keys: [['h j k l  w b', 'move'], ['g / G', 'top / bottom'], [', / .', 'earlier / later run'], ['o', 'original / formatted'], ['x', 'expanded SQL of a run with includes'], ['d', 'its Data'], ['i', 'edit'], ['n', 'new SQL query'], ['⌘E', 'edit from anywhere'], ['p', 'pin / follow latest'], ['⌘↩', 're-run as a new run; with SQL selected, run just that (opens in Data)']],
+    keys: [['⌃3 again', 'next tab'], ['h j k l  w b', 'move'], ['g / G', 'top / bottom'], [', / .', 'earlier / later run'], ['o', 'original / formatted'], ['x', 'expanded SQL of a run with includes'], ['d', 'its Data'], ['i', 'edit'], ['n', 'new SQL query'], ['⌘E', 'edit from anywhere'], ['p', 'pin / follow latest'], ['⌘↩', 're-run as a new run; with SQL selected, run just that (opens in Data)']],
   },
   { pane: 'Code editing', keys: [['Esc', 'leave (in Vim normal mode)'], ['⌘↩', 'run as a new run (a new query opens in Data); with SQL selected, run just that']] },
   {
     pane: 'History',
-    keys: [['j / k', 'move'], ['Enter', 'show that run'], ['p', 'pin / follow latest'], ['newest run', 'follow Claude again']],
+    keys: [['⌃3 again', 'next tab'], ['j / k', 'move'], ['Enter', 'show that run'], ['p', 'pin / follow latest'], ['newest run', 'follow Claude again']],
   },
-  { pane: 'Trust', keys: [['J / K  ↑ / ↓', 'choose a proposal'], ['c / Enter', 'check it'], ['t / r', 'trust / reject, once every check passed'], ['l', 'list the proposals again'], ['j / k', 'scroll'], ['g / G', 'top / bottom'], ['⌘↩', 'run the selected SQL (opens in Data)']] },
+  { pane: 'Trust', keys: [['⌃3 again', 'next tab'], ['J / K  ↑ / ↓', 'choose a proposal'], ['c / Enter', 'check it'], ['t / r', 'trust / reject, once every check passed'], ['l', 'list the proposals again'], ['j / k', 'scroll'], ['g / G', 'top / bottom'], ['⌘↩', 'run the selected SQL (opens in Data)']] },
   {
     pane: 'Files',
-    keys: [['j / k', 'move'], ['/', 'search'], ['Enter', 'open: text in Neovim, Mermaid chart in the browser, image preview'], ['Tab', 'preview in a pop-up'], ['r', 'refresh'], ['⌃2 again', 'switch to Overview']],
+    keys: [['j / k', 'move'], ['/', 'search'], ['Enter', 'open: text in Neovim, Mermaid chart in the browser, image preview'], ['Tab', 'preview in a pop-up'], ['r', 'refresh'], ['⌃2 again', 'next tab']],
   },
   {
     pane: 'Search (⌘F)',

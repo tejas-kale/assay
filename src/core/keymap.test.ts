@@ -210,3 +210,9 @@ test('a command that opens Code toasts while Code is off; one aimed at the data 
     assert.deepEqual(tabAction(id, hidden), { type: 'toast', text: 'Every Data pane tab is off: Settings (⌘,)' }, id)
   }
 })
+
+test('the shortcuts overlay names ⌃2 and ⌃3 again as the next tab in every tab of their pane, never a fixed one', () => {
+  const again = (pane: string) => PANE_KEYS.find(p => p.pane === pane)?.keys.find(([key]) => key.endsWith('again'))
+  for (const pane of ['Overview', 'Threads', 'Notes', 'Files']) assert.deepEqual(again(pane), ['⌃2 again', 'next tab'], pane)
+  for (const pane of ['Data', 'Plots', 'Code', 'History', 'Steps', 'Trust']) assert.deepEqual(again(pane), ['⌃3 again', 'next tab'], pane)
+})

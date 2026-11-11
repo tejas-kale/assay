@@ -140,6 +140,11 @@ export function App() {
           setShortcuts(n => n + 1)
           return false
         case 'focus.data':
+          // Pressed again inside the pane, it cycles through the tabs that are on, in the user's order.
+          if (paneOfActive() === 'data') {
+            const prefs = currentTabs()
+            setDataTab(tab => (nextTab(prefs, 'data', shownTab(prefs, 'data', tab) ?? tab) as TabIdIn<'data'> | undefined) ?? tab)
+          }
           focusPane('data')
           return true
         case 'settings.open': {

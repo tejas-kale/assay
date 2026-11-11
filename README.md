@@ -69,7 +69,7 @@ holding left Ctrl shows the pane and tab hints.
 
 Every tab is an entry in `src/core/tabs.ts` with its component in `src/renderer/tabs/` (`docs/process/adding-a-tab.md`).
 Settings > Tabs turns each tab on or off and orders it within its pane, for the whole app (`settings.json`'s `tabs`).
-A tab that is off leaves its tab bar and search, and its shortcut shows `<Title> tab is off: Settings (⌘,)`. A pane
+Ctrl+2 or Ctrl+3 pressed again inside its pane moves to the next tab that is on. A tab that is off leaves its tab bar and search, and its shortcut shows `<Title> tab is off: Settings (⌘,)`. A pane
 with every tab off is hidden.
 
 ## Overviews
