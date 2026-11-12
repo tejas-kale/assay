@@ -91,7 +91,7 @@ export function runNotice(runs: readonly UserRun[], folder: string): string | un
   return `Since your last turn the user ran: ${items.join(', ')}.${kernel} read ${folder}/queries/<file> when it matters.`.replace(/\. read/, '. Read')
 }
 
-/** The data lines for the step checks (docs/slice-9.md) that failed since the last prompt. */
+/** The data lines for the step checks (specs/slices/slice-9.md) that failed since the last prompt. */
 export const stepData = (stepLines: readonly string[]): DataSection => ({ label: 'step checks failed since your last turn', lines: stepLines.map(line => `- ${dataLine(line)}`) })
 
 /** The data lines for the open analysis's title. */

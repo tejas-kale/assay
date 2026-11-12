@@ -1,5 +1,5 @@
-"""A query's steps (docs/slice-9.md, slice 9c, "analysis_sql steps"): the queries that run each CTE on its own and
-count what it holds, and what each of its joins matches."""
+"""A query's steps (specs/slices/slice-9.md, slice 9c, "analysis_sql steps"): the queries that run each CTE on its own
+and count what it holds, and what each of its joins matches."""
 
 from __future__ import annotations
 

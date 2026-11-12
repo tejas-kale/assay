@@ -1,5 +1,5 @@
-// The tab registry: one entry per tab, read by the panes, the keymap, the palette and Settings (docs/slice-11.md, 11e).
-// Adding a tab: docs/process/adding-a-tab.md.
+// The tab registry: one entry per tab, read by the panes, the keymap, the palette and Settings (specs/slices/slice-11.md, 11e).
+// Adding a tab: docs/developer/adding-a-tab.md.
 
 export type Pane = 'notes' | 'data'
 

@@ -14,7 +14,7 @@ import { buildReleaseVenv, installBackend, installedStamp, pruneVersions, syncDe
 import type { VenvOptions } from './backend.ts'
 import { loginEnv, probeTools, uvWith } from './doctor.ts'
 
-/** Where Claude finds the backend and the tools' venv (docs/process/launch-contract.md). */
+/** Where Claude finds the backend and the tools' venv (docs/developer/launch-contract.md). */
 export type LaunchPaths = { backend: string; venv: string }
 
 type State = { isInstalling: boolean; isBuilding: boolean; isChecking: boolean; installError?: string; venv?: VenvBuild; probes?: Probes; claudeBin?: string }

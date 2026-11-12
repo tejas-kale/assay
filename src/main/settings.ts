@@ -15,7 +15,7 @@ import type { SetRootResult } from '../shared/ipc.ts'
 import { resolveRoot } from './rootPath.ts'
 
 const settingsPath = () => join(app.getPath('userData'), 'settings.json')
-/** Where the strip's side lived before settings.json held it (docs/slice-11.md, 11e). */
+/** Where the strip's side lived before settings.json held it (specs/slices/slice-11.md, 11e). */
 const legacyStripPath = () => join(app.getPath('userData'), 'strip.json')
 
 const readOptional = (path: string) => readFile(path, 'utf8').catch(() => undefined)

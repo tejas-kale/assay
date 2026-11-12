@@ -1,4 +1,4 @@
-// The release filter (docs/process/ci-release.md): a push to main that changes only docs, tests and CI config does
+// The release filter (docs/developer/ci-release.md): a push to main that changes only docs, tests and CI config does
 // not build a release, because macOS minutes cost ten times Linux ones. `node scripts/release-paths.ts <before> <sha>`
 // prints `release=true` or `release=false`, for $GITHUB_OUTPUT.
 import { execFileSync } from 'node:child_process'

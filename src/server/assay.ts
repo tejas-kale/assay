@@ -35,7 +35,7 @@ const HELPER_LINES = 3
 const APP_STATUS = '.assay/runs.json'
 /** For the UserPromptSubmit hook: the user's runs since the last prompt, and the kernel's python. */
 export const USER_RUNS = '.assay/user-runs.json'
-/** For the same hook: the step checks that failed since the last prompt, one line each (docs/slice-9.md). */
+/** For the same hook: the step checks that failed since the last prompt, one line each (specs/slices/slice-9.md). */
 export const STEP_NOTICES = '.assay/step-notices.json'
 
 export type Config = {
@@ -43,6 +43,8 @@ export type Config = {
   analysis: string
   /** The shared folder holding dictionaries/ and trusted/ (ASSAY_ROOT), absolute. */
   root: string
+  /** The root's trust ledger (ASSAY_LEDGER), absolute and read-only to the server; the file may not exist. Without it nothing is approved. */
+  ledger?: string
   /** Assay's venv (ASSAY_VENV), which runs every tool: `<venv>/bin/python`. */
   venv: string
   /** `analysis_kernel.py`, run by path. */

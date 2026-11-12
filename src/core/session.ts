@@ -21,15 +21,17 @@ export type Launch = {
   backend: string
   /** This version's venv, which runs every tool. */
   venv: string
+  /** This root's trust ledger file (specs/trust-ledger.md); a launcher mounts it read-only. */
+  ledger: string
 }
 
 /**
- * How to start Claude (docs/process/launch-contract.md). A GUI app has a thin PATH, so it runs through the user's
+ * How to start Claude (docs/developer/launch-contract.md). A GUI app has a thin PATH, so it runs through the user's
  * login, interactive shell, which finds `claude` as a terminal would. Claude loads the backend's plugin; the server
  * finds the analysis in ASSAY_ANALYSIS and the shared folder (Settings) in ASSAY_ROOT. Claude starts in the root, so
  * it can read what is shared; the prompt hook names the open analysis.
  */
-export function spawnSpec({ folder, env, root, mode, backend, venv }: Launch): SpawnSpec {
+export function spawnSpec({ folder, env, root, mode, backend, venv, ledger }: Launch): SpawnSpec {
   const clean: Record<string, string> = {}
   for (const [name, value] of Object.entries(env)) {
     if (value !== undefined && name !== 'ELECTRON_RUN_AS_NODE') clean[name] = value
@@ -47,6 +49,7 @@ export function spawnSpec({ folder, env, root, mode, backend, venv }: Launch): S
       ASSAY_ANALYSIS: folder,
       ASSAY_BACKEND: backend,
       ASSAY_VENV: venv,
+      ASSAY_LEDGER: ledger,
       ASSAY_MCP_CONFIG: mcpConfig(backend),
       ASSAY_THEME: claudeTheme(mode),
       TERM: 'xterm-256color',

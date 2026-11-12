@@ -1,4 +1,4 @@
-// The version CI releases (docs/process/ci-release.md): the latest `v*` tag bumped by patch, or by the largest
+// The version CI releases (docs/developer/ci-release.md): the latest `v*` tag bumped by patch, or by the largest
 // `Release: minor|major` trailer among the commits since that tag. No tag yet means package.json's first version.
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'

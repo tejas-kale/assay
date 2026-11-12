@@ -37,7 +37,7 @@ export function watchAnalysis(ctx: WindowCtx, analysisPath: string, onChange: ()
   deliverReplies(ctx, analysisPath)
   // A note edited in place leaves the folder's mtime alone, so the names, sizes and mtimes in `<root>/notes` are compared.
   const stopNotes = pollSignature(watchPort, () => notesSignature(rootOf(analysisPath)), onChange)
-  // The overview, the system overview it names and their baselines (docs/slice-10.md); Claude's Edit writes in place.
+  // The overview, the system overview it names and their baselines (specs/slices/slice-10.md); Claude's Edit writes in place.
   const stopOverview = pollSignature(watchPort, () => overviewSignature(analysisPath), onChange)
   return () => {
     stopState()

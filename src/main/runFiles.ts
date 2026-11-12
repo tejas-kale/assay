@@ -71,7 +71,7 @@ async function withHeaders(folder: string, runs: Run[]): Promise<Run[]> {
 // Keyed by the full file path, which includes the analysis folder, so analyses and windows never share entries.
 const finished = new Map<string, ResultStatus>()
 
-/** A SQL run with the number of steps its `NNN.steps.json` and step files name (docs/slice-9.md). */
+/** A SQL run with the number of steps its `NNN.steps.json` and step files name (specs/slices/slice-9.md). */
 async function withSteps(folder: string, run: Run, names: readonly string[]): Promise<Run> {
   const stepsFile = `${run.label}.steps.json`
   const file = names.includes(stepsFile) ? parseSteps(await readText(join(folder, QUERIES, stepsFile)).catch(() => '')) : undefined
@@ -95,7 +95,7 @@ async function withStatus(folder: string, run: Run): Promise<Run> {
 
 /**
  * Fills each Python run's `status` from its result `.json` (rewritten every 0.5 s by rename while it runs), and each
- * SQL run's `steps` from its `NNN.steps.json` (docs/slice-9.md).
+ * SQL run's `steps` from its `NNN.steps.json` (specs/slices/slice-9.md).
  */
 export async function withResults(folder: string, runs: Run[], names: readonly string[]): Promise<Run[]> {
   return Promise.all(runs.map(run => (run.language === 'python' ? withStatus(folder, run) : withSteps(folder, run, names))))
@@ -135,15 +135,15 @@ async function readTable(dir: string, file: string) {
   return { ...table, truncated: table.truncated || cut }
 }
 
-/** What the server wrote next to a run, and the run's code and rows (docs/slice-9.md, docs/slice-10.md). */
+/** What the server wrote next to a run, and the run's code and rows (specs/slices/slice-9.md, specs/slices/slice-10.md). */
 async function readRunFiles(dir: string, run: Run, view: RunView) {
-  // Written by the server next to the run when the Steps tab asked (docs/slice-9.md); not a run file.
+  // Written by the server next to the run when the Steps tab asked (specs/slices/slice-9.md); not a run file.
   const lineage = parseLineage(await readText(join(dir, `${run.label}.lineage.json`)))
   if (lineage) view.lineage = lineage
   const steps = parseSteps(await readText(join(dir, `${run.label}.steps.json`)))
   if (steps) view.steps = steps
   if (run.code) view.code = (await readHead(join(dir, run.code), MAX_CODE_BYTES)).text
-  // A run with includes (docs/slice-10.md): the SQL that ran, saved beside it.
+  // A run with includes (specs/slices/slice-10.md): the SQL that ran, saved beside it.
   const expanded = await readText(join(dir, `${run.label}.expanded.sql`))
   if (expanded) view.expanded = expanded
   const notices = parseNotices(await readText(join(dir, `${run.label}.notices.json`)))

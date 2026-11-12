@@ -27,3 +27,9 @@ test("the kernel runner is ASSAY_KERNEL_RUNNER when set, else the backend's pyth
   expect(configFromEnv({ ...ENV, ASSAY_KERNEL_RUNNER: '/opt/run.py' })?.runner).toBe('/opt/run.py')
   expect(configFromEnv(ENV)?.runner).toMatch(/python\/analysis_kernel\.py$/)
 })
+
+test('ASSAY_LEDGER is the ledger the server reads; a relative or missing one is ignored', () => {
+  expect(configFromEnv({ ...ENV, ASSAY_LEDGER: '/data/trust-ledger/x.json' })?.ledger).toBe('/data/trust-ledger/x.json')
+  expect(configFromEnv({ ...ENV, ASSAY_LEDGER: 'x.json' })?.ledger).toBeUndefined()
+  expect(configFromEnv(ENV)?.ledger).toBeUndefined()
+})

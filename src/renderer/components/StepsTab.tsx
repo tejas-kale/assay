@@ -1,4 +1,4 @@
-// The Steps tab (docs/slice-9.md, slices 9b and 9c): the current SQL run's CTE graph, and each CTE run on its own. The
+// The Steps tab (specs/slices/slice-9.md, slices 9b and 9c): the current SQL run's CTE graph, and each CTE run on its own. The
 // server reads the SQL with sqlglot (only Claude's container has it), runs the steps and saves `queries/NNN.lineage.json`,
 // `NNN.steps.json` and each step's rows; this tab asks once per run, draws what it finds and shows the selected step.
 import { useEffect, useState } from 'react'

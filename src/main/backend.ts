@@ -1,4 +1,4 @@
-// The backend each version of the app ships (docs/slice-11.md, 11b), installed under the app's data folder at
+// The backend each version of the app ships (specs/slices/slice-11.md, 11b), installed under the app's data folder at
 // launch: the plugin, server, hooks and Python project are copied once per version, and uv builds the venv from
 // them. No Electron here, so the tests run it on a temp folder.
 import { createHash, randomUUID } from 'node:crypto'

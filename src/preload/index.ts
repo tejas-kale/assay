@@ -74,6 +74,12 @@ const api: AppApi = {
     request: request => invoke(CHANNELS.runRequest, request),
     onReply: cb => subscribe(CHANNELS.runReply, cb),
   },
+  trust: {
+    files: proposal => invoke(CHANNELS.trustFiles, proposal),
+    approve: input => invoke(CHANNELS.trustApprove, input),
+    unadopted: () => invoke(CHANNELS.trustUnadopted),
+    adopt: input => invoke(CHANNELS.trustAdopt, input),
+  },
   files: {
     list: () => invoke(CHANNELS.filesList),
     open: path => invoke(CHANNELS.filesOpen, path),

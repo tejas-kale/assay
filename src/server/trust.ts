@@ -1,19 +1,20 @@
 // The trust review, ported from the analysis mod's `/an trust` (hooks/register.tsx). The app starts it with a
-// `trust-check` request and answers it with `trust-answer`; the server writes `.assay/trust/<name>.json` after every
-// step. No tool of Claude's reaches here, so Claude can never promote.
+// `trust-check` request; the server writes `.assay/trust/<name>.json` after every step. Trusting is not here: the app
+// records it in the ledger (main/trustApprove.ts). A `trust-done` request closes the review, and only when the ledger
+// backs it does the server copy the draft into the shared folder and commit it (trustPromote.ts).
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { DRAFT_DICTIONARIES, DRAFT_TRUSTED, PROPOSAL_NAME, TRUST_TAB } from '../core/calculations.ts'
 import type { CheckEvent } from '../core/calculations.ts'
-import type { TrustAnswer } from '../core/requests.ts'
+import type { TrustOutcome } from '../core/requests.ts'
 import type { TrustState } from '../core/trust.ts'
 import { Assay } from './assay.ts'
 import { listProposals } from './trustProposals.ts'
 import type { FoundProposal } from './trustProposals.ts'
-import { promote, removeDraft } from './trustPromote.ts'
 import { applyEvent, describeProposal, draftOf, sharedOf, trustFile } from './trustReview.ts'
 import type { Review } from './trustReview.ts'
+import { promote, promotedMessage } from './trustPromote.ts'
 import { streamChecks } from './trustStream.ts'
 
 const TRUST_DIR = '.assay/trust'
@@ -71,30 +72,24 @@ export class TrustReviews {
     }
   }
 
-  /** The user's answer to a review whose checks all passed; why not, if it is not waiting for one. */
-  async answer(name: string, said: TrustAnswer): Promise<string | undefined> {
+  /**
+   * The app says the review is over. Only closes the open review that is waiting for an answer; why not, if there is
+   * none. An approval is believed only when the ledger holds the draft's exact hashes: then the server copies the
+   * draft into the shared folder, commits it and tidies the draft. A rejection records and copies nothing.
+   */
+  async done({ name, outcome, message }: { name: string; outcome: TrustOutcome; message?: string }): Promise<string | undefined> {
     const review = this.open
     if (!review || review.name !== name || review.state !== 'asking') {
       return review?.name === name ? `The review of ${name} is ${review.state}, not waiting for an answer.` : `No review of ${name} is waiting for an answer.`
     }
-    const answer = review.answer
-    if (said !== 'trust' || !answer) {
-      this.finish(review, 'rejected', `Rejected ${name}; the proposal stays in ${draftOf(review.kind)}/.`)
-      await this.writes
-      return undefined
+    if (outcome === 'rejected') this.finish(review, outcome, message ?? doneMessage(review))
+    else {
+      const promoted = await promote(this.assay, review)
+      if ('refused' in promoted) return promoted.refused
+      if (!isAsking(review)) return `No review of ${name} is waiting for an answer.`
+      this.assay.forgetCalculations()
+      this.finish(review, outcome, promotedMessage(review, outcome, promoted))
     }
-    // Taken now, so a second answer while this one commits is refused.
-    review.state = 'approved'
-    const promoted = await promote(this.assay, review, answer)
-    if ('failed' in promoted) {
-      this.finish(review, 'error', promoted.failed)
-      await this.writes
-      return promoted.failed
-    }
-    this.assay.forgetCalculations()
-    const kept = await removeDraft(this.assay, review, promoted.written)
-    const state = promoted.isUnchanged ? 'unchanged' : 'approved'
-    this.finish(review, state, approvalMessage(review, promoted.isUnchanged, kept))
     await this.writes
     return undefined
   }
@@ -134,9 +129,8 @@ export class TrustReviews {
   }
 }
 
-/** The line the Trust tab shows once the review is over: trusted, or already trusted, and any draft that was kept. */
-function approvalMessage(review: Review, isUnchanged: boolean, kept: readonly string[]): string {
-  const keptNote = kept.length === 0 ? '' : ` Kept the draft ${kept.join(', ')}: it changed after the check.`
-  const trusted = isUnchanged ? 'Already trusted: no changes.' : `Trusted ${review.name}: committed in ${sharedOf(review.kind)}/.`
-  return `${trusted}${keptNote}`
-}
+/** Whether the review still waits for its answer: another `trust-done` may have closed it while this one copied. */
+const isAsking = (review: Review): boolean => review.state === 'asking'
+
+/** The line the Trust tab shows when the app did not say more about a rejection. */
+const doneMessage = (review: Review): string => `Rejected ${review.name}; the proposal stays in ${draftOf(review.kind)}/.`

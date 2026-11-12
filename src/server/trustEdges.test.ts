@@ -1,12 +1,13 @@
 // The trust review's edges: why approving fails, how the helper's stream can end, and the proposals it lists.
-import { mkdir, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, rm, symlink } from 'node:fs/promises'
 import { test, mock } from 'node:test'
 
 import { expect } from '../testing/expect.ts'
+import { Assay } from './assay.ts'
 import { fake, until } from './testing.ts'
-import type { Fake, Run, Serve } from './testing.ts'
-import { removeDraft } from './trustPromote.ts'
+import type { Fake, Serve } from './testing.ts'
 import { listProposals } from './trustProposals.ts'
+import { promote } from './trustPromote.ts'
 import { applyEvent, describeProposal } from './trustReview.ts'
 import type { Review } from './trustReview.ts'
 import { streamChecks } from './trustStream.ts'
@@ -30,109 +31,224 @@ async function helper(ws: Fake): Promise<Serve> {
   return serve
 }
 
-/** A review of `calc` that passed its checks, and the answer: the git commands answer by `git`. */
-async function approve(ws: Fake, git: (argv: readonly string[]) => { exitCode?: number; stdout?: string; stderr?: string }, answer: object = CHECKED) {
-  const run: Run = argv => (argv[0] === 'git' ? git(argv) : {})
-  ws.setRun(run)
+/** A review of `calc` that passed its checks and now waits for the app. */
+async function asking(ws: Fake) {
+  ws.setRun(() => ({}))
   await perform(ws, { kind: 'trust-check', name: 'calc' })
   const check = await helper(ws)
   check.emit(START)
-  check.emit({ event: 'done', answer })
+  check.emit({ event: 'done', answer: CHECKED })
   expect(await waitFor(ws, 'asking')).toBe(true)
-  return perform(ws, { kind: 'trust-answer', name: 'calc', answer: 'trust' })
 }
 
-const ok = (argv: readonly string[]) => ({ stdout: argv.includes('rev-parse') ? '/work' : '', exitCode: argv.includes('diff') ? 1 : 0 })
-const failing = (command: string, result: { stdout?: string; stderr?: string }) => (argv: readonly string[]) => (argv.includes(command) ? { exitCode: 1, ...result } : ok(argv))
+const errorOf = (reply: unknown) => (reply as { error?: string }).error ?? ''
+const approved = (ws: Fake) => ws.approveInLedger('calculation', 'calc', { 'calc.sql': CODE })
+const gitRuns = (ws: Fake) => ws.runs.filter(argv => argv[0] === 'git')
 
-test('approving outside a git repository ends the review in error, and nothing is copied', async () => {
-  const ws = await fake(files())
-  const reply = await approve(ws, argv => (argv.includes('rev-parse') ? { exitCode: 128 } : ok(argv)))
-  expect(reply).toEqual({ error: `${ws.root} is not in a git repository: approving commits there.` })
-  expect((await stateOf(ws))?.state).toBe('error')
-  expect(await ws.file('/work/trusted/calc.sql')).toBeUndefined()
-  await ws.done()
-})
-
-test('a git that cannot start is the same as one that fails', async () => {
-  const ws = await fake(files())
-  const reply = await approve(ws, () => {
-    throw new Error('spawn git ENOENT')
-  })
-  expect(reply).toEqual({ error: `${ws.root} is not in a git repository: approving commits there.` })
-  await ws.done()
-})
-
-test('approving says when the trusted folder cannot be made or a proposal file has no checked copy', async () => {
-  const blocked = await fake(files({ '/work/trusted': 'a file where the folder should be' }))
-  expect(await approve(blocked, ok)).toEqual({ error: `Cannot make ${blocked.root}/trusted.` })
-  await blocked.done()
-  const missing = await fake(files())
-  const reply = await approve(missing, ok, { ...CHECKED, files: ['calc.sql', 'calc.test.yaml'] })
-  expect(reply).toEqual({ error: 'No checked copy of calc.test.yaml.' })
-  expect((await stateOf(missing))?.message).toBe('No checked copy of calc.test.yaml.')
-  await missing.done()
-})
-
-test('a checked file outside the proposal\'s own names refuses the whole approval before anything is written', async () => {
-  for (const bad of ['../x', '/etc/x', 'other.sql', 'sub/calc.sql', 'sub\\calc.sql', 'calc.sql\0', '..', 'calc.sql/../x']) {
+test('trust-done closes the review the app answered: a rejection copies nothing, an approval the ledger backs is copied and committed by the server', async () => {
+  const rejected = await fake(files())
+  await asking(rejected)
+  expect(await perform(rejected, { kind: 'trust-done', name: 'calc', outcome: 'rejected', message: 'said rejected' })).toEqual({ ok: true })
+  expect(await stateOf(rejected)).toMatchObject({ state: 'rejected', message: 'said rejected' })
+  expect(gitRuns(rejected)).toEqual([])
+  expect(await rejected.file('/work/trusted/calc.sql')).toBeUndefined()
+  expect(await rejected.file('lib/trusted/calc.sql')).toBe(CODE)
+  await rejected.done()
+  for (const outcome of ['approved', 'unchanged']) {
     const ws = await fake(files())
-    const answer = { ...CHECKED, files: ['calc.sql', bad], texts: { 'calc.sql': CODE, [bad]: 'evil\n' } }
-    const reply = await approve(ws, ok, answer)
-    expect(reply).toEqual({ error: `${JSON.stringify(bad)} is not a file this proposal may have.` })
-    expect(await ws.file('/work/trusted/calc.sql')).toBeUndefined()
-    expect(await ws.file('/work/x')).toBeUndefined()
+    await asking(ws)
+    await approved(ws)
+    expect(await perform(ws, { kind: 'trust-done', name: 'calc', outcome, message: 'said by a forger' })).toEqual({ ok: true })
+    expect(await stateOf(ws)).toMatchObject({ state: outcome })
+    expect((await stateOf(ws))?.message).not.toBe('said by a forger')
+    expect(await ws.file('/work/trusted/calc.sql')).toBe(CODE)
+    expect(await ws.file('lib/trusted/calc.sql')).toBeUndefined()
     await ws.done()
   }
 })
 
-test('a destination file or folder that is a link refuses the approval and writes nothing through it', async () => {
-  const file = await fake(files())
-  await mkdir(`${file.root}/trusted`, { recursive: true })
-  await writeFile(`${file.dir}/outside.sql`, 'outside\n')
-  await symlink(`${file.dir}/outside.sql`, `${file.root}/trusted/calc.sql`)
-  expect(await approve(file, ok)).toEqual({ error: '"calc.sql" is a link: approving will not write through it.' })
-  expect(await file.file('/outside.sql')).toBe('outside\n')
-  await file.done()
-  const folder = await fake(files())
-  await mkdir(`${folder.dir}/elsewhere`)
-  await symlink(`${folder.dir}/elsewhere`, `${folder.root}/trusted`)
-  expect(await approve(folder, ok)).toEqual({ error: `${folder.root}/trusted is a link: approving will not write through it.` })
-  expect(await folder.file('/elsewhere/calc.sql')).toBeUndefined()
-  await folder.done()
-})
-
-test('the files a calculation may have are its main file and its tests', async () => {
+test('a forged trust-done approved, with no ledger or none for this proposal, copies nothing, runs no git and leaves the review asking', async () => {
   const ws = await fake(files())
-  const names = ['calc.sql', 'calc.test.yaml', 'test_calc.py', 'calc.rebuild.sql']
-  const answer = { ...CHECKED, files: names, texts: Object.fromEntries(names.map(each => [each, CODE])) }
-  expect(await approve(ws, ok, answer)).toEqual({ ok: true })
-  expect(await ws.file('/work/trusted/test_calc.py')).toBe(CODE)
+  await asking(ws)
+  const refused = { error: 'Not approved in the app: the trust ledger has no entry for it.' }
+  expect(await perform(ws, { kind: 'trust-done', name: 'calc', outcome: 'approved' })).toEqual(refused)
+  await ws.approveInLedger('calculation', 'other', { 'other.sql': CODE })
+  expect(await perform(ws, { kind: 'trust-done', name: 'calc', outcome: 'approved' })).toEqual(refused)
+  await ws.approveInLedger('dictionary', 'calc', { 'calc.sql': CODE })
+  expect(await perform(ws, { kind: 'trust-done', name: 'calc', outcome: 'approved' })).toEqual(refused)
+  expect((await stateOf(ws))?.state).toBe('asking')
+  expect(gitRuns(ws)).toEqual([])
+  expect(await ws.file('/work/trusted/calc.sql')).toBeUndefined()
+  expect(await ws.file('lib/trusted/calc.sql')).toBe(CODE)
   await ws.done()
 })
 
-test('git add and git commit failures are the review error, with the last line of what git said', async () => {
-  const added = await fake(files())
-  expect(await approve(added, failing('add', { stderr: ' fatal: no pathspec \n' }))).toEqual({ error: 'git add failed: fatal: no pathspec' })
-  await added.done()
-  const committed = await fake(files())
-  expect(await approve(committed, failing('commit', { stderr: 'hint: one\nerror: hook failed\n' }))).toEqual({ error: 'git commit failed: error: hook failed' })
-  await committed.done()
-  const quiet = await fake(files())
-  expect(await approve(quiet, failing('commit', { stdout: 'nothing to say\n' }))).toEqual({ error: 'git commit failed: nothing to say' })
-  expect((await stateOf(quiet))?.state).toBe('error')
-  await quiet.done()
+test('a ledger that does not match the draft, or is damaged, approves nothing', async () => {
+  const ws = await fake(files())
+  await asking(ws)
+  await ws.approveInLedger('calculation', 'calc', { 'calc.sql': 'SELECT 2\n' })
+  expect(await perform(ws, { kind: 'trust-done', name: 'calc', outcome: 'approved' })).toEqual({ error: 'Not approved in the app: the draft is not what the ledger approved.' })
+  await ws.approveInLedger('calculation', 'calc', { 'calc.sql': CODE, 'calc.test.yaml': 'cases: []\n' })
+  expect(await perform(ws, { kind: 'trust-done', name: 'calc', outcome: 'approved' })).toEqual({ error: 'Not approved in the app: the draft is not what the ledger approved.' })
+  await ws.put('/ledger/ledger.json', 'not json')
+  expect(await perform(ws, { kind: 'trust-done', name: 'calc', outcome: 'unchanged' })).toEqual({ error: 'Not approved in the app: The trust ledger is not valid JSON.' })
+  expect(await ws.file('/work/trusted/calc.sql')).toBeUndefined()
+  expect((await stateOf(ws))?.state).toBe('asking')
+  await ws.done()
 })
 
-test('a review whose answer is not trust, or has no answer, is rejected', async () => {
+test('a session with no ASSAY_LEDGER approves nothing', async () => {
+  const ws = await fake(files())
+  await approved(ws)
+  const config = { ...ws.assay.config }
+  delete config.ledger
+  expect(await promote(new Assay(config), review(ws, { state: 'asking' }))).toEqual({ refused: 'Not approved in the app: this session has no trust ledger.' })
+  expect(await ws.file('/work/trusted/calc.sql')).toBeUndefined()
+  await ws.done()
+})
+
+test('the server writes nowhere through a link: a linked shared folder, a linked destination file or a linked draft file', async () => {
+  const folder = await fake(files())
+  await asking(folder)
+  await approved(folder)
+  await folder.put('/outside/keep', 'x')
+  await symlink(`${folder.dir}/outside`, `${folder.root}/trusted`, 'dir')
+  expect(errorOf(await perform(folder, { kind: 'trust-done', name: 'calc', outcome: 'approved' }))).toMatch(/is a link/)
+  expect(await folder.file('/outside/calc.sql')).toBeUndefined()
+  await folder.done()
+
+  const file = await fake(files())
+  await asking(file)
+  await approved(file)
+  await file.put('/outside/secret.sql', 'outside\n')
+  await mkdir(`${file.root}/trusted`, { recursive: true })
+  await symlink(`${file.dir}/outside/secret.sql`, `${file.root}/trusted/calc.sql`)
+  expect(errorOf(await perform(file, { kind: 'trust-done', name: 'calc', outcome: 'approved' }))).toMatch(/is a link/)
+  expect(await file.file('/outside/secret.sql')).toBe('outside\n')
+  await file.done()
+
+  const draft = await fake(files())
+  await asking(draft)
+  await approved(draft)
+  await draft.put('/outside/other.sql', CODE)
+  await rm(`${draft.analysis}/lib/trusted/calc.sql`)
+  await symlink(`${draft.dir}/outside/other.sql`, `${draft.analysis}/lib/trusted/calc.sql`)
+  expect(errorOf(await perform(draft, { kind: 'trust-done', name: 'calc', outcome: 'approved' }))).toMatch(/not a regular file/)
+  expect(await draft.file('/work/trusted/calc.sql')).toBeUndefined()
+  await draft.done()
+})
+
+test('a git that cannot run, add or commit still leaves the approved files copied, and the message says why', async () => {
+  const cases: [string, (argv: readonly string[]) => object | Promise<object>, RegExp][] = [
+    ['no repository', argv => (argv.includes('rev-parse') ? { exitCode: 128 } : {}), /is not in a git repository\.$/],
+    ['add fails', argv => (argv.includes('add') ? { exitCode: 1, stderr: 'fatal: bad index\n' } : {}), /git add failed: fatal: bad index$/],
+    ['commit fails', argv => (argv.includes('commit') ? { exitCode: 1, stderr: 'hook said no\nfatal: aborted\n' } : { exitCode: argv.includes('diff') ? 1 : 0 }), /git commit failed: fatal: aborted$/],
+    ['git throws', () => Promise.reject(new Error('no git')), /is not in a git repository\.$/],
+  ]
+  for (const [, run, message] of cases) {
+    const ws = await fake(files())
+    await asking(ws)
+    await approved(ws)
+    ws.setRun(run)
+    expect(await perform(ws, { kind: 'trust-done', name: 'calc', outcome: 'approved' })).toEqual({ ok: true })
+    expect((await stateOf(ws))?.message).toMatch(message)
+    expect((await stateOf(ws))?.message).toMatch(/^Trusted calc: recorded in the app, copied to trusted\/\. Git history not written: /)
+    expect(await ws.file('/work/trusted/calc.sql')).toBe(CODE)
+    await ws.done()
+  }
+})
+
+test('every git call has a timeout, and a git that timed out still settles the approval and reports the history problem', async () => {
+  const ws = await fake(files())
+  await asking(ws)
+  await approved(ws)
+  const timeouts: unknown[] = []
+  ws.setRun((argv, options) => {
+    if (argv[0] !== 'git') return {}
+    timeouts.push(options?.timeoutMs)
+    return argv.includes('add') ? { exitCode: 124, stderr: 'Timed out after 30 s.' } : {}
+  })
+  expect(await perform(ws, { kind: 'trust-done', name: 'calc', outcome: 'approved' })).toEqual({ ok: true })
+  expect(timeouts.length).toBeGreaterThan(0)
+  expect(timeouts.every(each => each === 30_000)).toBe(true)
+  expect((await stateOf(ws))?.state).not.toBe('asking')
+  expect((await stateOf(ws))?.message).toMatch(/Git history not written: git add failed: Timed out after 30 s\./)
+  expect(await ws.file('/work/trusted/calc.sql')).toBe(CODE)
+  await ws.done()
+})
+
+test('an approval that changes nothing still reports a git failure', async () => {
+  const ws = await fake(files())
+  await asking(ws)
+  await approved(ws)
+  ws.setRun(argv => (argv.includes('rev-parse') ? { exitCode: 128 } : {}))
+  expect(await perform(ws, { kind: 'trust-done', name: 'calc', outcome: 'unchanged' })).toEqual({ ok: true })
+  expect((await stateOf(ws))?.message).toMatch(/^Git history not written: .*is not in a git repository\. Already trusted: no changes\./)
+  await ws.done()
+})
+
+test('a draft edited while the server commits is kept, not removed; a shared file already equal is not rewritten', async () => {
+  const ws = await fake(files())
+  await asking(ws)
+  await approved(ws)
+  await ws.put('/work/trusted/calc.sql', CODE)
+  ws.setRun(async argv => {
+    if (argv.includes('rev-parse')) await ws.put('lib/trusted/calc.sql', 'SELECT edited\n')
+    return {}
+  })
+  expect(await perform(ws, { kind: 'trust-done', name: 'calc', outcome: 'unchanged' })).toEqual({ ok: true })
+  expect((await stateOf(ws))?.message).toBe('Already trusted: no changes. Kept the draft calc.sql: it changed after the approval.')
+  expect(await ws.file('lib/trusted/calc.sql')).toBe('SELECT edited\n')
+  expect(await ws.file('/work/trusted/calc.sql')).toBe(CODE)
+  await ws.done()
+})
+
+test('a linked ledger, a linked draft folder or a shared folder that cannot be made approves nothing', async () => {
+  const ledger = await fake(files())
+  await asking(ledger)
+  await ledger.put('/outside/ledger.json', '{}')
+  await mkdir(`${ledger.dir}/ledger`, { recursive: true })
+  await symlink(`${ledger.dir}/outside/ledger.json`, `${ledger.dir}/ledger/ledger.json`)
+  expect(errorOf(await perform(ledger, { kind: 'trust-done', name: 'calc', outcome: 'approved' }))).toMatch(/no entry/)
+  await ledger.done()
+
+  const folder = await fake(files())
+  await asking(folder)
+  await approved(folder)
+  await folder.put('/elsewhere/calc.sql', CODE)
+  await rm(`${folder.analysis}/lib/trusted`, { recursive: true })
+  await symlink(`${folder.dir}/elsewhere`, `${folder.analysis}/lib/trusted`, 'dir')
+  expect(errorOf(await perform(folder, { kind: 'trust-done', name: 'calc', outcome: 'approved' }))).toMatch(/is a link\./)
+  await folder.done()
+
+  const blocked = await fake(files({ 'unrelated': '' }))
+  await asking(blocked)
+  await approved(blocked)
+  await blocked.put('/work/trusted', 'a file, not a folder')
+  expect(errorOf(await perform(blocked, { kind: 'trust-done', name: 'calc', outcome: 'approved' }))).toMatch(/^Could not copy calc into trusted\//)
+  await blocked.done()
+})
+
+test('trust-done for a review that is still checking, or for another name, is refused', async () => {
   const ws = await fake(files())
   ws.setRun(() => ({}))
   await perform(ws, { kind: 'trust-check', name: 'calc' })
-  const check = await helper(ws)
-  check.emit({ event: 'done', answer: CHECKED })
-  expect(await waitFor(ws, 'asking')).toBe(true)
-  expect(await perform(ws, { kind: 'trust-answer', name: 'calc', answer: 'reject' })).toEqual({ ok: true })
-  expect((await stateOf(ws))?.state).toBe('rejected')
+  await helper(ws)
+  expect(await waitFor(ws, 'checking')).toBe(true)
+  expect(await perform(ws, { kind: 'trust-done', name: 'calc', outcome: 'approved' })).toEqual({ error: 'The review of calc is checking, not waiting for an answer.' })
+  expect(await perform(ws, { kind: 'trust-done', name: 'other', outcome: 'approved' })).toEqual({ error: 'No review of other is waiting for an answer.' })
+  expect((await stateOf(ws))?.state).toBe('checking')
+  await ws.done()
+})
+
+test('a trust-answer request file is refused: only the app approves, in main', async () => {
+  const ws = await fake(files())
+  await asking(ws)
+  await ws.put('.assay/requests/1-a.json', JSON.stringify({ kind: 'trust-answer', name: 'calc', answer: 'trust' }))
+  await ws.requests.poll()
+  expect(JSON.parse((await ws.file('.assay/replies/1-a.json')) ?? '{}')).toMatchObject({ error: 'Unknown request kind: trust-answer.' })
+  expect((await stateOf(ws))?.state).toBe('asking')
+  expect(await ws.file('/work/trusted/calc.sql')).toBeUndefined()
   await ws.done()
 })
 
@@ -155,6 +271,29 @@ test('a helper whose last line has no newline still gets that line read; output 
   check.end(0)
   expect(await waitFor(ws, 'asking')).toBe(true)
   await ws.done()
+})
+
+const STEP = { event: 'step', step: STEPS[0] }
+const DONE = { event: 'done', answer: CHECKED }
+
+test('events out of order fail the check: a second start, a start after a step, a second done, or anything after done', async () => {
+  const cases: object[][] = [
+    [START, START, DONE],
+    [STEP, START, DONE],
+    [START, DONE, DONE],
+    [START, DONE, STEP],
+  ]
+  for (const events of cases) {
+    const ws = await fake(files())
+    await perform(ws, { kind: 'trust-check', name: 'calc' })
+    const check = await helper(ws)
+    // One write, as a helper that forged its own done would print.
+    check.print(events.map(event => `${JSON.stringify(event)}\n`).join(''))
+    check.end(0)
+    expect(await waitFor(ws, 'error')).toBe(true)
+    expect((await stateOf(ws))?.message).toMatch(/out of order/)
+    await ws.done()
+  }
 })
 
 test('a helper that exits silently, or by a signal, says how it exited', async () => {
@@ -254,14 +393,5 @@ test('the helper events build the review: a step before start makes the answer, 
   expect(open.what).toBe('SQL template')
   applyEvent(open, { event: 'start', name: 'calc', kind: 'other' })
   expect(open.what).toBe('SQL template')
-  await ws.done()
-})
-
-test('removing the draft leaves a draft that vanished, and does nothing when the draft folder is the destination', async () => {
-  const ws = await fake(files())
-  const open = review(ws)
-  expect(await removeDraft(ws.assay, open, [{ file: 'gone.sql', text: 'x' }, { file: 'calc.sql', text: 'changed' }, { file: 'other.sql', text: 'x' }])).toEqual(['lib/trusted/calc.sql'])
-  expect(await removeDraft(ws.assay, review(ws, { dest: `${ws.analysis}/lib/trusted` }), [{ file: 'calc.sql', text: CODE }])).toEqual([])
-  expect(await ws.file('lib/trusted/calc.sql')).toBe(CODE)
   await ws.done()
 })

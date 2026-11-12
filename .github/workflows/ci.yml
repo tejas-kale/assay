@@ -1,4 +1,4 @@
-# The pipeline (docs/process/ci-release.md): unit checks on every push and pull request, integration tests on every
+# The pipeline (docs/developer/ci-release.md): unit checks on every push and pull request, integration tests on every
 # push, and on main a signed release on macOS unless the push changed only docs, tests and CI config.
 # Every action is pinned by commit SHA; the comment names its tag.
 name: CI
@@ -33,7 +33,7 @@ jobs:
           UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.venv
       # The same gate as the pre-push hook: typecheck, ESLint, node tests, ruff, pytest, the coverage bar.
       - run: npm run check
-      # Known vulnerabilities in the locked dependencies (docs/process/security.md). Electron counts although it is a
+      # Known vulnerabilities in the locked dependencies (docs/developer/security.md). Electron counts although it is a
       # dev dependency: it is the runtime the app ships, so no --omit=dev.
       - run: npm audit --audit-level=high
       # Every group, on the lowest Python the project supports: pip-audit checks only the lines whose markers match.
@@ -123,7 +123,7 @@ jobs:
           for name in CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER; do
             [ -n "${!name}" ] || missing="$missing $name"
           done
-          [ -z "$missing" ] || { echo "::error::Secrets not set:$missing (docs/process/ci-release.md)"; exit 1; }
+          [ -z "$missing" ] || { echo "::error::Secrets not set:$missing (docs/developer/ci-release.md)"; exit 1; }
           # electron-builder reads the API key from a file.
           printf '%s\n' "$APPLE_API_KEY" > "$RUNNER_TEMP/notarize-key.p8"
         env:

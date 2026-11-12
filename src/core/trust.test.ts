@@ -93,10 +93,10 @@ test('stateTone and isActive', () => {
 })
 
 test('stateLine ticks while checking, asks for Trust or Reject, else shows the message', () => {
-  const r = parsed({ ...base, steps: [], message: 'Trusted c: committed in trusted/.' })
+  const r = parsed({ ...base, steps: [], message: 'Trusted c: approved in the app and copied to trusted/.' })
   assert.deepEqual(stateLine(r, 4100), { text: 'checking… 4 s', tone: 'dim' })
   assert.equal(stateLine({ ...r, state: 'asking' }, 9000).text, 'Every check passed: Trust (t) or Reject (r).')
-  assert.deepEqual(stateLine({ ...r, state: 'approved' }, 9000), { text: 'Trusted c: committed in trusted/.', tone: 'good' })
+  assert.deepEqual(stateLine({ ...r, state: 'approved' }, 9000), { text: 'Trusted c: approved in the app and copied to trusted/.', tone: 'good' })
 })
 
 test('diffLines tags by the first characters', () => {

@@ -1,4 +1,4 @@
-"""Tests for the retype check (docs/slice-10.md, slice 10d): <venv>/bin/python -m pytest python/tests"""
+"""Tests for the retype check (specs/slices/slice-10.md, slice 10d): <venv>/bin/python -m pytest python/tests"""
 
 from __future__ import annotations
 

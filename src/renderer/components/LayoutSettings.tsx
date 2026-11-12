@@ -1,4 +1,4 @@
-// Settings > Tabs and Settings > Strip (docs/slice-11.md, 11e). Each change is saved at once and every analysis follows.
+// Settings > Tabs and Settings > Strip (specs/slices/slice-11.md, 11e). Each change is saved at once and every analysis follows.
 import { useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
 

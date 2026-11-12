@@ -1,4 +1,4 @@
-"""The retype check (docs/slice-10.md, slice 10d): SQL that writes out a trusted piece's logic by hand.
+"""The retype check (specs/slices/slice-10.md, slice 10d): SQL that writes out a trusted piece's logic by hand.
 
 A ``-- retype: <piece>: <reason>`` comment silences that piece.
 """
@@ -67,7 +67,7 @@ def _definitions(pieces: Pieces) -> list[_Definition]:
 
 
 def _blocks(pieces: Pieces) -> list[_Block]:
-    """The blocks, trusted as committed, that join tables."""
+    """The blocks, approved in the app, that join tables."""
     found = []
     for name, calc in pieces.calcs.items():
         if "block" not in calc or calc.get("dirty"):

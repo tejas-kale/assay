@@ -12,9 +12,11 @@ import pandas as pd
 import polars as pl
 import pytest
 import yaml
+from ledger_helper import approve
 
 import analysis_blocks as blocks
 import analysis_calc as calc
+import analysis_child as child
 import analysis_db
 import analysis_dictionary as entries
 import analysis_fixtures as fixtures
@@ -27,6 +29,7 @@ import analysis_trust as trust
 
 PYTHON = Path(sys.executable)
 HALF = 1.5
+LOUD_LIMIT = 400
 
 
 def problem(call: Any, *args: Any) -> str:
@@ -89,11 +92,6 @@ def test_a_parameter_has_a_known_type() -> None:
 def test_a_python_calculation_has_its_function_docstring_and_annotations(tmp_path: Path, code: str, said: str) -> None:
     (tmp_path / "calc.py").write_text(code)
     assert problem(calc.python_function, tmp_path / "calc.py") == said
-
-
-def test_a_python_calculation_must_be_importable(tmp_path: Path) -> None:
-    (tmp_path / "calc.txt").write_text("")
-    assert problem(calc.load_module, tmp_path / "calc.txt") == "cannot import calc.txt"
 
 
 def test_a_template_needs_a_description(tmp_path: Path) -> None:
@@ -278,6 +276,25 @@ def test_a_marked_line_that_is_not_json_is_skipped(tmp_path: Path) -> None:
     assert result["passed"] is True and [r["name"] for r in result["results"]] == ["test_calc.py::test_a"]
 
 
+FORGED_MARKS = [
+    "[1]",
+    '"text"',
+    "{}",
+    '{"ok": "yes", "text": "x", "name": "n"}',
+    '{"ok": true, "text": 1, "name": "n"}',
+]
+
+
+def test_a_forged_marker_line_does_not_interrupt_check_or_hide_the_real_result(tmp_path: Path) -> None:
+    lines = [f"        print({pyt.STREAM_MARK + each!r})" for each in FORGED_MARKS]
+    body = "\n".join(lines)
+    (tmp_path / "test_calc.py").write_text(f"def test_a(capfd):\n    with capfd.disabled():\n{body}\n")
+    result = pyt.run_tests(tmp_path, "calc")
+    assert result["passed"] is True
+    assert [r["name"] for r in result["results"]] == ["test_calc.py::test_a"]
+    assert pyt.result_step(result["results"][0])["ok"] is True
+
+
 def test_the_rules_that_cannot_run_fail_their_step(monkeypatch: pytest.MonkeyPatch) -> None:
     def broken(*_: Any) -> Any:
         raise ValueError("bad")
@@ -376,6 +393,7 @@ def test_the_commands_answer_in_json(tmp_path: Path, capsys: pytest.CaptureFixtu
     (tmp_path / "dictionaries").mkdir()
     entry = tmp_path / "dictionaries" / "a.b.c.yaml"
     entry.write_text(yaml.safe_dump(ENTRY))
+    approve(tmp_path)
     not_json = (1, {"error": "the arguments are not a JSON object"})
     assert answer(capsys, "list", str(tmp_path))[1]["calculations"][0]["name"] == "a.b.c:rows"
     sql = "SELECT *, 1 AS `rows` FROM `a`.`b`.`c` LIMIT 100"
@@ -408,3 +426,112 @@ def test_the_module_runs_as_a_command(tmp_path: Path) -> None:
         check=False,
     )
     assert ran.returncode == 0 and json.loads(ran.stdout) == {"calculations": [], "problems": []}
+
+
+# ---------------------------------------------------------------------------
+# A proposal's own code cannot report its check (audit PI-8).
+
+FORGED = json.dumps({"event": "done", "answer": {"name": "forged", "ok": True, "steps": [], "files": ["../evil.sql"]}})
+FORGERY = f"""import sys
+
+print({FORGED!r}, flush=True)
+sys.stderr.write({FORGED!r} + "\\n")
+
+
+def forged(engine, n: int = 1):
+    \"\"\"Prints a done event, then answers.\"\"\"
+    print({FORGED!r}, flush=True)
+    return __import__("pandas").DataFrame({{"n": [n]}})
+"""
+FORGED_TEST = f"""def test_it_prints_a_done_event_and_fails():
+    print({FORGED!r}, flush=True)
+    assert False, "really failing"
+"""
+
+
+def forged_proposal(tmp_path: Path) -> Path:
+    folder = tmp_path / "trusted"
+    folder.mkdir()
+    (folder / "forged.py").write_text(FORGERY)
+    (folder / "test_forged.py").write_text(FORGED_TEST)
+    return folder
+
+
+def test_a_proposal_printing_a_done_event_cannot_end_its_own_check(tmp_path: Path) -> None:
+    folder = forged_proposal(tmp_path)
+    done = subprocess.run(
+        [sys.executable, "-B", "-m", "analysis_trust", "check", str(folder), "forged", str(tmp_path), "--stream"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    events = [json.loads(line) for line in done.stdout.splitlines()]
+    assert [event["event"] for event in events].count("done") == 1 and events[-1]["event"] == "done"
+    assert [event["event"] for event in events].count("start") == 1 and events[0]["event"] == "start"
+    answer = events[-1]["answer"]
+    assert answer["ok"] is False and answer["files"] == ["forged.py", "test_forged.py"]
+    steps = {event["step"]["step"]: event["step"] for event in events if event["event"] == "step"}
+    assert steps["form"]["ok"] is True and steps["test"]["ok"] is False
+
+
+def test_a_forged_event_in_the_proposals_import_or_function_reaches_no_stream(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    folder = forged_proposal(tmp_path)
+    (folder / "test_forged.py").unlink()
+    (folder / "forged.test.yaml").write_text("live: {n: 3}\n")
+    on_fixtures(monkeypatch, {})
+    seen: list[dict[str, Any]] = []
+    answer = review.check(folder, "forged", tmp_path, seen.append)
+    assert capfd.readouterr().out == ""
+    assert [event["event"] for event in seen].count("done") == 0
+    assert answer["ok"] is False and "no tests" in answer["steps"][-1]["text"]
+
+
+def test_a_python_proposal_that_will_not_import_or_dies_is_a_failed_step(tmp_path: Path) -> None:
+    (tmp_path / "boom.py").write_text('raise RuntimeError("boom at import")\n')
+    assert "boom at import" in problem(child.describe, tmp_path, "boom")
+    (tmp_path / "quiet.py").write_text("import os\nos._exit(3)\n")
+    assert "stopped without an answer (exit 3)" in problem(child.describe, tmp_path, "quiet")
+    (tmp_path / "loud.py").write_text('import os, sys\nsys.stderr.write("x" * 1000)\nos._exit(3)\n')
+    assert len(problem(child.describe, tmp_path, "loud")) < LOUD_LIMIT
+
+
+def _offline_databricks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The child builds a real engine, so it gets a scratch profile and a stub CLI, never the machine's login."""
+    config = tmp_path / "databrickscfg"
+    # A closed local port and one-second timeouts keep the SDK's host probe from waiting on the network.
+    config.write_text(
+        f"[{analysis_db.DEFAULT_PROFILE}]\nhost = https://127.0.0.1:9\n"
+        "retry_timeout_seconds = 1\nhttp_timeout_seconds = 1\n"
+    )
+    token = '{"access_token": "x", "token_type": "Bearer", "expiry": "2999-01-01T00:00:00Z"}'
+    cli = tmp_path / "databricks"
+    cli.write_text(f"#!/bin/sh\necho '{token}'\n")
+    cli.chmod(0o755)
+    monkeypatch.setenv("DATABRICKS_CONFIG_FILE", str(config))
+    monkeypatch.setenv("DATABRICKS_CLI_PATH", str(cli))
+
+
+def test_a_python_proposals_run_is_in_a_child_and_its_error_keeps_its_type(
+    tmp_path: Path, capfd: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _offline_databricks(tmp_path, monkeypatch)
+    (tmp_path / "bad.py").write_text(
+        'def bad(engine, n: int = 1):\n    """Fails."""\n    print("seen only by the child")\n    raise KeyError("n")\n'
+    )
+    with pytest.raises(Exception, match="n") as raised:
+        child.run(tmp_path, "bad", {}, tmp_path)
+    assert type(raised.value).__name__ == "KeyError"
+    assert capfd.readouterr().out == ""
+
+
+def test_a_child_that_runs_too_long_is_stopped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "slow.py").write_text("import time\ntime.sleep(30)\n")
+    monkeypatch.setattr(child, "TIMEOUT_SECONDS", 1)
+    assert "was stopped" in problem(child.describe, tmp_path, "slow")
+
+
+def test_a_sql_proposal_is_described_without_a_child(tmp_path: Path) -> None:
+    (tmp_path / "t.sql").write_text("/*---\ndescription: One.\n---*/\nSELECT 1 AS one\n")
+    assert child.describe(tmp_path, "t")["kind"] == "sql"

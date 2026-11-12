@@ -1,4 +1,4 @@
-// The CI workflow's security properties (docs/process/security.md), read from its text: the release job alone
+// The CI workflow's security properties (docs/developer/security.md), read from its text: the release job alone
 // reaches the signing secrets, through the main-only environment, with no token left in git and no install scripts.
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'

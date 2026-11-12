@@ -59,7 +59,7 @@ test('rds-psql missing is optional: only a launcher brings it', () => {
     name: 'rds-psql',
     status: 'optional',
     detail: 'Not found: Postgres runs need a launcher that provides it',
-    fix: 'See docs/process/launch-contract.md',
+    fix: 'See docs/developer/launch-contract.md',
   })
 })
 

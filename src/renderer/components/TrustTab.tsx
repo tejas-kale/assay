@@ -1,17 +1,20 @@
 // The Trust tab: the proposals in the analysis, each with Check, and the latest review, live, in pytest style.
 // A review whose checks all passed shows Trust and Reject. The server (Assay's MCP server in Claude's session)
-// runs the checks and the commit; this tab only sends `trust-list`, `trust-check` and `trust-answer` requests.
+// runs the checks, which are advice; the files shown are the ones main reads from the draft folder, with their
+// hashes, and Trust approves exactly those through main (specs/trust-ledger.md). Reject only closes the review.
 import { useRef, useState } from 'react'
 import type { KeyboardEvent, RefObject } from 'react'
 
 import type { Proposal, TrustAnswer } from '../../core/requests.ts'
 import { canAnswer, canCheck, diffLines, earlierReview, outcomeWord, stateLine, stepDetail, stepTitle } from '../../core/trust.ts'
 import type { TrustReview, TrustSample, TrustStep } from '../../core/trust.ts'
-import { checkPlan, mayAnswer, movedProposal, trustTabKey } from '../../core/trustTab.ts'
+import type { DraftFile, TrustFilesResult } from '../../core/trustApprove.ts'
+import { checkPlan, mayAnswer, movedProposal, settledKey, trustTabKey } from '../../core/trustTab.ts'
 import { CodeView } from './CodeView.tsx'
 import type { SelectionHandle } from './CodeView.tsx'
 import { isPaneKey } from './common.tsx'
-import { trustRequests, useClock, useTrustRequests } from './trust/trustRequests.ts'
+import { trustRequests, useClock, useDraft, useTrustRequests } from './trust/trustRequests.ts'
+import { Unadopted, languageOf } from './trust/Unadopted.tsx'
 
 export { trustRequests }
 
@@ -106,7 +109,37 @@ function SampleTable({ sample }: Readonly<{ sample: TrustSample }>) {
   )
 }
 
-function ReviewDetails(props: Readonly<{ review: TrustReview; selectionRef: Props['selectionRef'] }>) {
+/** The files main read from the draft folder, each with its sha256: what Trust approves. */
+function DraftFiles(props: Readonly<{ review: TrustReview; draft: TrustFilesResult | undefined; selectionRef: Props['selectionRef'] }>) {
+  const { draft, review } = props
+  if (!draft) return <div className="dim">Reading the draft files…</div>
+  if (!draft.ok) return <div className="trust-state bad">{draft.message}</div>
+  const firstSql = draft.files.find((file: DraftFile) => languageOf(file.name) === 'sql')
+  return (
+    <>
+      <div className="dim">Trust approves exactly these files, as read from the draft folder now:</div>
+      {draft.files.map(file => (
+        <div key={file.name} className="trust-code">
+          <div className="dim" title={file.sha256}>
+            {file.name} · sha256 {file.sha256.slice(0, 12)}…
+          </div>
+          <CodeView
+            code={file.text}
+            language={languageOf(file.name)}
+            focusKey={`${review.name}/${file.name}`}
+            original
+            onToggleOriginal={() => undefined}
+            passive
+            unfocusable
+            handleRef={file === firstSql ? props.selectionRef : undefined}
+          />
+        </div>
+      ))}
+    </>
+  )
+}
+
+function ReviewDetails(props: Readonly<{ review: TrustReview; draft: TrustFilesResult | undefined; selectionRef: Props['selectionRef'] }>) {
   const { review } = props
   return (
     <>
@@ -115,20 +148,8 @@ function ReviewDetails(props: Readonly<{ review: TrustReview; selectionRef: Prop
         {review.replaces ? ' · replaces the trusted version' : ''}
       </div>
       {review.description && <div className="trust-desc">{review.description}</div>}
-      {review.code !== undefined && (
-        <div className="trust-code">
-          <CodeView
-            code={review.code}
-            language={review.language === 'yaml' ? undefined : review.language}
-            focusKey={review.name}
-            original
-            onToggleOriginal={() => undefined}
-            passive
-            unfocusable
-            handleRef={props.selectionRef}
-          />
-        </div>
-      )}
+      <DraftFiles review={review} draft={props.draft} selectionRef={props.selectionRef} />
+      {review.steps.length > 0 && <div className="dim trust-environment">Checks ran inside Claude's environment: approve the code you see.</div>}
       {review.steps.map((step, i) => (
         <StepRow key={i} step={step} />
       ))}
@@ -137,7 +158,7 @@ function ReviewDetails(props: Readonly<{ review: TrustReview; selectionRef: Prop
   )
 }
 
-function StateBar(props: Readonly<{ review: TrustReview; now: number; isSending: boolean; onAnswer: (said: TrustAnswer) => void }>) {
+function StateBar(props: Readonly<{ review: TrustReview; now: number; isSending: boolean; hasDraft: boolean; onAnswer: (said: TrustAnswer) => void }>) {
   const { review, isSending } = props
   const state = stateLine(review, props.now)
   return (
@@ -145,7 +166,7 @@ function StateBar(props: Readonly<{ review: TrustReview; now: number; isSending:
       <span>{state.text}</span>
       {canAnswer(review) && (
         <span className="trust-answer">
-          <button disabled={isSending} onClick={() => { props.onAnswer('trust') }}>
+          <button disabled={isSending || !props.hasDraft} onClick={() => { props.onAnswer('trust') }}>
             Trust
           </button>
           <button disabled={isSending} onClick={() => { props.onAnswer('reject') }}>
@@ -158,7 +179,7 @@ function StateBar(props: Readonly<{ review: TrustReview; now: number; isSending:
 }
 
 /** Keys: scrolling, moving among the proposals, Check, Trust, Reject and a fresh list. */
-function useTrustKeys(args: { requests: Requests; review: TrustReview | undefined; chosen: Proposal | undefined; bodyRef: RefObject<HTMLDivElement | null>; onToast: Props['onToast']; setSelected: (move: (i: number) => number) => void }) {
+function useTrustKeys(args: { hasDraft: boolean; requests: Requests; review: TrustReview | undefined; chosen: Proposal | undefined; bodyRef: RefObject<HTMLDivElement | null>; onToast: Props['onToast']; setSelected: (move: (i: number) => number) => void }) {
   const { requests, review, chosen, bodyRef } = args
   const { proposals, isSending } = requests
 
@@ -180,7 +201,7 @@ function useTrustKeys(args: { requests: Requests; review: TrustReview | undefine
     else if (key === 'previous') args.setSelected(i => movedProposal(i, -1, proposals?.length))
     else if (key === 'check') onCheck()
     else if (key === 'list') requests.list()
-    else if (mayAnswer(review, isSending)) requests.answer(key)
+    else if (mayAnswer(review, isSending) && (key === 'reject' || args.hasDraft)) requests.answer(key)
     else return
     e.preventDefault()
   }
@@ -189,20 +210,23 @@ function useTrustKeys(args: { requests: Requests; review: TrustReview | undefine
 export function TrustTab({ review, onToast, selectionRef }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null)
   const now = useClock(review?.state === 'checking')
-  const requests = useTrustRequests(review, onToast)
+  const draft = useDraft(review)
+  const files = draft.result?.ok ? draft.result.files : undefined
+  const requests = useTrustRequests(review, onToast, files, draft.reload)
   const [selected, setSelected] = useState(0)
   const { proposals } = requests
   const chosen = proposals?.[Math.min(selected, proposals.length - 1)]
-  const onKeyDown = useTrustKeys({ requests, review, chosen, bodyRef, onToast, setSelected })
+  const onKeyDown = useTrustKeys({ hasDraft: files !== undefined, requests, review, chosen, bodyRef, onToast, setSelected })
   const earlier = !review || earlierReview(review, proposals)
 
   return (
     <div className="run" tabIndex={-1} data-focus-target onKeyDown={onKeyDown}>
       <div className="run-body trust-body" ref={bodyRef}>
         <ProposalList requests={requests} review={review} chosen={chosen} onSelect={setSelected} />
-        {earlier ? <EarlierReview review={review} hasProposals={(proposals?.length ?? 0) > 0} /> : <ReviewDetails review={review} selectionRef={selectionRef} />}
+        <Unadopted reloadKey={settledKey(review)} onToast={onToast} />
+        {earlier ? <EarlierReview review={review} hasProposals={(proposals?.length ?? 0) > 0} /> : <ReviewDetails review={review} draft={draft.result} selectionRef={selectionRef} />}
       </div>
-      {!earlier && <StateBar review={review} now={now} isSending={requests.isSending} onAnswer={requests.answer} />}
+      {!earlier && <StateBar review={review} now={now} isSending={requests.isSending} hasDraft={files !== undefined} onAnswer={requests.answer} />}
     </div>
   )
 }

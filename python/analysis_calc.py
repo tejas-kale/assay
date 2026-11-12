@@ -8,16 +8,18 @@ it imports none of them, nor the SQL modules, so ``analysis_include`` can import
 from __future__ import annotations
 
 import datetime
-import importlib.util
 import inspect
 import re
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from types import ModuleType
+from typing import Any, NamedTuple
 
 import sqlglot
 import yaml
 from sqlglot import exp
+
+from analysis_imports import trusted_imports
 
 DIALECT = "databricks"
 NAME = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -37,6 +39,15 @@ COMPARED_DIGITS = 9
 
 class TrustError(Exception):
     """What makes a calculation unusable, said for the person."""
+
+
+class Source(NamedTuple):
+    """A calculation or definition's file as it was read once: its ``name``, its ``file`` name and its bytes. A file the
+    ledger approved is described and run from these bytes, never read again (PI-2)."""
+
+    name: str
+    file: str
+    data: bytes
 
 
 def plural(count: int, word: str) -> str:
@@ -109,8 +120,8 @@ def placeholders(sql: str) -> set[str]:
 def block_contract(front: dict[str, Any]) -> dict[str, Any] | None:
     """The ``block:`` contract of a template's front matter, checked; None when the template is not a block.
 
-    A block (docs/slice-10.md, slice 10b) joins tables at a fixed grain. ``grain`` is a list of column names (``[]``
-    for one row); ``columns`` maps each output column, in order, to what it means.
+    A block (specs/slices/slice-10.md, slice 10b) joins tables at a fixed grain. ``grain`` is a list of column names
+    (``[]`` for one row); ``columns`` maps each output column, in order, to what it means.
     """
     if "block" not in front:
         return None
@@ -147,19 +158,22 @@ def _contract_grain(grain: Any, columns: dict[str, str]) -> list[str]:
 # Python functions.
 
 
-def load_module(path: Path) -> Any:
-    """The Python file at ``path`` as a module, imported afresh."""
-    spec = importlib.util.spec_from_file_location(f"trusted_{path.stem}", path)
-    if spec is None or spec.loader is None:
-        raise TrustError(f"cannot import {path.name}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+def load_module(path: Path, source: bytes | None = None) -> ModuleType:
+    """A Python file as a fresh module, built from its bytes: ``source`` when given (the bytes the ledger approved),
+    else what ``path`` holds now. The code is compiled and run here, never imported through Python's file loader, which
+    would run a ``__pycache__`` file planted beside it instead (PI-2). The one place Assay loads a calculation."""
+    code = compile(path.read_bytes() if source is None else source, str(path), "exec", dont_inherit=True)
+    module = ModuleType(f"trusted_{path.stem}")
+    module.__file__ = str(path)
+    with trusted_imports(path.parent):
+        exec(code, module.__dict__)
     return module
 
 
-def python_function(path: Path) -> tuple[Any, str, list[dict[str, Any]]]:
-    """The function named after the file, its docstring and its parameters after the engine."""
-    function = getattr(load_module(path), path.stem, None)
+def python_function(path: Path, source: Source | None = None) -> tuple[Any, str, list[dict[str, Any]]]:
+    """The function named after the file, its docstring and its parameters after the engine; from ``source``'s bytes
+    when given."""
+    function = getattr(load_module(path, None if source is None else source.data), path.stem, None)
     if not callable(function):
         raise TrustError(f"{path.name} has no function {path.stem}")
     doc = inspect.getdoc(function)
@@ -184,26 +198,35 @@ def _python_parameter(param: inspect.Parameter) -> dict[str, Any]:
 # Either kind.
 
 
-def describe(folder: Path, name: str) -> dict[str, Any]:
-    """A calculation in ``folder``: its kind, file, one-line description and parameters (and SQL, for a template)."""
+def read_calculation(folder: Path, name: str) -> Source:
+    """Calculation ``name``'s one file in ``folder``, read once."""
     sql, py = folder / f"{name}.sql", folder / f"{name}.py"
     if sql.is_file() == py.is_file():
         raise TrustError(f"{name}: need exactly one of {name}.sql and {name}.py in {folder}")
-    if sql.is_file():
-        return _describe_template(sql, name)
-    _, doc, params = python_function(py)
-    return {"name": name, "kind": "python", "file": py.name, "description": doc.splitlines()[0], "parameters": params}
+    path = sql if sql.is_file() else py
+    return Source(name, path.name, path.read_bytes())
 
 
-def _describe_template(path: Path, name: str) -> dict[str, Any]:
-    front, body = split_template(path.read_text())
+def describe(folder: Path, name: str, source: Source | None = None) -> dict[str, Any]:
+    """A calculation in ``folder``: its kind, file, one-line description and parameters (and SQL, for a template).
+    From ``source`` when given, else from the file read now."""
+    source = read_calculation(folder, name) if source is None else source
+    if source.file.endswith(".sql"):
+        return _describe_template(source, name)
+    _, doc, params = python_function(folder / source.file, source)
+    summary = doc.splitlines()[0]
+    return {"name": name, "kind": "python", "file": source.file, "description": summary, "parameters": params}
+
+
+def _describe_template(source: Source, name: str) -> dict[str, Any]:
+    front, body = split_template(source.data.decode())
     description = str(front.get("description") or "").strip()
     if not description:
         raise TrustError(f"{name}.sql: the front matter has no description")
     found = {
         "name": name,
         "kind": "sql",
-        "file": path.name,
+        "file": source.file,
         "description": description.splitlines()[0],
         "parameters": parameters_of(front.get("parameters")),
         "sql": body,

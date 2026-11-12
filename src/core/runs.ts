@@ -67,7 +67,7 @@ export function parseRuns(names: readonly string[]): Run[] {
 export type ResultStatus = 'running' | 'ok' | 'error' | 'interrupted'
 const RESULT_STATUSES: readonly unknown[] = ['running', 'ok', 'error', 'interrupted']
 
-/** A Python run's `.json`, as the runner writes it (docs/slice-3.md). */
+/** A Python run's `.json`, as the runner writes it (specs/slices/slice-3.md). */
 export type RunResult = {
   status: ResultStatus
   kernel?: string
@@ -256,7 +256,7 @@ export type RunHeader = {
   replay?: number
   trusted?: string
   engine: Engine
-  /** The trusted pieces a run with includes is built from, as `name@commit` (docs/slice-10.md). */
+  /** The trusted pieces a run with includes is built from, as `name@commit` (specs/slices/slice-10.md). */
   builtFrom?: string[]
 }
 

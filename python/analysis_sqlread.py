@@ -1,5 +1,5 @@
 """How the SQL modules read a query: its ``-- grain:`` and ``-- join:`` lines, its CTEs and final SELECT, its output
-columns, and the last statement of a text (docs/slice-9.md).
+columns, and the last statement of a text (specs/slices/slice-9.md).
 
 sqlglot attaches a comment to the token after it: the CTE's alias, the JOIN, the SELECT.
 """

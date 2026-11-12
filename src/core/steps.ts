@@ -1,4 +1,4 @@
-// A run's steps (docs/slice-9.md, slice 9c): the plan `python -m analysis_sql steps` makes, run one CTE at a time by the
+// A run's steps (specs/slices/slice-9.md, slice 9c): the plan `python -m analysis_sql steps` makes, run one CTE at a time by the
 // server and saved next to the run as `queries/NNN.steps.json`. Pure: parsing that file, the grain and join checks on
 // the counts each step returned, and the marks that colour the diagram.
 import type { Cardinality, LineageMark } from './lineage.ts'
@@ -22,7 +22,7 @@ export type Step = {
   /** The columns of the `-- grain:` line, `[]` for `none`; absent with no line. */
   grain?: string[]
   joins?: PlannedJoin[]
-  /** The trusted block this step's CTE includes (docs/slice-10.md): one step, its joins checked once in the Trust tab. */
+  /** The trusted block this step's CTE includes (specs/slices/slice-10.md): one step, its joins checked once in the Trust tab. */
   block?: string
 }
 export type StepsFile = { run: number; status: 'running' | 'done' | 'error'; note?: string; steps: Step[] }

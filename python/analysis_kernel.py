@@ -13,7 +13,7 @@ a child a closed stdin. The kernel dying by itself exits 1; no ``ipykernel`` exi
 ``run`` executes the code file's text in that kernel and writes ``queries/NNN_x.json`` (atomically, every 0.5 s
 while running and once at the end) with ``NNN_x.tK.csv`` for each displayed table and ``NNN_x.pK.png|svg`` for
 each plot, then prints one JSON summary line. It exits 0 whenever the run was carried out, whatever its status; 3
-when the kernel could not be reached. Format of the files: ``docs/slice-3.md`` in the Assay repo.
+when the kernel could not be reached. Format of the files: ``specs/slices/slice-3.md`` in the Assay repo.
 
 This file lives in the Assay repo (``python/``); Assay's MCP server runs it by path (``$ASSAY_BACKEND/python``),
 under the kernel python (a project ``.venv`` that has ipykernel, else Assay's venv, ``$ASSAY_VENV``). Only the

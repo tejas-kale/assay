@@ -13,7 +13,7 @@ prints the query's CTE graph, ``{"nodes": [...], "edges": [...]}`` (``--template
     python -m analysis_sql steps <databricks|postgres> [--template] [<sql-file>]
 
 prints ``{"lineage": ..., "steps": [...]}``: the lineage plus, for each CTE and the final SELECT, the preview and
-counts queries the server runs (slice 9c). ``expand`` and ``retype`` read the SQL on stdin (docs/slice-10.md).
+counts queries the server runs (slice 9c). ``expand`` and ``retype`` read the SQL on stdin (specs/slices/slice-10.md).
 
 The modules behind it: ``analysis_sqlread`` (how a query is read: its grain and join lines, CTEs and outputs),
 ``analysis_lint`` (the rules), ``analysis_lineage``, ``analysis_steps``, ``analysis_include`` (``{{ piece(...) }}``)

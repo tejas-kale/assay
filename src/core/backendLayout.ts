@@ -1,4 +1,4 @@
-// The app's backend folders under its data folder (docs/slice-11.md, 11b): backend/<version>/ holds the shipped
+// The app's backend folders under its data folder (specs/slices/slice-11.md, 11b): backend/<version>/ holds the shipped
 // plugin, server, hooks and Python project; venvs/<version>/ the venv uv builds from it, with its status file beside.
 
 /** Folder names that start a copy in progress; a crash can leave one behind. */

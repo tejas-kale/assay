@@ -15,14 +15,17 @@ one kernel the app shows. Protect this in every change.
 - Write each commit subject as a release note: what changed for the user.
 - Add a `Release: minor` or `Release: major` trailer when the change warrants more than a patch release.
 
-## Process docs
+## Developer docs
 
-- `docs/process/coding-standards.md`: the code standard and the limits the linters enforce. Read it before writing code.
-- `docs/process/testing.md`: where tests live, the fakes, and the coverage bar, and how to run them.
-- `docs/process/ci-release.md`: the CI pipeline, the release filter, versions and `Release:` trailers, signing.
-- `docs/process/launch-contract.md`: how the app starts Claude, and what a launcher (the Podman wrapper) must provide.
-- `docs/process/adding-a-tab.md`: the tab registry, and the three places a new tab touches.
-- `docs/process/security.md`: the threat model, the isolation boundary, what Assay guarantees, and the accepted risks.
+`docs/` holds user and developer documentation only. Specs, tickets, audits and design notes go in `specs/`
+(`specs/slices/` for slice specs, `specs/audits/`, `specs/notes/`).
+
+- `docs/developer/coding-standards.md`: the code standard and the limits the linters enforce. Read it before writing code.
+- `docs/developer/testing.md`: where tests live, the fakes, and the coverage bar, and how to run them.
+- `docs/developer/ci-release.md`: the CI pipeline, the release filter, versions and `Release:` trailers, signing.
+- `docs/developer/launch-contract.md`: how the app starts Claude, and what a launcher (the Podman wrapper) must provide.
+- `docs/developer/adding-a-tab.md`: the tab registry, and the three places a new tab touches.
+- `docs/developer/security.md`: the threat model, the isolation boundary, what Assay guarantees, and the accepted risks.
   Read it before changing a hook, a tool, an IPC handler, the updater or CI.
 
 ## Where things are
@@ -32,7 +35,7 @@ one kernel the app shows. Protect this in every change.
   path itself; `src/shared/ipc.ts` is the only contract between the two.
 - `src/renderer`: React UI. `terminal.ts` is the only file that imports `ghostty-web`. `tabs/` holds one component per tab.
 - `src/server`: the MCP server `assay`, one per Claude session, declared by the app with `--mcp-config`
-  (docs/process/launch-contract.md). Claude's tools are `mcp__assay__<tool>`: `sql`, `python`, `trusted`, `park`,
+  (docs/developer/launch-contract.md). Claude's tools are `mcp__assay__<tool>`: `sql`, `python`, `trusted`, `park`,
   `close`, `focus`, `order`, `note`, `revise_note`, `link_notes`, `note_labels`. It owns the kernel
   (`python/analysis_kernel.py serve`), started with the server and ended with it.
 - `src/hooks`: UserPromptSubmit (the rules on each typed prompt, the trusted calculations, the user's runs since the
@@ -43,18 +46,18 @@ one kernel the app shows. Protect this in every change.
   - `assay:wrap-up`: close threads, write findings as root notes, settle weak citations, link the notes read.
   - `assay:propose-trusted`: draft a trusted calculation or dictionary entry, with every file Check needs.
 - `python/`: `analysis_db`, `analysis_kernel`, `analysis_sql` (the SQL rules on Claude's `sql`
-  calls and on SQL templates at Check, and the lineage and step queries the Steps tab draws and runs; docs/slice-9.md;
+  calls and on SQL templates at Check, and the lineage and step queries the Steps tab draws and runs; specs/slices/slice-9.md;
   its docstring names the modules behind it),
   and `analysis_trust` (the trust command line; its docstring names the modules behind it), built by the app into
   Assay's venv (`src/main/backend.ts`). A new `analysis_*.py` module goes in `py-modules` in `python/pyproject.toml`.
 - The app talks to the server through files: it writes `.assay/requests/<id>.json` (`sql`, `python`, `interrupt`,
-  `restart`, `replay`, `lineage`, `steps`, `trust-list`, `trust-check`, `trust-answer`), the server answers in
+  `restart`, `replay`, `lineage`, `steps`, `trust-list`, `trust-check`, `trust-done`), the server answers in
   `.assay/replies/`, writes next to a SQL run in `queries/` when the Steps tab asks (`NNN.lineage.json`;
   `NNN.steps.json` and each step's `NNN.k_<name>.sql`, `.csv` and `.counts.sql`: steps are not runs and take no
   number, and `q(N, step=k)` in the kernel loads step k's rows), and
   writes `.assay/runs.json` and `.assay/trust/<name>.json` for run status and the trust review. For the prompt hook
   only, it writes `.assay/user-runs.json` (the user's runs) and `.assay/step-notices.json` (step checks that failed),
-  both emptied by the hook, and `.assay/session.json` (the kernel's python). No tool of Claude's can start or answer a review: only the Trust tab's buttons do.
+  both emptied by the hook, and `.assay/session.json` (the kernel's python). No tool of Claude's can start or answer a review: only the Trust tab's buttons do, and only the app writes the trust ledger (`ASSAY_LEDGER`, specs/trust-ledger.md); `trust-done` carries no power.
 
 ## Driving the app without a person
 

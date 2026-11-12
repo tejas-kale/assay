@@ -1,31 +1,31 @@
 # Security audit, November 2026 (slice 11g)
 
-Four read-only auditors went through the whole repo on 2026-11-12, one per threat in docs/slice-11.md. Codex was not
+Four read-only auditors went through the whole repo on 2026-11-12, one per threat in specs/slices/slice-11.md. Codex was not
 available in the session, so Claude subagents did the audit; Claude checked each finding against the code before
-fixing it. The threat model, the isolation boundary and the accepted lows are in `docs/process/security.md`.
+fixing it. The threat model, the isolation boundary and the accepted lows are in `docs/developer/security.md`.
 
 Severity is this document's own: what the finding lets an attacker do to Assay's rules or the user's Mac, given the
-boundary in `docs/process/security.md`. Each fix commit names its finding ids and adds a regression test.
+boundary in `docs/developer/security.md`. Each fix commit names its finding ids and adds a regression test.
 
 Threats: **PI** prompt injection through data, **UP** tampered updates (and the release pipeline), **DEP** malicious
 dependencies, **UI** hostile content reaching the renderer and IPC.
 
 A second, independent audit (GPT through Copilot, read-only) checked these findings on 2026-11-12. It confirmed the
 three open ones, found the fixes for PI-3, PI-4, PI-5, PI-6, UI-5, UI-6 and UP-1 incomplete, and found PI-8, PI-9
-and PI-10. Reopened findings keep their id. Three more review rounds by the same model followed the fixes; every gap they found is closed below, except what a shell guard cannot see, accepted under L-1. PI-1, PI-2 and PI-8 wait for the trust ledger (docs/trust-ledger.md).
+and PI-10. Reopened findings keep their id. Three more review rounds by the same model followed the fixes; every gap they found is closed below, except what a shell guard cannot see, accepted under L-1. PI-2 and PI-8 are fixed by the trust ledger (specs/trust-ledger.md), which was itself reviewed three more times; PI-1 is half fixed.
 
 ## Open
 
 | Id | Severity | Where | Finding | Next step |
 |---|---|---|---|---|
-| PI-1 | Critical | `src/server/requests.ts`, `src/server/trustPromote.ts` | The server does whatever a file in `.assay/requests/` says, `trust-answer` included, and nothing tells the app's file from one Claude's code wrote. A Write into `.assay/` is now refused (below), but the kernel and Bash still run as the user and can write the file: an injected Claude can check and approve its own calculation. | The app answers the review itself, on the host, and the request channel loses `trust-answer`; trust then rests on something only the app writes, mounted read-only where Claude runs. Needs the user's choice of design (security.md, "Open decisions"). |
-| PI-2 | High | `python/analysis_library.py` (`dirty`), `src/hooks/decide.ts` | A calculation is trusted when it is committed in the root's git. Bash or the kernel can copy a file into `trusted/` and commit it. The Write guard now refuses `.git/`, but a shell or Python cannot be stopped by a hook. | The same remedy as PI-1. |
-| PI-8 | High | `python/analysis_calc.py`, `src/core/calculations.ts`, `src/server/trustStream.ts`, `src/server/trustPromote.ts` | Check imports the proposal into the helper process, so the proposal can print a `done` event with `ok: true` and its own file list; approval then writes those names, `../` included, outside `trusted/`. | Run the proposal apart from the process that reports the outcome; derive the file names to promote, and keep them inside the destination. |
+| PI-1 | High | `src/server/requests.ts`, `src/server/trustPromote.ts` | The trust half is fixed by the trust ledger: Trust is pressed in the app, which records the approved hashes; `trust-answer` is gone, and a forged `trust-done` copies and announces nothing without a matching ledger entry. Open: a forged `sql` or `python` request file still makes a run show as the user's (`author: user`). | Main records which run numbers answered its own requests, and the app shows authorship from that record (a later session). |
 
 ## Fixed
 
 | Id | Severity | Where | Finding | Fix |
 |---|---|---|---|---|
+| PI-2 | High | `python/analysis_library.py` (`dirty`), `src/hooks/decide.ts` | A calculation is trusted when it is committed in the root's git. Bash or the kernel can copy a file into `trusted/` and commit it. The Write guard now refuses `.git/`, but a shell or Python cannot be stopped by a hook. | Fixed by the trust ledger (specs/trust-ledger.md): a file is trusted only when its sha256 is in the ledger the app writes, never because it is committed. Listing decides trust before any code runs and never runs unapproved Python; approved Python runs from the verified bytes (no bytecode cache), and so do its imports from inside the root; runs, renders and includes use the bytes that were verified. |
+| PI-8 | High | `python/analysis_calc.py`, `src/core/calculations.ts`, `src/server/trustStream.ts`, `src/server/trustPromote.ts` | Check imports the proposal into the helper process, so the proposal can print a `done` event with `ok: true` and its own file list; approval then writes those names, `../` included, outside `trusted/`. | Proposal code runs in a child process (`python/analysis_child.py`) whose output never reaches the event stream; only the parent prints events, and the server accepts one start and one done, in order; test-report lines are shape-checked. Check results stay advice, and the Trust tab says so: the user approves the files the app read and showed. |
 | DEP-1 | High | `package.json` | Electron 37 is out of support, with high advisories (context isolation bypass, sandbox escapes); `npm audit --audit-level=high` failed. | Electron 45.3; the token uses safeStorage's async API, which reads tokens saved by the old one. CI runs `npm audit --audit-level=high`. |
 | PI-3 | High | `src/server/sqlRun.ts`, `src/core/runs.ts`, `src/core/calculations.ts` | Claude's SQL or Python could start with `-- author: user` or `-- trusted: <name>`, and the run was shown as the user's, or a citation of it labelled trusted. `queries/` could be edited with Write. | The server drops header-shaped lines from the leading comments of Claude's code (`withoutHeaderLines`); a trusted header is read from the leading comment lines only; the Write guard refuses `queries/`. Reopened by the second audit: a blank or indented line before the forged header stopped the stripping, and saving trimmed it back to the top. The code is now trimmed as a run saves it and stripped until nothing changes. |
 | PI-9 | High | `src/server/assay.ts`, `src/server/trustStream.ts`, `src/hooks/decide.ts` | Helpers run `python -m analysis_trust` from the analysis folder, so an `analysis_trust.py` there replaces the helper: Check, the listings and the prompt's trusted context. | Every helper runs `python -I -B -m` (`src/core/helperFlags.ts`), so the analysis folder is not on the path. L-7 now covers only the kernel. |
@@ -55,7 +55,7 @@ and PI-10. Reopened findings keep their id. Three more review rounds by the same
 
 ## Accepted
 
-Listed with their reasons in `docs/process/security.md`: L-1 (what a shell guard cannot see), L-2 (tool results not
+Listed with their reasons in `docs/developer/security.md`: L-1 (what a shell guard cannot see), L-2 (tool results not
 framed as data, PI-7), L-3 (venv content not re-hashed), L-4 (the `allow-unsigned-executable-memory` entitlement,
 UP-6), L-5 (token scope not checkable, UP-8), L-6 (setuptools hash), L-7 (the analysis folder first on the kernel's
 path, DEP-8), L-8 (moderate advisories in build tools), L-9 (a symlinked `.assay/requests/`), L-10 (zero-width

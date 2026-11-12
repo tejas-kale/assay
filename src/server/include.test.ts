@@ -1,4 +1,4 @@
-// Include by name (docs/slice-10.md, slice 10c): SQL naming trusted blocks and definitions is expanded by
+// Include by name (specs/slices/slice-10.md, slice 10c): SQL naming trusted blocks and definitions is expanded by
 // `analysis_sql expand` before it runs; the run keeps the SQL as written under a `-- built from:` line, the expanded SQL
 // beside it, and Steps reads the expanded SQL with each block as one step.
 import { test } from 'node:test'

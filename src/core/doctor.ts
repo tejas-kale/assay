@@ -1,5 +1,5 @@
 // The Doctor in Settings: which of the runtime tools Assay needs are on the user's PATH, and the state of its venv.
-// Nothing is bundled (docs/slice-11.md), so a missing tool is the user's to install; each check names the fix.
+// Nothing is bundled (specs/slices/slice-11.md), so a missing tool is the user's to install; each check names the fix.
 import type { VenvBuild } from './venv.ts'
 
 /** What `command -v` and `--version` printed for one tool: no path when it is not found. */
@@ -76,7 +76,7 @@ function toolCheck(tool: Exclude<Tool, 'rds-psql'>, probe: Probe, name: string, 
 
 function rdsPsqlCheck(probe: Probe): Check {
   if (probe.path) return { name: 'rds-psql', status: 'ok', detail: found(probe) }
-  return { name: 'rds-psql', status: 'optional', detail: 'Not found: Postgres runs need a launcher that provides it', fix: 'See docs/process/launch-contract.md' }
+  return { name: 'rds-psql', status: 'optional', detail: 'Not found: Postgres runs need a launcher that provides it', fix: 'See docs/developer/launch-contract.md' }
 }
 
 function venvCheck(venv: VenvBuild | undefined): Check {

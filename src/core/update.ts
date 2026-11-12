@@ -1,4 +1,4 @@
-// The updater's state (docs/slice-11.md, 11d): what electron-updater has done, what the banner and Settings say, and
+// The updater's state (specs/slices/slice-11.md, 11d): what electron-updater has done, what the banner and Settings say, and
 // when the next check is due. Pure; src/main/update.ts feeds it the updater's events and the clock.
 
 export type UpdateStatus = 'off' | 'idle' | 'checking' | 'downloading' | 'ready' | 'error'

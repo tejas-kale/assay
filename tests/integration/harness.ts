@@ -1,4 +1,4 @@
-// The integration tests' world (docs/process/testing.md): a real venv from the lockfile, the bundled server and hooks, a scratch root
+// The integration tests' world (docs/developer/testing.md): a real venv from the lockfile, the bundled server and hooks, a scratch root
 // that is a git repository with a trusted block committed, and the fake `databricks` first on PATH. Nothing here
 // reaches Databricks, Postgres or a real Claude.
 import { execFile, execFileSync } from 'node:child_process'

@@ -25,7 +25,7 @@ the same checks, so `--no-verify` only delays a failure.
 ## Integration tests
 
 `npm run test:integration` runs `tests/integration/*.test.ts`, outside `npm run check` (CI runs them after the unit
-job, `docs/process/ci-release.md`). They need uv and PyPI; nothing reaches Databricks, Postgres or a real Claude.
+job, `docs/developer/ci-release.md`). They need uv and PyPI; nothing reaches Databricks, Postgres or a real Claude.
 
 - `backend.test.ts`: the bundled server over MCP with a real kernel in a venv built from `python/uv.lock` as the
   packaged app builds its own (or the one `ASSAY_TEST_VENV` names), on a scratch root that is a git repository with trusted pieces committed. SQL and

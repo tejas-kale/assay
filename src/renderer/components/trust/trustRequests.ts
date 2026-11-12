@@ -2,6 +2,8 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 
 import type { Proposal, Reply, RunRequest, TrustAnswer } from '../../../core/requests.ts'
+import { hashesOf } from '../../../core/trustApprove.ts'
+import type { DraftFile, TrustFilesResult } from '../../../core/trustApprove.ts'
 import { settledKey } from '../../../core/trustTab.ts'
 import type { TrustReview } from '../../../core/trust.ts'
 
@@ -43,7 +45,48 @@ function useReplies(onToast: (text: string) => void) {
   return { proposals, isSending, setSending }
 }
 
-export function useTrustRequests(review: TrustReview | undefined, onToast: (text: string) => void) {
+/**
+ * The proposal's files as main reads them from the draft folder, read again whenever the review moves on. This, not the
+ * code in the server's report, is what Trust approves: the hashes sent are the hashes of these files.
+ */
+export function useDraft(review: TrustReview | undefined) {
+  const name = review?.name
+  const kind = review?.kind
+  const startedAt = review?.startedAt
+  const state = review?.state
+  const key = `${String(name)}:${String(kind)}:${String(startedAt)}:${String(state)}`
+  const [loaded, setLoaded] = useState<{ key: string; result: TrustFilesResult }>()
+  const [again, setAgain] = useState(0)
+  useEffect(() => {
+    if (name === undefined || kind === undefined) return
+    let isLive = true
+    void window.app.trust.files({ name, kind }).then(result => {
+      if (isLive) setLoaded({ key, result })
+    })
+    return () => {
+      isLive = false
+    }
+  }, [key, name, kind, again])
+  const result = loaded?.key === key ? loaded.result : undefined
+  return {
+    result,
+    reload: () => {
+      setAgain(n => n + 1)
+    },
+  }
+}
+
+/** Sends Trust to main with the hashes of the files shown; a refusal is said, and the draft read again. */
+async function approve(review: TrustReview, files: readonly DraftFile[], onToast: (text: string) => void, reload: () => void) {
+  const result = await window.app.trust.approve({ name: review.name, kind: review.kind, hashes: hashesOf(files) })
+  if (!result.ok) {
+    onToast(result.message)
+    reload()
+  }
+}
+
+/** Trust goes to main with the hashes of the files shown (main approves, never the server); Reject only tells the server to close the review. */
+export function useTrustRequests(review: TrustReview | undefined, onToast: (text: string) => void, files: readonly DraftFile[] | undefined, reload: () => void) {
   const { proposals, isSending, setSending } = useReplies(onToast)
 
   const send = (request: RunRequest) => {
@@ -74,7 +117,14 @@ export function useTrustRequests(review: TrustReview | undefined, onToast: (text
       send({ kind: 'trust-check', name })
     },
     answer: (said: TrustAnswer) => {
-      if (review) send({ kind: 'trust-answer', name: review.name, answer: said })
+      if (!review) return
+      if (said === 'reject') send({ kind: 'trust-done', name: review.name, outcome: 'rejected' })
+      else if (files) {
+        setSending(true)
+        void approve(review, files, onToast, reload).then(() => {
+          setSending(false)
+        })
+      }
     },
   }
 }

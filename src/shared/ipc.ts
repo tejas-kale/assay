@@ -21,10 +21,14 @@ import type { Engine, KernelState, Run, RunResult, RunStatus, Table } from '../c
 import type { SearchContents } from '../core/search.ts'
 import type { ClosedThread, Threads } from '../core/threads.ts'
 import type { TrustReview } from '../core/trust.ts'
+import type { TrustAdoptResult, TrustUnadoptedResult } from '../core/trustAdopt.ts'
+import type { TrustApproveInput, TrustApproveResult, TrustFilesResult } from '../core/trustApprove.ts'
+import type { Proposal } from '../core/requests.ts'
 import type { OverviewState, OverviewWhich } from '../core/overview.ts'
 import type { Check } from '../core/doctor.ts'
 import type { UpdateState } from '../core/update.ts'
 
+export type { TrustAdoptResult, TrustApproveInput, TrustApproveResult, TrustFilesResult, TrustUnadoptedResult }
 export type { CitationLabel, Analysis, AnalysisRef, ClosedThread, CloseState, CommandId, Engine, FileEntry, KernelState, NoteLists, Reply, RootNote, Run, RunRequest, RunResult, RunStatus, SearchContents, Table, Threads, TrustReview, OverviewState, OverviewWhich }
 
 /** Call to stop listening. */
@@ -51,7 +55,7 @@ export type AnalysisState = {
   noteLists: NoteLists
   /** The latest trust review from `.assay/trust/`, for the Trust tab. */
   trust?: TrustReview
-  /** The analysis overview, its system overview and their read baselines, for the Overview tab (docs/slice-10.md). */
+  /** The analysis overview, its system overview and their read baselines, for the Overview tab (specs/slices/slice-10.md). */
   overview: OverviewState
 }
 
@@ -62,9 +66,9 @@ export type AnalysisState = {
 export type RunView = {
   run: Run
   code?: string
-  /** A run with includes: its expanded SQL, which ran (docs/slice-10.md). */
+  /** A run with includes: its expanded SQL, which ran (specs/slices/slice-10.md). */
   expanded?: string
-  /** Claude's run's warnings: SQL rules and retyped trusted logic (docs/slice-10.md). */
+  /** Claude's run's warnings: SQL rules and retyped trusted logic (specs/slices/slice-10.md). */
   notices?: { rules: string[]; retype: string[] }
   table?: Table
   tableIndex?: number
@@ -111,7 +115,7 @@ export type NoteReadResult = { ok: true; text: string; labels: Record<string, Ci
 /** `name` is the new file's name inside `<root>/notes/`. */
 export type NoteCreateResult = { ok: true; name: string } | { ok: false; message: string }
 
-/** The app's settings as the renderer sees them: the folder, and the tab and strip choices (docs/slice-11.md, 11e). */
+/** The app's settings as the renderer sees them: the folder, and the tab and strip choices (specs/slices/slice-11.md, 11e). */
 export type SettingsView = { root: string | undefined; tabs: TabPrefs; strip: StripPrefs }
 /** The Doctor in Settings: this version, what it is preparing, and the checks of the tools and the venv. */
 export type DoctorView = { version: string; checks: Check[]; isChecking: boolean; preparing?: string; error?: string }
@@ -204,6 +208,25 @@ export type AppApi = {
     request(request: RunRequest): Promise<RequestResult>
     /** The mod's answer to a request; also fired for ids this window did not send. Main has deleted the file. */
     onReply(cb: (reply: Reply) => void): Unsubscribe
+  }
+
+  /**
+   * The Trust tab's two calls (specs/trust-ledger.md). Only main approves: Claude's side cannot reach these, and a
+   * request file cannot approve.
+   */
+  trust: {
+    /** The proposal's own files in the analysis's draft folder as main reads them now, each with its sha256. Nothing else is shown as the thing to approve. */
+    files(proposal: { name: string; kind: Proposal['kind'] }): Promise<TrustFilesResult>
+    /**
+     * Trust: main re-reads the draft and refuses when its files or any hash differ from `hashes` (what was shown),
+     * then copies those bytes into the root's trusted/ or dictionaries/, commits them, records them in the ledger and
+     * removes the draft files that still match.
+     */
+    approve(input: TrustApproveInput): Promise<TrustApproveResult>
+    /** The groups in the root's trusted/ and dictionaries/ the ledger does not cover, as main reads them now: text and sha256 of each file. */
+    unadopted(): Promise<TrustUnadoptedResult>
+    /** Adopt one group: main re-reads it, refuses when any file or hash differs from `hashes` (what was shown) or a file is a link, then records the hashes in the ledger. Nothing is copied or committed. */
+    adopt(input: TrustApproveInput): Promise<TrustAdoptResult>
   }
 
   /** Root notes in `<root>/notes`, by `RootNote.name`. Main re-sends the state after add and save. */
@@ -305,6 +328,10 @@ export const CHANNELS = {
   runRead: 'run:read',
   plotRead: 'plot:read',
   runRequest: 'run:request',
+  trustFiles: 'trust:files',
+  trustApprove: 'trust:approve',
+  trustUnadopted: 'trust:unadopted',
+  trustAdopt: 'trust:adopt',
   overviewMarkRead: 'overview:markRead',
   filesList: 'files:list',
   filesOpen: 'files:open',

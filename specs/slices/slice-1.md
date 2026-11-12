@@ -156,4 +156,4 @@ Request files, `session.json`, the kernel, the Data, Code and History contents, 
 ## Config-repo change this slice needs
 
 Pass `-e ASSAY_APP` in `claude/bin/claude`, and have the mod hide its pane when it is `1`. Until that lands the app still works,
-with the mod's pane showing inside the terminal. See `docs/config-repo-slice-1.md`.
+with the mod's pane showing inside the terminal. See `specs/slices/config-repo-slice-1.md`.

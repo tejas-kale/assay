@@ -14,7 +14,7 @@ import sqlglot
 import yaml
 from sqlglot import exp
 
-from analysis_calc import DIALECT, NAME, TrustError
+from analysis_calc import DIALECT, NAME, Source, TrustError
 
 DICTIONARIES = "dictionaries"
 GLOSSARY = "glossary.yaml"
@@ -125,11 +125,15 @@ def dictionary(notes_src: Path, sql: str) -> dict[str, Any]:
     return {"tables": tables, "glossary": used}
 
 
-def read_entry(path: Path) -> dict[str, Any]:
-    data = yaml.safe_load(path.read_text()) or {}
+def parse_entry(text: str, file: str) -> dict[str, Any]:
+    data = yaml.safe_load(text) or {}
     if not isinstance(data, dict):
-        raise TrustError(f"{path.name} is not a mapping")
+        raise TrustError(f"{file} is not a mapping")
     return data
+
+
+def read_entry(path: Path) -> dict[str, Any]:
+    return parse_entry(path.read_text(), path.name)
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +183,7 @@ def render_definition(data: dict[str, Any], table: str, name: str, values: dict[
     else:
         select = [*(by or (["*"] if kind == "derived" else [])), f"{expression} AS `{name}`"]
     source = ".".join(f"`{part}`" for part in table.split("."))
-    # The grain line (docs/slice-9.md): a derived value has none, since its `by` only picks the columns shown.
+    # The grain line (specs/slices/slice-9.md): a derived value has none, since its `by` only picks the columns shown.
     grain = "" if kind == "derived" else f"-- grain: {', '.join(by_names) or 'none'}\n"
     sql = f"{grain}SELECT {', '.join(select)} FROM {source}"
     if where:
@@ -215,13 +219,20 @@ def _derived_limit(values: dict[str, Any]) -> int:
     return limit
 
 
-def describe_definition(folder: Path, full: str) -> dict[str, Any]:
-    """A definition, by ``<table>:<name>``, in the dictionary folder ``folder``."""
-    table, _, name = full.partition(":")
+def read_definition_source(folder: Path, full: str) -> Source:
+    """The entry file behind definition ``full`` in ``folder``, read once."""
+    table = full.partition(":")[0]
     path = folder / f"{table}.yaml"
     if not path.is_file():
         raise TrustError(f"no dictionary entry {table}")
-    data = read_entry(path)
+    return Source(full, path.name, path.read_bytes())
+
+
+def describe_definition(folder: Path, full: str, source: Source | None = None) -> dict[str, Any]:
+    """A definition, by ``<table>:<name>``, in the dictionary folder ``folder``; from ``source``'s bytes when given."""
+    table, _, name = full.partition(":")
+    source = read_definition_source(folder, full) if source is None else source
+    data = parse_entry(source.data.decode(), source.file)
     definition = next((item for item in definitions_of(data) if item["name"] == name), None)
     if definition is None:
         raise TrustError(f"{table} has no definition {name}")
@@ -229,7 +240,7 @@ def describe_definition(folder: Path, full: str) -> dict[str, Any]:
     return {
         "name": full,
         "kind": "definition",
-        "file": path.name,
+        "file": source.file,
         "description": f"{definition['kind']} on {table}: {summary}",
         "parameters": definition_parameters(definition["kind"]),
         "entry": data,

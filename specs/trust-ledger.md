@@ -1,6 +1,6 @@
 # Trust ledger spec: only the app can approve (PI-1, PI-2, PI-8)
 
-Status: proposed 2026-11-12, design chosen by the user ("app ledger of hashes"). Not built.
+Status: Built 2026-11-12; not yet tried in the running app.
 
 ## Problem
 
@@ -25,7 +25,8 @@ that in a ledger in its own data folder, which the launcher mounts read-only for
 before                                   after
 ------------------------------------     ------------------------------------
 Trust button -> request file -> server   Trust button -> IPC -> main
-server copies + commits                  main copies + commits + writes ledger
+server copies + commits                  main writes the ledger; the server
+                                         then copies + commits (if it backs)
 trusted = committed in git               trusted = sha256 matches the ledger
 Check result decides                     Check result is advice; the code
                                          shown is what gets approved
@@ -35,11 +36,11 @@ Check result decides                     Check result is advice; the code
 
 - One file per root: `<userData>/trust-ledger/<sha256 of the root's real path>.json`, written by main only, through a
   temp file and a rename.
-- An entry per approved proposal: `{ name, kind, files: { <basename>: <sha256> }, approvedAt, commit }`. A new
+- An entry per approved proposal, keyed `<kind>:<name>` so a calculation and a dictionary entry of one name never collide: `{ name, kind, files: { <root-relative path>: <sha256> }, approvedAt, commit }`; `commit` is empty (git history is the server's, and display only). A new
   approval of the same name replaces its entry; the previous one is kept under `history`.
-- The app passes the file's path as `ASSAY_LEDGER` when it starts Claude (docs/process/launch-contract.md). A launcher
+- The app passes the file's path as `ASSAY_LEDGER` when it starts Claude (docs/developer/launch-contract.md). A launcher
   must mount it read-only. Without a launcher, Claude can write it: that is the isolation boundary's job, as for
-  `ASSAY_BACKEND`, and docs/process/security.md says so.
+  `ASSAY_BACKEND`, and docs/developer/security.md says so.
 
 ## Tickets
 
@@ -50,10 +51,16 @@ Each ticket is test-first and passes `npm run check` on its own.
    that is a link. `ASSAY_LEDGER` added to the launch environment and the launch contract.
 2. **Approval moves to main** (half a day). The Trust tab shows the proposal's files as main reads them from disk
    (not the code in the server's report), with their hashes. Trust sends IPC `trust:approve { name, hashes }`. Main
-   re-reads the draft, refuses if any hash differs from what was shown, copies the bytes into `trusted/` or
-   `dictionaries/` (own basenames only, no links, as `trustPromote.ts` does now), commits for history, and writes the
-   ledger entry. `trust-answer` leaves the request channel (`src/core/requests.ts`, `src/server/requests.ts`); a
-   powerless `trust-done` tells the server to close the review and tidy the draft.
+   re-reads the draft (regular files, no links, own basenames only), refuses if any hash differs from what was shown,
+   and writes the ledger entry: the destination paths (`trusted/<file>` or `dictionaries/<file>`) with the approved
+   hashes, `commit` empty. **Main writes only the ledger: it never runs git and never writes into the root**, which
+   Claude's side can fill with hooks, git config and directory links (host code execution, redirected host writes).
+   Main then sends `trust-done { name, outcome }`; the server, inside Claude's environment, reads `ASSAY_LEDGER`
+   and, only if the ledger holds this proposal with exactly the draft's current hashes, copies the draft into
+   `trusted/` or `dictionaries/` (own names, refusing links), commits it there for history and removes the draft;
+   otherwise it answers "not approved in the app" and does nothing. A wrong copy is harmless: trust comes only from
+   the ledger. Every Trust-tab call is bound to the root, analysis and ledger the window's session was launched with.
+   `trust-answer` leaves the request channel (`src/core/requests.ts`, `src/server/requests.ts`).
 3. **Readers check the ledger** (half a day). `analysis_library.file_state`, the `trusted` tool, trusted runs
    (`src/server/trustedRun.ts`), includes of trusted blocks and definitions, and the prompt hook's trusted context
    treat a file as trusted only when its sha256 matches the ledger. Git commit stays for display.
@@ -66,10 +73,19 @@ Out of this spec: forged `sql` / `python` request files still make a run look li
 PI-1). The same idea fixes it later: main records which run numbers answered its own requests, and the app shows
 authorship from that record instead of the header.
 
+## Deferred
+
+- **Helpers.** Approval covers a proposal's own files only, so a calculation can import a sibling in `trusted/` only
+  when that sibling was approved as a calculation itself (`python/analysis_imports.py`). Letting a proposal list
+  helper files for the Trust tab to show and the ledger to record waits until a calculation needs one (the user's
+  choice, 2026-11-12).
+- **Run authorship** (the other half of PI-1): see the note above and the PI-1 row in
+  specs/audits/security-audit-2026-11.md.
+
 ## Done when
 
 - A Bash or kernel write to `.assay/requests/`, `trusted/`, `dictionaries/` or the root's git cannot make anything
   trusted: tests for each in tickets 2 and 3.
 - A proposal printing a `done` event cannot end its own Check: test in ticket 4.
-- PI-1 (trust half), PI-2 and PI-8 move to Fixed in docs/security-audit-2026-11.md; docs/process/security.md
+- PI-1 (trust half), PI-2 and PI-8 move to Fixed in specs/audits/security-audit-2026-11.md; docs/developer/security.md
   describes the ledger and the launcher's new read-only mount.

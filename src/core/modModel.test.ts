@@ -194,7 +194,7 @@ test("the test line quotes a python whose path has a space, as Assay's venv does
   expect(analysisRules("/w/it's/bin/python", 'analyses/a')).toContain(`cd analyses/a && '/w/it'\\''s/bin/python' -m pytest tests`)
   for (const part of ['one concept', 'mcp__assay__park', 'mcp__assay__focus', 'mcp__assay__order', 'mcp__assay__python', 'q(N)', 'never through Bash', 'matplotlib', 'Altair', '.head()', 'lib/<name>.py', 'tests/test_<name>.py'])
     expect(analysisRules(undefined, 'analyses/a')).toContain(part)
-  // Threads hold only rulings a person must make (docs/slice-10.md).
+  // Threads hold only rulings a person must make (specs/slices/slice-10.md).
   expect(analysisRules(undefined, 'analyses/a')).toContain('only for a ruling a person must make')
   expect(analysisRules(undefined, 'analyses/a')).not.toContain('park each other one')
 })
@@ -384,10 +384,11 @@ test('trust requests are parsed by kind, and only the app sends them', () => {
   const json = (body: object) => parseRequestFile(JSON.stringify(body))
   expect(json({ kind: 'trust-list' })).toEqual({ kind: 'trust-list' })
   expect(json({ kind: 'trust-check', name: ' Main.Panel.Sites ' })).toEqual({ kind: 'trust-check', name: 'main.panel.sites' })
-  expect(json({ kind: 'trust-answer', name: 'f', answer: 'trust' })).toEqual({ kind: 'trust-answer', name: 'f', answer: 'trust' })
-  expect(json({ kind: 'trust-answer', name: 'f', answer: 'reject' })).toEqual({ kind: 'trust-answer', name: 'f', answer: 'reject' })
+  expect(json({ kind: 'trust-done', name: 'f', outcome: 'approved' })).toEqual({ kind: 'trust-done', name: 'f', outcome: 'approved' })
+  expect(json({ kind: 'trust-done', name: 'f', outcome: 'rejected' })).toEqual({ kind: 'trust-done', name: 'f', outcome: 'rejected' })
   expect(json({ kind: 'trust-check' })).toEqual({ error: 'Name the proposal.' })
-  expect(json({ kind: 'trust-answer', name: 'f', answer: 'Trust' })).toEqual({ error: 'The answer is trust or reject.' })
+  expect(json({ kind: 'trust-done', name: 'f', outcome: 'Trust' })).toEqual({ error: 'The outcome is approved, unchanged or rejected.' })
+  expect(json({ kind: 'trust-answer', name: 'f', answer: 'trust' })).toEqual({ error: 'Unknown request kind: trust-answer.' })
   for (const kind of ['interrupt', 'restart', 'trust-list']) expect(isUrgent({ kind } as ServerRequest)).toBe(true)
   expect(isUrgent({ kind: 'trust-check', name: 'f' })).toBe(true)
   expect(isUrgent({ kind: 'sql', sql: 'x', engine: 'databricks', slug: 'q' })).toBe(false)

@@ -6,8 +6,9 @@ import type { CloseState } from './session.ts'
 
 const BACKEND = '/Users/me/Library/Application Support/Assay/backend/0.4.3'
 const VENV = '/Users/me/Library/Application Support/Assay/venvs/0.4.3'
+const LEDGER = '/Users/me/Library/Application Support/Assay/trust-ledger/abc.json'
 const launch = (folder: string, env: Record<string, string | undefined>, root: string, mode: 'dark' | 'light' = 'dark') =>
-  spawnSpec({ folder, env, root, mode, backend: BACKEND, venv: VENV })
+  spawnSpec({ folder, env, root, mode, backend: BACKEND, venv: VENV, ledger: LEDGER })
 
 test('spawnSpec runs Claude through the login shell from SHELL, with the shipped plugin', () => {
   const spec = launch('/notes/analyses/a', { SHELL: '/opt/homebrew/bin/fish', PATH: '/usr/bin' }, '/notes')
@@ -26,6 +27,11 @@ test('spawnSpec passes the backend and venv paths, spaces and all', () => {
   assert.equal(spec.env.ASSAY_VENV, VENV)
 })
 
+test('spawnSpec passes the ledger path, over any inherited', () => {
+  assert.equal(launch('/f', {}, '/').env.ASSAY_LEDGER, LEDGER)
+  assert.equal(launch('/f', { ASSAY_LEDGER: '/inherited/mine.json' }, '/').env.ASSAY_LEDGER, LEDGER)
+})
+
 test('spawnSpec declares the server assay with the exact command a launcher allowlists', () => {
   const spec = launch('/f', {}, '/')
   // Exactly node and one argument, with plugin/.. unresolved: a launcher matches the command as written.
@@ -37,7 +43,7 @@ test('spawnSpec declares the server assay with the exact command a launcher allo
 })
 
 test('spawnSpec escapes the backend path as a JSON string', () => {
-  const spec = spawnSpec({ folder: '/f', env: {}, root: '/', mode: 'dark', backend: '/a "q"\\b', venv: VENV })
+  const spec = spawnSpec({ folder: '/f', env: {}, root: '/', mode: 'dark', backend: '/a "q"\\b', venv: VENV, ledger: LEDGER })
   const config = JSON.parse(spec.env.ASSAY_MCP_CONFIG ?? '') as { mcpServers: { assay: { args: string[] } } }
   assert.deepEqual(config.mcpServers.assay.args, ['/a "q"\\b/plugin/../out/server/index.mjs'])
 })

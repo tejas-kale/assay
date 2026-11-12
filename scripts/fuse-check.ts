@@ -1,4 +1,4 @@
-// The fuse check (docs/process/security.md): the release job reads the fuses of the built app and fails unless each
+// The fuse check (docs/developer/security.md): the release job reads the fuses of the built app and fails unless each
 // one is as `build.electronFuses` in package.json sets it. electron-builder flips them at packaging; this proves it did.
 // `node scripts/fuse-check.ts <path to Assay.app>`.
 import { getCurrentFuseWire } from '@electron/fuses'

@@ -1,4 +1,4 @@
-// The steps request (docs/slice-9.md, slice 9c): the server plans a SQL run with `analysis_sql steps`, runs each step's
+// The steps request (specs/slices/slice-9.md, slice 9c): the server plans a SQL run with `analysis_sql steps`, runs each step's
 // preview and counts queries on the run's engine, and saves progress next to the run as `queries/NNN.steps.json`.
 import { test } from 'node:test'
 

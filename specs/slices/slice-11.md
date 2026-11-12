@@ -1,6 +1,6 @@
 # Slice 11 spec: process, gates, backend in the app, CI/CD, auto-update, tab settings, audit
 
-Status: 11a and 11b built, 2026-11-10. 11c built and released: v0.1.0, signed with the Developer ID and notarized, 2026-11-11 (docs/process/ci-release.md). 11d built, 2026-11-11; its manual test on the Mac is still to run. 11e built, 2026-11-11; not yet tried in the running app. 11f built, 2026-11-12: every baseline empty and deleted; not yet tried in the running app. 11g audited and mostly fixed, 2026-11-12: PI-1, PI-2 and UI-3 stay open (docs/security-audit-2026-11.md); Electron 45 not yet tried on the Mac. Written from the grilling session of 2026-11-10, after reading Assay's
+Status: 11a and 11b built, 2026-11-10. 11c built and released: v0.1.0, signed with the Developer ID and notarized, 2026-11-11 (docs/developer/ci-release.md). 11d built, 2026-11-11; its manual test on the Mac is still to run. 11e built, 2026-11-11; not yet tried in the running app. 11f built, 2026-11-12: every baseline empty and deleted; not yet tried in the running app. 11g audited and fixed, 2026-11-12, except PI-1's run-authorship half (specs/audits/security-audit-2026-11.md); the trust ledger (specs/trust-ledger.md), UI-3 and Electron 45 not yet tried on the Mac. Written from the grilling session of 2026-11-10, after reading Assay's
 code.
 
 Seven slices, built in this order. Each ships, with CI green, before the next one starts:
@@ -46,7 +46,7 @@ Process and quality:
   get worse; new files start at the full bar. 11f shrinks the baselines to empty.
 - **Integration tests:** the MCP server with a real Python kernel and the hooks on real files, plus an Electron smoke
   test driven by Playwright with a stub Claude and a fake `databricks` CLI. Both run on Linux.
-- **Process docs:** `AGENTS.md` holds the rules every session follows and links `docs/process/*.md`. `CLAUDE.md` is
+- **Process docs:** `AGENTS.md` holds the rules every session follows and links `docs/developer/*.md`. `CLAUDE.md` is
   the single line `@AGENTS.md`. The README keeps what a human needs.
 
 Flow, CI and release:
@@ -100,7 +100,7 @@ Security:
 - **Threats in scope:** prompt injection through data (query results, files, notes) steering Claude past Assay's
   rules; tampered updates; malicious npm or PyPI dependencies; hostile HTML, Markdown or Mermaid reaching IPC.
 - **Done when** every critical, high and medium finding is fixed, and each low is fixed or listed with its reason in
-  `docs/process/security.md`.
+  `docs/developer/security.md`.
 
 ## Slice 11a: process and gates
 
@@ -114,13 +114,13 @@ Load the `writing-for-agents` skill before writing these.
     what it reports; never add to a baseline; write commit subjects for the release notes (what changed for the user);
     add a `Release: minor` or `Release: major` trailer when a change warrants it;
   - "Where things are" and "Driving the app without a person", moved from the README;
-  - a link to each `docs/process/*.md`, each added by the slice that writes it.
+  - a link to each `docs/developer/*.md`, each added by the slice that writes it.
 - `CLAUDE.md`: the single line `@AGENTS.md`.
-- `docs/process/coding-standards.md`: the Clean Code rules adopted (intention-revealing names, one responsibility per
+- `docs/developer/coding-standards.md`: the Clean Code rules adopted (intention-revealing names, one responsibility per
   function and module, small functions, few arguments, no flag arguments, no dead or commented-out code,
   command/query separation, errors as values or exceptions but not both in one module), the two exceptions (why
   comments, deep modules), the limits above, and which linter rule enforces each.
-- `docs/process/testing.md`: unit and integration tests, where each lives, the fakes, the coverage bar, how the
+- `docs/developer/testing.md`: unit and integration tests, where each lives, the fakes, the coverage bar, how the
   baselines work, and how to run everything.
 - `README.md` keeps install, environment, keys and features for a human.
 
@@ -207,7 +207,7 @@ Unpackaged (`npm run dev`): the backend folder is the repo itself (after `npm ru
 
 ### The launch contract
 
-Written to `docs/process/launch-contract.md`, the only description a launcher needs. The app runs, through the user's
+Written to `docs/developer/launch-contract.md`, the only description a launcher needs. The app runs, through the user's
 login shell, `exec "${ASSAY_CLAUDE_BIN:-claude}" --plugin-dir "$ASSAY_BACKEND/plugin"` in the root, with:
 
 | Variable | Value |
@@ -240,7 +240,7 @@ The user updates the Podman wrapper in the config repo to this contract; this sl
 - `src/server/main.ts`: `ASSAY_VENV` is required; without it, every tool answers that Assay did not start the
   session (as `NOT_ASSAY` does now).
 - `src/server/assay.ts`: when `rds-psql` is not on PATH, a Postgres run fails with: `Postgres runs need a launcher
-  that provides rds-psql (docs/process/launch-contract.md).`
+  that provides rds-psql (docs/developer/launch-contract.md).`
 - `src/core/doctor.ts` (new, pure): from the outputs of `command -v` and `--version` for `claude` (or
   `$ASSAY_CLAUDE_BIN`), `node`, `uv`, `databricks` and `rds-psql`, plus the venv state, a list of checks:
   `ok` / `missing` / `too old` / `optional`, each with its fix (`brew install node`, `brew install uv`,
@@ -326,7 +326,7 @@ They live in `tests/integration/` (outside `npm test`'s `src/**/*.test.ts`) and 
 
 ### Process doc
 
-`docs/process/ci-release.md`: the pipeline, the filter, versioning and trailers, signing, the secrets, the cert switch
+`docs/developer/ci-release.md`: the pipeline, the filter, versioning and trailers, signing, the secrets, the cert switch
 (install the first Developer ID build by hand once), and what to do when main is red (fix forward; nothing ships
 until it is green).
 
@@ -342,7 +342,7 @@ until it is green).
 - `scripts/next-version.test.ts`: no tag gives 0.1.0; a patch bump; a minor trailer resets the patch; a major trailer
   wins over a minor; a trailer before the last tag is ignored.
 - The paths filter as a pure function with tests: docs-only skips; one `src/` file releases.
-- The workflow itself is verified by its first runs; `docs/process/ci-release.md` records the first green release.
+- The workflow itself is verified by its first runs; `docs/developer/ci-release.md` records the first green release.
 
 ## Slice 11d: auto-update
 
@@ -364,7 +364,7 @@ until it is green).
 
 - `src/core/update.test.ts`: no token means off; a download leads to ready with the version in the banner; an error
   keeps the previous ready state; the next check is an hour after the last; a check while downloading is skipped.
-- Manual, on the Mac, recorded in `docs/process/ci-release.md`: release N installed, push a change, release N+1
+- Manual, on the Mac, recorded in `docs/developer/ci-release.md`: release N installed, push a change, release N+1
   appears, the banner shows, Restart reopens the same analyses.
 
 ## Slice 11e: tab and strip settings
@@ -379,7 +379,7 @@ until it is green).
   every `TabId` to its component as a `Record<TabId, ...>`, so a tab without a component fails the typecheck.
 - `keymap.ts` builds the `tab.*` commands from the registry. The palette, the `Ctrl+2` / `Ctrl+3` cycling, the panes'
   tab bars and Settings all read the registry with the user's settings applied.
-- Adding a tab: one registry entry, one component file, one line in the map. `docs/process/adding-a-tab.md` says
+- Adding a tab: one registry entry, one component file, one line in the map. `docs/developer/adding-a-tab.md` says
   so, with a worked example.
 
 ### Settings
@@ -431,7 +431,7 @@ until it is green).
 - For each: raise its coverage to 90% first (tests pin today's behaviour), then refactor under green tests, prune
   the suppressions, and update the baselines. Behaviour does not change; a refactor that needs a behaviour change
   stops and asks.
-- Codex reviews each session's commits against `docs/process/coding-standards.md`.
+- Codex reviews each session's commits against `docs/developer/coding-standards.md`.
 - Done when `eslint-suppressions.json`, `python/ruff-baseline.json` and `coverage-baseline.json` are empty and
   deleted, and the ratchet then requires the full bar everywhere.
 - Progress: `analysis_trust.py` (2026-11-11) is now the command line only, over `analysis_calc`, `analysis_dictionary`,
@@ -483,14 +483,14 @@ until it is green).
   - **Hostile content in the UI:** Markdown, Mermaid and HTML rendering; CSP; `will-navigate`, `setWindowOpenHandler`
     and `openExternal`; every IPC handler's argument checks and path resolution (`safePath.ts`, `files.ts`,
     `browse.ts`); the fuses.
-- Findings go to `docs/security-audit-2026-11.md` (id, threat, severity, where, fix), not GitHub issues: Claude's
+- Findings go to `specs/audits/security-audit-2026-11.md` (id, threat, severity, where, fix), not GitHub issues: Claude's
   tokens cannot reach the repo. Each fix commit names its finding id and adds a regression test.
 - CI gains `npm audit --audit-level=high`, `pip-audit` on the locked Python dependencies, and a fuse check on the
   built app (`@electron/fuses read`) in the release job.
-- `docs/process/security.md`: the threat model, the isolation boundary (the launcher's job), the rules Assay
+- `docs/developer/security.md`: the threat model, the isolation boundary (the launcher's job), the rules Assay
   guarantees, and the accepted lows with reasons.
 - Done when every critical, high and medium finding is fixed with its test, and each low is fixed or accepted in
-  `docs/process/security.md`.
+  `docs/developer/security.md`.
 - Progress (2026-11-12): four Claude subagents audited the repo, one per threat (Codex was not available).
   23 findings fixed with tests, 10 lows accepted (security.md), three open. PI-1 (critical: the kernel can write a
   `trust-answer` request) and PI-2 (high: the kernel can commit into `trusted/`) cannot be closed by a hook, since the

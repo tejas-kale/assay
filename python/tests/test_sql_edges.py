@@ -290,13 +290,13 @@ def test_a_qualified_column_in_a_definition_keeps_its_table(root: Path) -> None:
     assert found["sql"] == "SELECT 1 FROM cint.mkt.sessions t WHERE (s.status = 1 AND t.kind = 2)"
 
 
-def test_a_definition_changed_since_its_commit_is_not_trusted(root: Path) -> None:
+def test_a_definition_changed_since_its_approval_is_not_trusted(root: Path) -> None:
     (root / "dictionaries" / "cint.mkt.sessions.yaml").write_text(ENTRY.replace("Completes.", "Completed."))
     found = sql_.expand("SELECT 1 FROM cint.mkt.sessions t WHERE {{ is_complete(t) }}", "databricks", root)
     assert found == {
         "errors": [
-            "cint.mkt.sessions:is_complete differs from its last commit, or was never committed: "
-            "it is not trusted until the user approves it again",
+            "cint.mkt.sessions:is_complete is not approved in the app, or changed after it was: "
+            "it is not trusted until the user approves it",
         ],
     }
 

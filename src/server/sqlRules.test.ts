@@ -1,4 +1,4 @@
-// The SQL rules on Claude's `sql` calls (docs/slice-9.md, slice 9a): `python -m analysis_sql lint` runs first on a
+// The SQL rules on Claude's `sql` calls (specs/slices/slice-9.md, slice 9a): `python -m analysis_sql lint` runs first on a
 // statement with WITH or JOIN; a rejection runs nothing, a warning reaches the reply, a lint that cannot run does not block.
 import { test } from 'node:test'
 
@@ -16,7 +16,7 @@ const CTE_SQL = 'WITH ow AS (SELECT 1 AS x) SELECT x FROM ow'
 /** The lint answers `lint` (or exits as `lint` says); every other run is the query, answering one row. */
 function scripted(ws: Fake, lint: Partial<RunResult> | SqlLint, seen: { input?: string; argv?: readonly string[] } = {}) {
   ws.setRun((argv, options?: RunOptions) => {
-    // The retype check (docs/slice-10.md) finds nothing here; include.test.ts and retype.test.ts cover it.
+    // The retype check (specs/slices/slice-10.md) finds nothing here; include.test.ts and retype.test.ts cover it.
     if (argv[4] === 'analysis_sql' && argv[5] === 'retype') return { stdout: '{"warnings": []}' }
     if (argv[4] === 'analysis_sql') {
       seen.argv = argv

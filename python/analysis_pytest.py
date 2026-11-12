@@ -146,10 +146,24 @@ def _read_reports(stdout: Iterable[str], on_test: OnTest | None) -> tuple[list[d
             result = json.loads(line[at + len(STREAM_MARK) :])
         except ValueError:
             continue
+        if not _is_report(result):
+            continue
         results.append(result)
         if on_test is not None:
             on_test(result)
     return results, lines
+
+
+def _is_report(result: Any) -> bool:
+    """Whether a decoded marker line has a test report's shape: a test can print a marker line of its own (PI-8), and
+    one that is not shaped like a report is ignored, never used."""
+    return (
+        isinstance(result, dict)
+        and isinstance(result.get("ok"), bool)
+        and isinstance(result.get("text"), str)
+        and isinstance(result.get("name"), str)
+        and isinstance(result.get("diff", ""), str)
+    )
 
 
 def result_step(result: dict[str, Any]) -> dict[str, Any]:

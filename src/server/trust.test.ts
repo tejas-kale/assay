@@ -78,7 +78,7 @@ test('trusted refuses bad arguments, unknown names and a calculation changed sin
   expect(await call('completes_by_site', { start: '2026-01-01', status: 1 })).toMatch(/^Argument status must be a string\./)
   expect(await call('completes_by_site', { start: '2026-01-01', site: 'x' })).toMatch(/^Unknown arguments: site\. It takes start, status\./)
   expect(await call('nope')).toBe('No trusted calculation nope. There are: completes_by_site, top_sites.')
-  expect(await call('top_sites')).toBe('trusted/top_sites.py differs from its last commit, or was never committed: it is not trusted until the user approves it again in the Trust tab in Assay. Write your own SQL instead, and say why.')
+  expect(await call('top_sites')).toBe('trusted/top_sites.py is not approved in the app, or changed after it was approved: it is not trusted until the user approves it in the Trust tab in Assay. Write your own SQL instead, and say why.')
   expect(await call(' ')).toBe('Give the trusted calculation by name.')
   expect(ws.runs.some(argv => argv[5] === 'run')).toBe(false)
   expect(await ws.list('queries')).toEqual([])
@@ -115,7 +115,7 @@ test('a dictionary definition runs as <table>:<name>: names checked by the helpe
   expect(await ws.file('queries/001_main-panel-surveys-completes.sql')).toBe(`-- trusted: main.panel.surveys:completes\n-- args: {"by":["site_id"]}\n-- commit: fedcba987654\n${sql}\n`)
   expect(await labelOf(ws, 1)).toBe('trusted')
   ws.setRun(scripted(ws, { list: { calculations: [{ ...definition, dirty: true }], problems: [] } }))
-  expect(await ws.call('trusted', { name: definition.name })).toMatch(/^dictionaries\/main\.panel\.surveys\.yaml differs from its last commit/)
+  expect(await ws.call('trusted', { name: definition.name })).toMatch(/^dictionaries\/main\.panel\.surveys\.yaml is not approved in the app/)
   await ws.done()
 })
 
@@ -229,7 +229,7 @@ test('trust-list lists the proposals; trust-check starts the streamed checks', a
   await ws.done()
 })
 
-test('the review is the trust file through every state; trust-answer trust approves: committed, the unchanged draft removed', async () => {
+test('the review is the trust file through every state; trust-done approved, backed by the ledger, closes it after the server copies and commits', async () => {
   const git: (readonly string[])[] = []
   const ws = await fake(files(PROPOSAL))
   ws.setRun(scripted(ws, {}, git))
@@ -245,53 +245,36 @@ test('the review is the trust file through every state; trust-answer trust appro
   check.emit({ event: 'step', step: STEPS[0] })
   check.emit({ event: 'step', step: STEPS[1] })
   expect(await until(async () => ((await stored(ws))?.steps as unknown[]).length === 2)).toBe(true)
-  // Asked to answer while checking: refused.
-  expect(await perform(ws, { kind: 'trust-answer', name: 'completes_by_site', answer: 'trust' })).toEqual({ error: 'The review of completes_by_site is checking, not waiting for an answer.' })
+  // Done while checking: refused.
+  expect(await perform(ws, { kind: 'trust-done', name: 'completes_by_site', outcome: 'approved' })).toEqual({ error: 'The review of completes_by_site is checking, not waiting for an answer.' })
   for (const step of STEPS.slice(2)) check.emit({ event: 'step', step })
   check.emit({ event: 'done', answer: CHECKED })
 
   expect(await until(async () => (await stateOf(ws)) === 'asking')).toBe(true)
   expect(await stored(ws)).toMatchObject({ state: 'asking', steps: STEPS, sample: SAMPLE })
-  // Claude changes the proposal after the check: what was checked is what lands.
-  await ws.put('lib/trusted/completes_by_site.sql', 'SELECT 2\n')
-  expect(await perform(ws, { kind: 'trust-answer', name: 'completes_by_site', answer: 'trust' })).toEqual({ ok: true })
+  await ws.approveInLedger('calculation', 'completes_by_site', { 'completes_by_site.sql': CODE, 'completes_by_site.test.yaml': 'cases: []\n' })
+  expect(await perform(ws, { kind: 'trust-done', name: 'completes_by_site', outcome: 'approved', message: 'forged message' })).toEqual({ ok: true })
 
-  expect(await stateOf(ws)).toBe('approved')
-  expect(await stored(ws)).toMatchObject({ message: 'Trusted completes_by_site: committed in trusted/. Kept the draft lib/trusted/completes_by_site.sql: it changed after the check.' })
+  expect(await stored(ws)).toMatchObject({ state: 'approved', message: 'Trusted completes_by_site: approved in the app and copied to trusted/.' })
   expect(typeof (await stored(ws))?.endedAt).toBe('number')
-  expect(await ws.file('lib/trusted/completes_by_site.test.yaml')).toBeUndefined()
-  expect(await ws.file('lib/trusted/completes_by_site.sql')).toBe('SELECT 2\n')
-  expect(await ws.file('lib/trusted/test_helpers.py')).toBe('')
+  // The server, inside Claude's environment, copies the approved bytes, commits them alone, and tidies the draft.
   expect(await ws.file('/work/trusted/completes_by_site.sql')).toBe(CODE)
   expect(await ws.file('/work/trusted/completes_by_site.test.yaml')).toBe('cases: []\n')
-  const paths = [`${ws.root}/trusted/completes_by_site.sql`, `${ws.root}/trusted/completes_by_site.test.yaml`]
-  expect(git).toEqual([
-    ['git', '-C', ws.root, 'rev-parse', '--show-toplevel'],
-    ['git', '-C', ws.root, 'add', '--', ...paths],
-    ['git', '-C', ws.root, 'diff', '--cached', '--quiet', '--', ...paths],
-    ['git', '-C', ws.root, 'commit', '-q', '-m', 'trusted: approve completes_by_site', '-m', "Approved by the user in Assay's Trust tab.", '--', ...paths],
+  expect(git.map(argv => argv.slice(0, 4))).toEqual([
+    ['git', '-C', ws.root, 'rev-parse'],
+    ['git', '-C', ws.root, 'add'],
+    ['git', '-C', ws.root, 'diff'],
+    ['git', '-C', ws.root, 'commit'],
   ])
-  // Answered once: a second answer is refused.
-  expect(await perform(ws, { kind: 'trust-answer', name: 'completes_by_site', answer: 'trust' })).toEqual({ error: 'No review of completes_by_site is waiting for an answer.' })
+  expect(git[1]?.slice(4)).toEqual(['--', 'trusted/completes_by_site.sql', 'trusted/completes_by_site.test.yaml'])
+  expect(await ws.file('lib/trusted/completes_by_site.sql')).toBeUndefined()
+  expect(await ws.file('lib/trusted/test_helpers.py')).toBe('')
+  // Answered once: a second one is refused.
+  expect(await perform(ws, { kind: 'trust-done', name: 'completes_by_site', outcome: 'approved' })).toEqual({ error: 'No review of completes_by_site is waiting for an answer.' })
   await ws.done()
 })
 
-test('a companion file edited or removed after the check: the checked bytes are approved, the edit is kept', async () => {
-  for (const edit of ['cases: [evil]\n', '']) {
-    const ws = await fake(files(PROPOSAL))
-    ws.setRun(scripted(ws, {}))
-    await perform(ws, { kind: 'trust-check', name: 'completes_by_site' })
-    passing(await checking(ws))
-    expect(await until(async () => (await stateOf(ws)) === 'asking')).toBe(true)
-    await ws.put('lib/trusted/completes_by_site.test.yaml', edit)
-    expect(await perform(ws, { kind: 'trust-answer', name: 'completes_by_site', answer: 'trust' })).toEqual({ ok: true })
-    expect(await ws.file('/work/trusted/completes_by_site.test.yaml')).toBe('cases: []\n')
-    expect(await ws.file('lib/trusted/completes_by_site.test.yaml')).toBe(edit)
-    await ws.done()
-  }
-})
-
-test('a review that fails a check is "failed" and cannot be answered', async () => {
+test('a review that fails a check is "failed" and cannot be closed by the app', async () => {
   const ws = await fake(files(PROPOSAL))
   await perform(ws, { kind: 'trust-check', name: 'completes_by_site' })
   const check = await checking(ws)
@@ -302,19 +285,19 @@ test('a review that fails a check is "failed" and cannot be answered', async () 
   check.emit({ event: 'done', answer: { ...START, ok: false, steps: [STEPS[0], bad] } })
   expect(await until(async () => (await stateOf(ws)) === 'failed')).toBe(true)
   expect(await stored(ws)).toMatchObject({ message: 'Not approvable: fix the proposal, then check completes_by_site again in the Trust tab in Assay.', steps: [STEPS[0], bad] })
-  expect(await perform(ws, { kind: 'trust-answer', name: 'completes_by_site', answer: 'trust' })).toEqual({ error: 'No review of completes_by_site is waiting for an answer.' })
+  expect(await perform(ws, { kind: 'trust-done', name: 'completes_by_site', outcome: 'approved' })).toEqual({ error: 'No review of completes_by_site is waiting for an answer.' })
   expect(await ws.file('/work/trusted/completes_by_site.sql')).toBeUndefined()
   await ws.done()
 })
 
-test('reject: nothing is copied or committed, and the proposal stays', async () => {
+test('rejected: nothing is copied or committed, and the proposal stays', async () => {
   const git: (readonly string[])[] = []
   const ws = await fake(files(PROPOSAL))
   ws.setRun(scripted(ws, {}, git))
   await perform(ws, { kind: 'trust-check', name: 'completes_by_site' })
   passing(await checking(ws))
   expect(await until(async () => (await stateOf(ws)) === 'asking')).toBe(true)
-  expect(await perform(ws, { kind: 'trust-answer', name: 'completes_by_site', answer: 'reject' })).toEqual({ ok: true })
+  expect(await perform(ws, { kind: 'trust-done', name: 'completes_by_site', outcome: 'rejected' })).toEqual({ ok: true })
   expect(await stored(ws)).toMatchObject({ state: 'rejected', message: 'Rejected completes_by_site; the proposal stays in lib/trusted/.' })
   expect(git).toEqual([])
   expect(await ws.file('/work/trusted/completes_by_site.sql')).toBeUndefined()
@@ -324,27 +307,11 @@ test('reject: nothing is copied or committed, and the proposal stays', async () 
 
 test('an answer for another name, or with no review at all, is refused', async () => {
   const ws = await fake(files(PROPOSAL))
-  expect(await perform(ws, { kind: 'trust-answer', name: 'completes_by_site', answer: 'trust' })).toEqual({ error: 'No review of completes_by_site is waiting for an answer.' })
+  expect(await perform(ws, { kind: 'trust-done', name: 'completes_by_site', outcome: 'approved' })).toEqual({ error: 'No review of completes_by_site is waiting for an answer.' })
   await perform(ws, { kind: 'trust-check', name: 'completes_by_site' })
   passing(await checking(ws))
   expect(await until(async () => (await stateOf(ws)) === 'asking')).toBe(true)
-  expect(await perform(ws, { kind: 'trust-answer', name: 'main.panel.sites', answer: 'trust' })).toEqual({ error: 'No review of main.panel.sites is waiting for an answer.' })
-  await ws.done()
-})
-
-test('files equal to the trusted version end "unchanged" with no commit', async () => {
-  const git: (readonly string[])[] = []
-  const ws = await fake(files(PROPOSAL))
-  ws.setRun(scripted(ws, {}, git, true))
-  await perform(ws, { kind: 'trust-check', name: 'completes_by_site' })
-  passing(await checking(ws))
-  expect(await until(async () => (await stateOf(ws)) === 'asking')).toBe(true)
-  await perform(ws, { kind: 'trust-answer', name: 'completes_by_site', answer: 'trust' })
-  expect(await stored(ws)).toMatchObject({ state: 'unchanged', message: 'Already trusted: no changes.' })
-  expect(git.some(argv => argv.includes('commit'))).toBe(false)
-  // Equal to the trusted version, the draft is a stale copy: removed.
-  expect(await ws.file('lib/trusted/completes_by_site.sql')).toBeUndefined()
-  expect(await ws.file('lib/trusted/completes_by_site.test.yaml')).toBeUndefined()
+  expect(await perform(ws, { kind: 'trust-done', name: 'main.panel.sites', outcome: 'approved' })).toEqual({ error: 'No review of main.panel.sites is waiting for an answer.' })
   await ws.done()
 })
 
@@ -367,12 +334,12 @@ test('a second review is refused while one is checking or asking, and allowed af
   passing(check)
   expect(await until(async () => (await stateOf(ws)) === 'asking')).toBe(true)
   expect(await perform(ws, { kind: 'trust-check', name: 'main.panel.sites' })).toEqual(busy)
-  await perform(ws, { kind: 'trust-answer', name: 'completes_by_site', answer: 'reject' })
+  await perform(ws, { kind: 'trust-done', name: 'completes_by_site', outcome: 'rejected' })
   expect(await perform(ws, { kind: 'trust-check', name: 'main.panel.sites' })).toEqual({ ok: true })
   await ws.done()
 })
 
-test('a drafted dictionary entry is checked with check-entry and approved into dictionaries/', async () => {
+test('a drafted dictionary entry is checked with check-entry, and its review closes with the app\'s message', async () => {
   const git: (readonly string[])[] = []
   const ws = await fake(files(PROPOSAL))
   ws.setRun(scripted(ws, {}, git))
@@ -387,12 +354,11 @@ test('a drafted dictionary entry is checked with check-entry and approved into d
   check.emit({ event: 'done', answer: entry })
   expect(await until(async () => (await stateOf(ws, 'main.panel.sites')) === 'asking')).toBe(true)
   expect(await stored(ws, 'main.panel.sites')).toMatchObject({ kind: 'dictionary', what: 'dictionary entry', language: 'yaml' })
-  await perform(ws, { kind: 'trust-answer', name: 'main.panel.sites', answer: 'trust' })
-  expect(await ws.file('/work/dictionaries/main.panel.sites.yaml')).toBe('description: Sites.\n')
+  await ws.approveInLedger('dictionary', 'main.panel.sites', { 'main.panel.sites.yaml': 'description: Sites.\n' })
+  await perform(ws, { kind: 'trust-done', name: 'main.panel.sites', outcome: 'approved' })
   expect(await stateOf(ws, 'main.panel.sites')).toBe('approved')
-  expect(git.at(-1)?.slice(0, 7)).toEqual(['git', '-C', ws.root, 'commit', '-q', '-m', 'trusted: approve main.panel.sites'])
-  expect(await stored(ws, 'main.panel.sites')).toMatchObject({ message: 'Trusted main.panel.sites: committed in dictionaries/.' })
-  expect(await ws.file('lib/dictionaries/main.panel.sites.yaml')).toBeUndefined()
+  expect(await stored(ws, 'main.panel.sites')).toMatchObject({ message: 'Trusted main.panel.sites: approved in the app and copied to dictionaries/.' })
+  expect(await ws.file('/work/dictionaries/main.panel.sites.yaml')).toBe('description: Sites.\n')
   await ws.done()
 })
 

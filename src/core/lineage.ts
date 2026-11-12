@@ -1,5 +1,5 @@
 // A query's lineage: the CTE graph `python -m analysis_sql lineage` prints and the server saves next to the run as
-// `queries/NNN.lineage.json` (docs/slice-9.md, slice 9b). Pure: parsing that file and drawing it as Mermaid text.
+// `queries/NNN.lineage.json` (specs/slices/slice-9.md, slice 9b). Pure: parsing that file and drawing it as Mermaid text.
 import { codeBody } from './runs.ts'
 import { stepMarks } from './steps.ts'
 import type { StepsFile } from './steps.ts'
@@ -10,7 +10,7 @@ export type LineageNode = {
   kind: 'table' | 'cte' | 'final'
   name: string
   grain?: string[]
-  /** The trusted block this CTE includes (docs/slice-10.md): drawn as one node, without the tables inside it. */
+  /** The trusted block this CTE includes (specs/slices/slice-10.md): drawn as one node, without the tables inside it. */
   block?: string
 }
 /** `join` is absent for a FROM source or a subquery's; `{}` for a JOIN with no (well-formed) `-- join:` line. */

@@ -14,7 +14,7 @@ export async function runTrusted(assay: Assay, name: string, given: unknown): Pr
   if (!calc) return unknown(name, list.calculations.map(each => each.name))
   if (calc.dirty) {
     const path = calc.path ?? `${TRUSTED}/${calc.file}`
-    return `${path} differs from its last commit, or was never committed: it is not trusted until the user approves it again in ${TRUST_TAB}. Write your own SQL instead, and say why.`
+    return `${path} is not approved in the app, or changed after it was approved: it is not trusted until the user approves it in ${TRUST_TAB}. Write your own SQL instead, and say why.`
   }
   const checked = checkArgs(calc.parameters, given)
   if ('error' in checked) return `${checked.error} ${signature(calc)}`

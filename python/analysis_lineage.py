@@ -1,5 +1,5 @@
-"""A query's lineage: the graph of its CTEs, the tables they read and its final SELECT (docs/slice-9.md, "analysis_sql
-lineage")."""
+"""A query's lineage: the graph of its CTEs, the tables they read and its final SELECT (specs/slices/slice-9.md,
+"analysis_sql lineage")."""
 
 from __future__ import annotations
 
@@ -33,8 +33,8 @@ def lineage(
 
 
 def lineage_statement(statement: exp.Expression, blocks: dict[str, str] | None = None) -> dict[str, Any]:
-    """The CTE graph. A CTE in ``blocks`` (lower-cased CTE name -> block) holds an included block (docs/slice-10.md):
-    its node says which, and the tables inside it are not drawn."""
+    """The CTE graph. A CTE in ``blocks`` (lower-cased CTE name -> block) holds an included block
+    (specs/slices/slice-10.md): its node says which, and the tables inside it are not drawn."""
     blocks = blocks or {}
     ctes = top_ctes(statement)
     cte_names = {cte.alias.lower() for cte in ctes}

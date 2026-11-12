@@ -1,5 +1,5 @@
 // The MCP server "assay": one per Claude session, over stdio. Claude Code starts it at session start (from the
-// app's --mcp-config, docs/process/launch-contract.md) and ends it at session end; the kernel lives exactly as long.
+// app's --mcp-config, docs/developer/launch-contract.md) and ends it at session end; the kernel lives exactly as long.
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,7 +20,7 @@ import { callTool, TOOLS } from './tools.ts'
 const here = dirname(fileURLToPath(import.meta.url))
 
 /**
- * The session's config from the environment Assay set (docs/process/launch-contract.md), or undefined when Assay did
+ * The session's config from the environment Assay set (docs/developer/launch-contract.md), or undefined when Assay did
  * not start it. The server sits two folders down from the backend (src/server or out/server), so the kernel runner
  * is ../../python. ASSAY_KERNEL_RUNNER exists for tests.
  */
@@ -31,6 +31,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv, proc: Proc = realProc): Co
     analysis: resolve(analysis),
     root: resolve(root),
     venv: resolve(venv),
+    ...(env.ASSAY_LEDGER && isAbsolute(env.ASSAY_LEDGER) ? { ledger: resolve(env.ASSAY_LEDGER) } : {}),
     runner: env.ASSAY_KERNEL_RUNNER || resolve(here, '../../python/analysis_kernel.py'),
     tmp: stripTrailingSlashes(env.TMPDIR || tmpdir()) || '/tmp',
     proc,

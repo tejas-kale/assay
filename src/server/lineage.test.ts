@@ -1,4 +1,4 @@
-// The lineage request (docs/slice-9.md, slice 9b): the server runs `python -m analysis_sql lineage` on a SQL run's body
+// The lineage request (specs/slices/slice-9.md, slice 9b): the server runs `python -m analysis_sql lineage` on a SQL run's body
 // and saves the answer next to the run as `queries/NNN.lineage.json`.
 import { test } from 'node:test'
 

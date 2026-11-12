@@ -14,6 +14,8 @@ type Stream = {
   stderr: string
   failure: string | undefined
   isDone: boolean
+  /** Whether a `start` or a step has come: a `start` may only be the first event. */
+  isUnderway: boolean
   isTimedOut: boolean
 }
 
@@ -23,11 +25,25 @@ type Take = (event: CheckEvent) => string | undefined
 const checkArgs = (review: Review, analysis: string) =>
   review.kind === 'calculation' ? ['check', review.folder, review.name, analysis, '--stream'] : ['check-entry', `${review.folder}/${review.name}.yaml`, analysis, '--stream']
 
-/** Gives the events to the review; `done` is the last of them, and the helper's error is kept. Whether `done` came. */
+/** What is wrong with `event` coming now, or undefined: a `start` is first and once, nothing follows `done`. */
+function outOfOrder(stream: Stream, event: CheckEvent): string | undefined {
+  const rejected = "Only Assay's helper may report a check, so it was not accepted."
+  if (stream.isDone) return `The checks printed a ${event.event} event after done, out of order. ${rejected}`
+  if (event.event === 'start' && stream.isUnderway) return `The checks printed a start event out of order. ${rejected}`
+  return undefined
+}
+
+/** Gives the events to the review, in order; `done` is the last of them, and the helper's error is kept. Whether `done` came. */
 function feed(stream: Stream, events: readonly CheckEvent[], take: Take): boolean {
   for (const event of events) {
-    if (stream.isDone) break
+    const wrong = outOfOrder(stream, event)
+    if (wrong) {
+      stream.failure = wrong
+      stream.isDone = true
+      break
+    }
     if (event.event === 'done') stream.isDone = true
+    else stream.isUnderway = true
     stream.failure = take(event) ?? stream.failure
   }
   return stream.isDone
@@ -47,7 +63,7 @@ export async function streamChecks(assay: Assay, review: Review, take: Take): Pr
   if (!python) return assay.venvHint()
   const analysis = assay.config.analysis
   const child = assay.config.proc.spawn([python, ...HELPER_PYTHON_FLAGS, '-m', 'analysis_trust', ...checkArgs(review, analysis)], { cwd: analysis })
-  const stream: Stream = { buffer: '', stderr: '', failure: undefined, isDone: false, isTimedOut: false }
+  const stream: Stream = { buffer: '', stderr: '', failure: undefined, isDone: false, isUnderway: false, isTimedOut: false }
   const timer = setTimeout(() => {
     stream.isTimedOut = true
     child.kill()
@@ -55,14 +71,14 @@ export async function streamChecks(assay: Assay, review: Review, take: Take): Pr
   // The timer alone never keeps the server alive.
   timer.unref()
   child.onOutput((from, text) => {
-    if (stream.isDone) return
     if (from === 'stderr') {
+      if (stream.isDone) return
       stream.stderr = (stream.stderr + text).slice(-2000)
       return
     }
     const parsed = splitCheckEvents(stream.buffer + text)
     stream.buffer = parsed.rest
-    // `done` is the last line: the process is over for this review, however it ends.
+    // `done` is the last line: the process is over for this review, however it ends. Any event printed after it fails the check.
     if (feed(stream, parsed.events, take)) child.kill()
   })
   const exitCode = await child.exited

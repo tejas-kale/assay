@@ -2,7 +2,7 @@
 
 Finishes "Build slices" item 2 of `HANDOFF.md`. Read `HANDOFF.md` first (it wins on product intent), then the Status
 section for what slice 2 already built: Data, Code and History over `queries/` (`src/core/runs.ts`,
-`src/renderer/components/DataPane.tsx`, `CodeView.tsx`). `docs/slice-1.md` still holds for layout of the code, IPC and tests.
+`src/renderer/components/DataPane.tsx`, `CodeView.tsx`). `specs/slices/slice-1.md` still holds for layout of the code, IPC and tests.
 
 ## Build environment (changed since slice 1)
 

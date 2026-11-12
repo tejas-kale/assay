@@ -1,5 +1,5 @@
 // Request and reply files: the app asks the mod to run SQL by writing `.assay/requests/<id>.json`
-// and reads `.assay/replies/<id>.json` back. The shapes are the contract in docs/slice-2b.md.
+// and reads `.assay/replies/<id>.json` back. The shapes are the contract in specs/slices/slice-2b.md.
 import type { Engine, Run, RunHeader } from './runs.ts'
 
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789'
@@ -61,7 +61,7 @@ export function requestText(id: string, request: RunRequest): string {
       return replayRequest(id, request.runs)
     case 'trust-list':
     case 'trust-check':
-    case 'trust-answer':
+    case 'trust-done':
       return trustRequestText(id, request)
     case 'lineage':
     case 'steps':
@@ -119,11 +119,11 @@ export const isIndex = (v: unknown): v is number => typeof v === 'number' && Num
 
 type Fields = Record<string, unknown>
 
-function parseTrustRunRequest(kind: 'trust-check' | 'trust-answer', { name, answer }: Fields): RunRequest | { error: string } {
+/** From the renderer, `trust-done` can only say rejected: an approval is main's own report of what it did (main/trustApprove.ts). */
+function parseTrustRunRequest(kind: 'trust-check' | 'trust-done', { name, outcome }: Fields): RunRequest | { error: string } {
   if (typeof name !== 'string' || !PROPOSAL.test(name)) return { error: 'Invalid proposal' }
   if (kind === 'trust-check') return { kind, name }
-  if (answer !== 'trust' && answer !== 'reject') return { error: 'Invalid answer' }
-  return { kind, name, answer }
+  return outcome === 'rejected' ? { kind, name, outcome } : { error: 'Invalid outcome' }
 }
 
 function parseReplayRunRequest({ runs }: Fields): RunRequest | { error: string } {
@@ -154,23 +154,25 @@ export function parseRunRequest(input: unknown): RunRequest | { error: string } 
   const { kind, run } = fields
   if (kind === 'lineage' || kind === 'steps') return isIndex(run) && run > 0 ? { kind, run } : { error: 'Invalid run' }
   if (kind === 'interrupt' || kind === 'restart' || kind === 'trust-list') return { kind }
-  if (kind === 'trust-check' || kind === 'trust-answer') return parseTrustRunRequest(kind, fields)
+  if (kind === 'trust-check' || kind === 'trust-done') return parseTrustRunRequest(kind, fields)
   if (kind === 'replay') return parseReplayRunRequest(fields)
   if (kind === 'python' || kind === 'sql') return parseCodeRunRequest(kind, fields)
   return { error: 'Invalid request' }
 }
 
-/** The Steps tab asks for run `run`'s lineage (docs/slice-9.md): the server writes `queries/NNN.lineage.json` and replies ok. */
+/** The Steps tab asks for run `run`'s lineage (specs/slices/slice-9.md): the server writes `queries/NNN.lineage.json` and replies ok. */
 export type LineageRequest = { kind: 'lineage'; run: number }
 /** The Steps tab asks for run `run`'s steps to be run, one CTE at a time (slice 9c). Not urgent: it queues with the other runs. */
 export type StepsRequest = { kind: 'steps'; run: number }
 
 // ---------------------------------------------------------------------------
-// The trust review's requests (docs/slice-5.md): the app lists the proposals, starts a check, and answers one
-// that passed. Only these start or answer a review: no tool of Claude's can.
+// The trust review's requests (specs/slices/slice-5.md): the app lists the proposals, starts a check, and answers one
+// that passed. Only the app starts a review, and only the app approves one (IPC `trust:approve`, specs/trust-ledger.md):
+// `trust-done` is the app telling the server the review is over, and has no power to promote or trust anything.
 
 export type TrustAnswer = 'trust' | 'reject'
-export type TrustRequest = { kind: 'trust-list' } | { kind: 'trust-check'; name: string } | { kind: 'trust-answer'; name: string; answer: TrustAnswer }
+export type TrustOutcome = 'approved' | 'unchanged' | 'rejected'
+export type TrustRequest = { kind: 'trust-list' } | { kind: 'trust-check'; name: string } | { kind: 'trust-done'; name: string; outcome: TrustOutcome; message?: string }
 
 /** A proposal in the analysis: a calculation in `lib/trusted/` or a drafted entry in `lib/dictionaries/`. */
 export type Proposal = { name: string; kind: 'calculation' | 'dictionary'; folder: 'lib/trusted' | 'lib/dictionaries' }
@@ -210,11 +212,14 @@ function parsePythonFile({ code, from, slug }: Fields): ServerRequest | { error:
   return { kind: 'python', code, ...(isRunNumber(from) ? { from } : {}), slug: typeof slug === 'string' ? slug : 'query' }
 }
 
-function parseTrustFile(kind: 'trust-check' | 'trust-answer', { name, answer }: Fields): ServerRequest | { error: string } {
+const MAX_MESSAGE = 500
+
+function parseTrustFile(kind: 'trust-check' | 'trust-done', { name, outcome, message }: Fields): ServerRequest | { error: string } {
   if (typeof name !== 'string' || !name.trim()) return { error: 'Name the proposal.' }
   if (kind === 'trust-check') return { kind, name: name.trim().toLowerCase() }
-  if (answer !== 'trust' && answer !== 'reject') return { error: 'The answer is trust or reject.' }
-  return { kind, name: name.trim().toLowerCase(), answer }
+  if (outcome !== 'approved' && outcome !== 'unchanged' && outcome !== 'rejected') return { error: 'The outcome is approved, unchanged or rejected.' }
+  const said = typeof message === 'string' ? message.slice(0, MAX_MESSAGE) : undefined
+  return { kind, name: name.trim().toLowerCase(), outcome, ...(said ? { message: said } : {}) }
 }
 
 function parseReplayFile({ runs }: Fields): ServerRequest | { error: string } {
@@ -238,7 +243,7 @@ export function parseRequestFile(text: string): ServerRequest | { error: string 
   if (kind === 'interrupt' || kind === 'restart' || kind === 'trust-list') return { kind }
   if (kind === 'lineage' || kind === 'steps') return isRunNumber(run) ? { kind, run } : { error: 'Name the run, by number.' }
   if (kind === 'replay') return parseReplayFile(fields)
-  if (kind === 'trust-check' || kind === 'trust-answer') return parseTrustFile(kind, fields)
+  if (kind === 'trust-check' || kind === 'trust-done') return parseTrustFile(kind, fields)
   return { error: `Unknown request kind: ${show(kind)}.` }
 }
 

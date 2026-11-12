@@ -1,4 +1,4 @@
-// The Overview tab (docs/slice-10.md, slice 10a): the analysis overview or its system overview, rendered, with a diff
+// The Overview tab (specs/slices/slice-10.md, slice 10a): the analysis overview or its system overview, rendered, with a diff
 // against the text the user last marked read.
 import { useMemo, useRef, useState } from 'react'
 import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from 'react'

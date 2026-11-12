@@ -5,7 +5,7 @@ Assay's MCP server (``src/server``) runs it with Assay's venv's python as ``pyth
 YAML files in ``<notes-src>/dictionaries/`` and, for trusted calculations, ``<notes-src>/trusted/``.
 
     dictionary <notes-src> <sql-file>          the tables the SQL touches and their dictionary entries
-    list <notes-src>                           the trusted calculations, with their commits
+    list <notes-src>                           the calculations and definitions, and which the app approved
     run <notes-src> <name> <args> <analysis>   runs one on the analysis's warehouse
     render <notes-src> <table:definition> <args>  the SQL a definition's run sends
     check <folder> <name> <analysis> [--stream]    what the Trust tab shows: form, transpile, tests, a live run
@@ -14,8 +14,9 @@ YAML files in ``<notes-src>/dictionaries/`` and, for trusted calculations, ``<no
 With ``--stream`` a check prints one JSON line per event (start, step, done) as it happens.
 
 The work is done by the modules it calls: ``analysis_calc`` (a calculation's form and values), ``analysis_dictionary``
-(entries and definitions), ``analysis_library`` (the listing), ``analysis_runner`` (runs on the warehouse),
-``analysis_fixtures`` and ``analysis_pytest`` (the tests), ``analysis_blocks`` and ``analysis_review`` (the Check).
+(entries and definitions), ``analysis_library`` (the listing), ``analysis_ledger`` (what the app approved),
+``analysis_runner`` (runs on the warehouse), ``analysis_fixtures`` and ``analysis_pytest`` (the tests),
+``analysis_blocks`` and ``analysis_review`` (the Check).
 Layout and formats: the Assay README.
 """
 
@@ -30,7 +31,7 @@ from typing import Any
 
 from analysis_calc import TrustError
 from analysis_dictionary import dictionary
-from analysis_library import TRUSTED, list_calculations
+from analysis_library import TRUSTED, list_calculations, require_trusted
 
 USAGE = """usage: python -m analysis_trust <command> ...
   dictionary <notes-src> <sql-file>
@@ -74,12 +75,14 @@ def _list(args: list[str], _: Emit | None) -> Any:
 
 def _run(args: list[str], _: Emit | None) -> Any:
     given = _arguments(args[2])
-    return _heavy("analysis_runner").run(Path(args[0]) / TRUSTED, args[1], given, Path(args[3]))
+    source = require_trusted(Path(args[0]), args[1])
+    return _heavy("analysis_runner").run_checked(Path(args[0]) / TRUSTED, source, given, Path(args[3]))
 
 
 def _render(args: list[str], _: Emit | None) -> Any:
     given = _arguments(args[2])
-    return {"sql": _heavy("analysis_runner").render(Path(args[0]), args[1], given)}
+    source = require_trusted(Path(args[0]), args[1])
+    return {"sql": _heavy("analysis_runner").render(Path(args[0]), args[1], given, source)}
 
 
 def _check(args: list[str], emit: Emit | None) -> Any:

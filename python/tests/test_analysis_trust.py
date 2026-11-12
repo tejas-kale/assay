@@ -13,6 +13,8 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from ledger_helper import approve
+
 import analysis_calc as calc
 import analysis_db
 import analysis_dictionary as entries
@@ -142,6 +144,7 @@ def test_top_site_first():
 def commit_all(folder: Path) -> None:
     for args in (["init", "-q"], ["add", "."], ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "x"]):
         subprocess.run(["git", "-C", str(folder), *args], check=True)
+    approve(folder)
 
 
 @pytest.fixture
@@ -170,8 +173,11 @@ def test_list_describes_each_calculation_with_its_commit(trusted: Path) -> None:
     ]
     assert len(sql["commit"]) == SHORT_COMMIT and sql["dirty"] is False
     py = by_name["top_sites"]
-    assert py["kind"] == "python" and py["parameters"] == [{"name": "limit", "type": "integer", "required": False}]
-    assert py["dirty"] is True
+    assert py["kind"] == "python" and py["dirty"] is True
+    assert py["parameters"] == [] and py["description"].startswith("Not approved")  # its code is not run to describe it
+    approve(trusted.parent, "trusted/top_sites.py")
+    py = next(c for c in library.list_calculations(trusted.parent)["calculations"] if c["name"] == "top_sites")
+    assert py["dirty"] is False and py["parameters"] == [{"name": "limit", "type": "integer", "required": False}]
     assert listed["problems"] == [
         "broken: no front matter: start the file with a /*--- ... ---*/ block holding description and parameters"
     ]
@@ -390,6 +396,7 @@ def test_run_binds_arguments_as_parameters(trusted: Path, monkeypatch: pytest.Mo
 def test_the_run_command_reports_a_problem_as_json(
     trusted: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    approve(tmp_path)
     assert trust.main(["run", str(tmp_path), "completes_by_site", '{"start": 1}', str(tmp_path)]) == 1
     assert json.loads(capsys.readouterr().out) == {"error": "argument start must be a date"}
 

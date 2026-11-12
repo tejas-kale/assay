@@ -1,4 +1,4 @@
-// How the app ends: Cmd+Q quits, and Restart to update installs and relaunches (docs/slice-11.md, 11d). Both close
+// How the app ends: Cmd+Q quits, and Restart to update installs and relaunches (specs/slices/slice-11.md, 11d). Both close
 // every analysis first, so each Claude exits and a launcher finishes its import, and only then quit or install. The
 // open set is not saved while they close, so the next launch reopens it. Pure; src/main/index.ts carries out the
 // actions.

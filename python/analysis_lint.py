@@ -1,4 +1,4 @@
-"""Assay's SQL rules: what makes Claude's multi-CTE and JOIN queries readable (docs/slice-9.md).
+"""Assay's SQL rules: what makes Claude's multi-CTE and JOIN queries readable (specs/slices/slice-9.md).
 
 The comments they read, each on the line directly above what it describes:
 

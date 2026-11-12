@@ -1,6 +1,7 @@
 // An analysis in a view: attaching it (the view becomes its workspace), pushing its state, and starting Claude in it.
 // The window and its views are windowViews.ts; every analysis's state and files are files.ts and its neighbours.
-import { nativeTheme } from 'electron'
+import { app, nativeTheme } from 'electron'
+import { realpath } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 import { openAnalysis } from '../core/analyses.ts'
@@ -15,6 +16,9 @@ import { loadState } from './files.ts'
 import { fsPort } from './fsAccess.ts'
 import { launchPaths } from './runtime.ts'
 import { startSession } from './session.ts'
+import type { PtySession } from './session.ts'
+import { endTrusted, startTrusted } from './trustContext.ts'
+import { ledgerPath } from './trustLedger.ts'
 import { analysisRoot } from './settings.ts'
 import { readSavedSet, setSet } from './windowFrame.ts'
 import { closeNow, createHost, createView, disposeView, openPicker, show } from './windowViews.ts'
@@ -112,6 +116,14 @@ function startableAnalysis(ctx: WindowCtx): AnalysisRef | undefined {
   return ctx.session || ctx.disposed ? undefined : ctx.analysis
 }
 
+/** The session's close state changed: tell the view; when it exited, end the Trust calls and finish a requested close. */
+function onFlowChange(ctx: WindowCtx, state: Parameters<Parameters<PtySession['flow']['onChange']>[0]>[0]) {
+  send(ctx, CHANNELS.closeState, state)
+  if (state === 'exited') endTrusted(ctx)
+  if (state === 'exited' && ctx.closeRequested) closeNow(ctx)
+  void refreshStrip()
+}
+
 /** Spawns Claude at the renderer's size, once this version's backend is installed. Does nothing without an analysis or when already started. */
 export async function startPty(ctx: WindowCtx, cols: number, rows: number) {
   const first = ctx.analysis
@@ -128,20 +140,23 @@ export async function startPty(ctx: WindowCtx, cols: number, rows: number) {
     send(ctx, CHANNELS.ptyExit, { exitCode: 1 })
     return
   }
-  const spec = spawnSpec({ folder: analysis.path, env: process.env, root, mode: nativeTheme.shouldUseDarkColors ? 'dark' : 'light', ...launch })
+  const ledger = ledgerPath(app.getPath('userData'), await realpath(root).catch(() => root))
+  const trustLaunch = { analysisPath: analysis.path, root, ledgerFile: ledger }
+  const spec = spawnSpec({ folder: analysis.path, env: process.env, root, mode: nativeTheme.shouldUseDarkColors ? 'dark' : 'light', ledger, ...launch })
   try {
-    ctx.session = startSession(spec, cols, rows, {
-      onData: data => {
-        send(ctx, CHANNELS.ptyData, data)
-      },
-      onExit: (exit: PtyExit) => {
-        send(ctx, CHANNELS.ptyExit, exit)
-      },
-    })
+    ctx.session = startTrusted(ctx, trustLaunch, () =>
+      startSession(spec, cols, rows, {
+        onData: data => {
+          send(ctx, CHANNELS.ptyData, data)
+        },
+        onExit: (exit: PtyExit) => {
+          endTrusted(ctx)
+          send(ctx, CHANNELS.ptyExit, exit)
+        },
+      }),
+    )
     ctx.session.flow.onChange(state => {
-      send(ctx, CHANNELS.closeState, state)
-      if (state === 'exited' && ctx.closeRequested) closeNow(ctx)
-      void refreshStrip()
+      onFlowChange(ctx, state)
     })
   } catch (err) {
     const text = err instanceof Error ? err.message : String(err)

@@ -9,7 +9,7 @@ files are the contract between the two, and the app keeps no database.
 tools and the user's edits and re-runs all go through the server, into numbered, immutable runs in `queries/`, in the
 one kernel the app shows. Protect this in every change. How to work on Assay: `AGENTS.md`.
 
-The code is the source of truth. `docs/slice-*.md` are the specs each slice was built from, kept as history.
+The code is the source of truth. `specs/slices/slice-*.md` are the specs each slice was built from, kept as history; `specs/` also holds other specs, audits and design notes. `docs/developer/` is the developer documentation.
 
 ## Install, run, test (on the Mac)
 
@@ -25,10 +25,10 @@ The code is the source of truth. `docs/slice-*.md` are the specs each slice was 
   from `python/` at each launch, so edits to the helpers apply at once.
 - `npm run check`: typecheck, lint, every test with coverage, and the coverage bar; `git push` runs it first. `npm test`
   runs only the tests. Python runs from `python/`'s locked project, synced by uv into the root `.venv`. Details in
-  `docs/process/testing.md`.
+  `docs/developer/testing.md`.
 - `npm run install-app` builds `Assay.app`, ad-hoc signed, into `/Applications`; run it again after pulling changes.
   `npm run package` only builds it, into `dist/mac-arm64/`.
-- A release (from its DMG, `docs/process/ci-release.md`) updates itself: paste a fine-grained GitHub token for
+- A release (from its DMG, `docs/developer/ci-release.md`) updates itself: paste a fine-grained GitHub token for
   `tejas-kale/assay` (Contents read-only) into Settings > Updates. It checks at launch and hourly, downloads in the
   background, and a banner offers `Restart`; otherwise the update installs when you quit.
 
@@ -52,7 +52,7 @@ It keeps this version's and the previous one's folders and deletes older ones. A
   `explorations/`) once: a dry run by default, `--apply` to act. It never overwrites and does not touch git.
 - `ASSAY_CLAUDE_BIN`: the launcher to run instead of plain `claude` (found through your login shell), started with
   `--plugin-dir "$ASSAY_BACKEND/plugin"`. The variables the app sets, and what a launcher that runs Claude elsewhere
-  must provide, are in `docs/process/launch-contract.md`.
+  must provide, are in `docs/developer/launch-contract.md`.
 - Postgres runs need `rds-psql`, which only a launcher provides; without it they fail with a pointer to the contract.
 - Colours follow the macOS light or dark setting live (Ayu Light / Ayu Dark) which are all in `src/core/theme.ts`.
 
@@ -67,20 +67,20 @@ holding left Ctrl shows the pane and tab hints.
 
 ## Tabs
 
-Every tab is an entry in `src/core/tabs.ts` with its component in `src/renderer/tabs/` (`docs/process/adding-a-tab.md`).
+Every tab is an entry in `src/core/tabs.ts` with its component in `src/renderer/tabs/` (`docs/developer/adding-a-tab.md`).
 Settings > Tabs turns each tab on or off and orders it within its pane, for the whole app (`settings.json`'s `tabs`).
 Ctrl+2 or Ctrl+3 pressed again inside its pane moves to the next tab that is on. A tab that is off leaves its tab bar and search, and its shortcut shows `<Title> tab is off: Settings (⌘,)`. A pane
 with every tab off is hidden.
 
 ## Overviews
 
-The Overview tab (`⌃⇧O`, docs/slice-10.md) shows the open analysis's `overview.md` and, with `s`, the system overview
+The Overview tab (`⌃⇧O`, specs/slices/slice-10.md) shows the open analysis's `overview.md` and, with `s`, the system overview
 it names on one of its first 5 lines (`System: systems/<name>.md`, in the root). `d` shows a diff against the text
 last marked read with `m` (kept in `.assay/overview-read/`); the header shows the line count, amber above 50.
 
 ## Trusted pieces: blocks, definitions, includes
 
-Slice 10 (docs/slice-10.md). A **block** is a trusted SQL template whose front matter has a `block:` contract (grain and
+Slice 10 (specs/slices/slice-10.md). A **block** is a trusted SQL template whose front matter has a `block:` contract (grain and
 columns); the Trust tab's Check runs it live, checks its grain and compares it row by row with `<name>.rebuild.sql`, an
 independent rebuild by Codex (or an Opus model in Copilot). Claude's SQL **includes** blocks and dictionary definitions
 by name: `x AS ({{ block(p => 'v') }})`, `WHERE {{ client_entry(s) }}`. The server expands them (`analysis_sql
@@ -91,7 +91,7 @@ comment silences it. A run's warnings are kept in `queries/NNN.notices.json` and
 
 ## Several analyses in one window
 
-One window holds up to nine analyses (`docs/multi-analysis-window.md`). Each is its own `WebContentsView` running the
+One window holds up to nine analyses (`specs/multi-analysis-window.md`). Each is its own `WebContentsView` running the
 whole renderer with its own Claude session, so a hidden one keeps running and keeps its UI state. Cmd+1..9 switches,
 Cmd+N opens another from the picker, Cmd+W closes the shown one. The strip along the bottom, or down the left
 (Settings > Strip, or the palette's Move analysis strip; `#strip`, the same renderer bundle), shows each analysis's
@@ -102,13 +102,13 @@ analysis is open. The open set is saved in the user data folder (`open-analyses.
 ## Launchers
 
 The user's Podman wrapper lives in the config repo (`~/Code/config`, `claude/bin`), outside Assay. It is one launcher
-among others, set with `ASSAY_CLAUDE_BIN`, and honours `docs/process/launch-contract.md`. Isolating code execution is
+among others, set with `ASSAY_CLAUDE_BIN`, and honours `docs/developer/launch-contract.md`. Isolating code execution is
 the launcher's job, not Assay's.
 
 ## Not yet tried with a real Claude session
 
 Built and tested with a stub Claude, simulated replies and the MCP SDK's client only (slice 5's Mac checklist, in
-`docs/slice-5.md`, covers them):
+`specs/slices/slice-5.md`, covers them):
 
 1. The plugin under plain Claude Code and under the Podman launcher: the server, the hooks and the skills.
 2. The Trust tab's Check, Trust and Reject against a real proposal, the commit, and removing the `lib/` draft.

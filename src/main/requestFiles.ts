@@ -1,6 +1,7 @@
 // The files between the app and the server (`.assay/requests`, `.assay/replies`), and the one-at-a-time edits of
 // threads.md and the notes.
-import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { lstat, mkdir, open, readFile, readdir, rename, stat, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { StaleEdit } from '../core/errors.ts'
@@ -56,19 +57,40 @@ export function editFile(folder: string, name: string, edit: (text: string) => s
   return result
 }
 
-/** Writes a request for the mod to pick up. The temp name starts with `.`, which the mod ignores. */
+/** Makes sure `path` is a real folder, creating it when missing; a link or a file in its place is refused, never followed. */
+async function realFolder(path: string): Promise<void> {
+  const info = await lstat(path).catch(() => undefined)
+  if (!info) await mkdir(path).catch(() => undefined)
+  const now = info ?? (await lstat(path))
+  if (!now.isDirectory()) throw new Error(`${path} is not a real folder (a link or a file): it is refused.`)
+}
+
+/** Creates a new file without following a link at its name. */
+async function createFile(path: string, text: string): Promise<void> {
+  const handle = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600)
+  try {
+    await handle.writeFile(text, 'utf8')
+  } finally {
+    await handle.close()
+  }
+}
+
+/**
+ * Writes a request for the server to pick up. `.assay` and `.assay/requests` must be real folders (Claude's side can
+ * plant a link there: docs/developer/security.md, L-9). The temp name starts with `.`, which the server ignores.
+ */
 export async function writeRequest(folder: string, request: RunRequest): Promise<RequestResult> {
   const id = newRequestId(Date.now(), Math.random)
   try {
     const assay = join(folder, ASSAY)
     const dir = join(assay, REQUESTS)
-    await mkdir(dir, { recursive: true })
-    // Written once, never over the user's own file.
-    await writeFile(join(assay, '.gitignore'), '*\n', { encoding: 'utf8', flag: 'wx' }).catch(() => undefined)
-    const path = join(dir, `${id}.json`)
+    await realFolder(assay)
+    await realFolder(dir)
+    // Written once, never over the user's own file, and never through a link.
+    await createFile(join(assay, '.gitignore'), '*\n').catch(() => undefined)
     const temp = join(dir, `.${id}.json.tmp`)
-    await writeFile(temp, requestText(id, request), 'utf8')
-    await rename(temp, path)
+    await createFile(temp, requestText(id, request))
+    await rename(temp, join(dir, `${id}.json`))
     return { ok: true, id }
   } catch (err) {
     return { ok: false, message: `Could not send: ${messageOf(err)}` }

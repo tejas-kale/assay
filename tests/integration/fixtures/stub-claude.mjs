@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The app smoke test's Claude (ASSAY_CLAUDE_BIN). The app runs it as it runs Claude, with `--plugin-dir
-// <backend>/plugin` and the ASSAY_* environment (docs/process/launch-contract.md). Like Claude, it starts the plugin's
+// <backend>/plugin` and the ASSAY_* environment (docs/developer/launch-contract.md). Like Claude, it starts the plugin's
 // MCP server through the SDK's client and keeps it open, so the server answers the app's requests. It ends, closing
 // the server, when the app closes the session. The Doctor's probe runs it with --version.
 import { join } from 'node:path'

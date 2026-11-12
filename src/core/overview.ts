@@ -1,4 +1,4 @@
-// The analysis and system overviews (docs/slice-10.md, slice 10a): the system an analysis overview names, its
+// The analysis and system overviews (specs/slices/slice-10.md, slice 10a): the system an analysis overview names, its
 // Markdown split into blocks, and the block diff against the text the user last marked read.
 
 /** The analysis overview, in the analysis folder. */

@@ -1,5 +1,5 @@
-"""Include by name (docs/slice-10.md, slice 10c): Claude's SQL names trusted blocks and dictionary definitions, and
-they are expanded here before the query runs.
+"""Include by name (specs/slices/slice-10.md, slice 10c): Claude's SQL names trusted blocks and dictionary definitions,
+and they are expanded here before the query runs.
 
     sessions AS ({{ client_entry_sessions(start => '2026-11-01', end => '2026-11-08') }})   a block, as a CTE body
     WHERE {{ client_entry(s) }}                                                              a definition, on alias s
@@ -40,16 +40,16 @@ class Pieces:
         self.root = root
 
     @cached_property
-    def _listed(self) -> list[dict[str, Any]]:
-        return analysis_library.list_calculations(self.root)["calculations"]
+    def _scanned(self) -> analysis_library.Listing:
+        return analysis_library.scan(self.root)
 
     @cached_property
     def calcs(self) -> dict[str, dict[str, Any]]:
-        return {calc["name"]: calc for calc in self._listed if calc["kind"] != "definition"}
+        return {calc["name"]: calc for calc in self._scanned.calculations if calc["kind"] != "definition"}
 
     @cached_property
     def definitions(self) -> dict[str, dict[str, Any]]:
-        return {calc["name"]: calc for calc in self._listed if calc["kind"] == "definition"}
+        return {calc["name"]: calc for calc in self._scanned.calculations if calc["kind"] == "definition"}
 
     @cached_property
     def short(self) -> dict[str, list[str]]:
@@ -70,9 +70,10 @@ class Pieces:
         return None, None
 
     def item(self, full: str) -> dict[str, Any]:
-        """Definition ``full``'s entry item: its ``kind``, ``sql`` and description."""
+        """Definition ``full``'s entry item: its ``kind``, ``sql`` and description, from the entry the listing read (the
+        bytes its ``dirty`` was decided on), never from the file again."""
         table, _, name = full.partition(":")
-        entry = analysis_dictionary.read_entry(self.root / analysis_dictionary.DICTIONARIES / f"{table}.yaml")
+        entry = self._scanned.entries[table]
         return next(item for item in analysis_dictionary.definitions_of(entry) if item["name"] == name)
 
     def expression(self, full: str) -> str:
@@ -80,12 +81,12 @@ class Pieces:
 
 
 def expand(sql: str, dialect: str, root: Path | str, inside_block: str | None = None) -> dict[str, Any]:
-    """``sql`` with its included blocks and definitions expanded (docs/slice-10.md, "Expansion").
+    """``sql`` with its included blocks and definitions expanded (specs/slices/slice-10.md, "Expansion").
 
     ``sql`` runs; ``lint_sql`` is the SQL as written with each block body replaced by ``SELECT <its columns> FROM
     <block>`` and each definition expanded; ``retype_sql`` has each definition read as TRUE; ``built_from`` lists the
     pieces in order of first use, ``blocks`` which CTE holds which block. ``{"errors": [...]}`` when a piece is unknown,
-    misused or not trusted as committed. ``inside_block`` names the block ``sql`` is the body of.
+    misused or not approved in the app. ``inside_block`` names the block ``sql`` is the body of.
     """
     return expand_with(sql, dialect, Pieces(Path(root)), inside_block)
 
@@ -147,11 +148,11 @@ class _Expansion:
         return unchanged
 
     def _use(self, name: str, kind: str, calc: dict[str, Any]) -> bool:
-        """Records piece ``name`` as used, unless it differs from its last commit."""
+        """Records piece ``name`` as used, unless the user has not approved it in the app, or it changed after."""
         if calc.get("dirty"):
             self.errors.append(
-                f"{name} differs from its last commit, or was never committed: it is not trusted until the user "
-                "approves it again",
+                f"{name} is not approved in the app, or changed after it was: it is not trusted until the user "
+                "approves it",
             )
             return False
         self.built.setdefault(name, {"name": name, "kind": kind, "commit": calc.get("commit", "")})

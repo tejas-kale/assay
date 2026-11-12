@@ -1,4 +1,4 @@
-// The shared props of each pane's tab components (docs/process/adding-a-tab.md).
+// The shared props of each pane's tab components (docs/developer/adding-a-tab.md).
 import type { AnalysisState } from '../../shared/ipc.ts'
 import type { Reveal } from '../components/common.tsx'
 

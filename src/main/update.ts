@@ -1,4 +1,4 @@
-// Auto-update (docs/slice-11.md, 11d): electron-updater checks the private GitHub releases with the user's
+// Auto-update (specs/slices/slice-11.md, 11d): electron-updater checks the private GitHub releases with the user's
 // fine-grained token, downloads in the background, and installs at the next restart or quit. The decisions (state,
 // banner, when to check) are in core/update.ts; this module holds the state, the token and the updater.
 //

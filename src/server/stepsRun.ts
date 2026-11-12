@@ -1,4 +1,4 @@
-// A SQL run's lineage and steps (docs/slice-9.md, slice 9c): `analysis_sql lineage` and `steps` plan them; each step's
+// A SQL run's lineage and steps (specs/slices/slice-9.md, slice 9c): `analysis_sql lineage` and `steps` plan them; each step's
 // preview and counts run on the run's engine, saved beside the run in queries/. Steps are not runs: they claim no
 // number and leave `.assay/runs.json` alone.
 import { rm } from 'node:fs/promises'

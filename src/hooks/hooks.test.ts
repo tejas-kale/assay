@@ -106,6 +106,17 @@ test('the rules list the usable trusted calculations the helper lists', async ()
   expect(rules).not.toContain('top_sites')
 })
 
+test("the helper that lists the trusted calculations inherits ASSAY_LEDGER, so the hook lists only what the ledger approves (PI-2)", async () => {
+  const { dir, env } = await scratch()
+  await mkdir(join(dir, 'venv/bin'), { recursive: true })
+  // A stand-in for the helper: it calls the calculation trusted only when it sees the ledger's path, as analysis_ledger does.
+  const calc = (dirty: string) => `{"calculations":[{"name":"by_site","kind":"sql","file":"c.sql","description":"Per site.","parameters":[],"commit":"abc","dirty":${dirty}}],"problems":[]}`
+  const script = `#!/bin/sh\nif [ "$ASSAY_LEDGER" = "${join(dir, 'ledger.json')}" ]; then echo '${calc('false')}'; else echo '${calc('true')}'; fi\n`
+  await writeFile(join(dir, 'venv/bin/python'), script, { mode: 0o755 })
+  expect((await hook('prompt', { prompt: 'x' }, env))?.additionalContext ?? '').not.toContain('by_site')
+  expect((await hook('prompt', { prompt: 'x' }, { ...env, ASSAY_LEDGER: join(dir, 'ledger.json') }))?.additionalContext ?? '').toContain('- by_site(): Per site.')
+})
+
 test('the rules point once at the propose-trusted skill, and no longer carry the drafting rules', async () => {
   const { env } = await scratch()
   const rules = (await hook('prompt', { prompt: 'x' }, env))?.additionalContext ?? ''

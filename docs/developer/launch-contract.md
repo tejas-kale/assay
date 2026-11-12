@@ -24,6 +24,7 @@ exec "${ASSAY_CLAUDE_BIN:-claude}" --mcp-config "$ASSAY_MCP_CONFIG" --plugin-dir
 | `ASSAY_BACKEND` | `~/Library/Application Support/Assay/backend/<version>` |
 | `ASSAY_MCP_CONFIG` | the server `assay`, as JSON: `{"mcpServers":{"assay":{"command":"node","args":["<ASSAY_BACKEND>/plugin/../out/server/index.mjs"]}}}` |
 | `ASSAY_VENV` | `~/Library/Application Support/Assay/venvs/<version>` |
+| `ASSAY_LEDGER` | `~/Library/Application Support/Assay/trust-ledger/<sha256 of the root's real path>.json`: the root's trust ledger, written by the app only (specs/trust-ledger.md); the file may not exist yet |
 | `ASSAY_THEME` | Claude Code's theme: `dark-ansi` or `light-ansi` |
 
 Every path is absolute. `ASSAY_BACKEND` and `ASSAY_VENV` contain a space (`Application Support`): quote them.
@@ -46,6 +47,7 @@ declares none. Two constraints hold for every launcher:
 
 ## What a launcher that runs Claude elsewhere must do
 
+- Mount `ASSAY_LEDGER`'s folder (`trust-ledger/`) read-only, like `ASSAY_BACKEND`, at the same absolute path: Claude must never write it.
 - Make `ASSAY_ROOT`, `ASSAY_ANALYSIS` and `ASSAY_BACKEND` valid at the **same absolute paths**, with `ASSAY_BACKEND`
   read-only.
 - Provide `node` 22 or later and `databricks` on Claude's PATH, plus `rds-psql` if Postgres runs are wanted. Without
@@ -62,4 +64,4 @@ declares none. Two constraints hold for every launcher:
 Assay enforces its own rules: its hooks (no Python through Bash, nothing written into `trusted/`, `dictionaries/`,
 `.git`, the runs, the app's requests or another analysis), its tools, its IPC and its updater. It does not contain what
 code can do once it runs. Containing code execution belongs to the launcher: the Podman wrapper, or Claude Code's own
-sandbox. docs/process/security.md draws this boundary in full.
+sandbox. docs/developer/security.md draws this boundary in full.

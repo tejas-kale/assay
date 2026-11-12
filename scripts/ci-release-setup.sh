@@ -180,7 +180,7 @@ finish() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────
-# STAGES: the user steps of slice 11c (docs/process/ci-release.md). Run on the Mac, from the repo.
+# STAGES: the user steps of slice 11c (docs/developer/ci-release.md). Run on the Mac, from the repo.
 # ──────────────────────────────────────────────────────────────────────────
 
 TOTAL_STAGES=4
@@ -240,7 +240,7 @@ note "    gh run list -R tejas-kale/assay -L 1   then   gh run rerun <id> --fail
 open_url "https://github.com/tejas-kale/assay/releases"
 step "Download Assay-0.1.0-arm64.dmg, open it and drag Assay to Applications (replace the old copy)."
 step "Open Assay: being notarized, it opens without a warning."
-step "Tell Claude the version, so it records the first green release in docs/process/ci-release.md."
+step "Tell Claude the version, so it records the first green release in docs/developer/ci-release.md."
 pause "Press Enter when Assay 0.1.0 runs."
 
 finish

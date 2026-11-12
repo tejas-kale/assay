@@ -1,6 +1,6 @@
 # Assay's Python environment. The app builds it at launch with `uv sync --frozen --no-editable --no-dev` from this file and
 # uv.lock (shipped in the app under backend/python) into ~/Library/Application Support/Assay/venvs/<version>, and
-# passes it to Claude in ASSAY_VENV (docs/process/launch-contract.md). After changing this file, run `uv lock` and
+# passes it to Claude in ASSAY_VENV (docs/developer/launch-contract.md). After changing this file, run `uv lock` and
 # commit the new uv.lock: the next release builds it. (tests/test_venv.sh builds this file with uv in a scratch folder.)
 
 [project]
@@ -38,6 +38,7 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 py-modules = [
   "analysis_db",
+  "analysis_imports",
   "analysis_sql",
   "analysis_sqlread",
   "analysis_lint",
@@ -49,11 +50,13 @@ py-modules = [
   "analysis_calc",
   "analysis_dictionary",
   "analysis_library",
+  "analysis_ledger",
   "analysis_runner",
   "analysis_fixtures",
   "analysis_pytest",
   "analysis_blocks",
   "analysis_review",
+  "analysis_child",
   "analysis_kernel_preload",
   "analysis_kernel_run",
   "analysis_kernel_serve",
@@ -69,7 +72,7 @@ dev = ["ruff", "pytest-cov", "pytest-xdist"]
 [tool.uv]
 build-constraint-dependencies = ["setuptools==84.2.1"]
 
-# The smell gate (docs/process/coding-standards.md). Today's violations are counted in ruff-baseline.json, which the
+# The smell gate (docs/developer/coding-standards.md). Today's violations are counted in ruff-baseline.json, which the
 # ratchet (scripts/ratchet.ts) lets only shrink.
 [tool.ruff]
 line-length = 120

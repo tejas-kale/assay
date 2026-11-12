@@ -2,7 +2,7 @@
 
 Implements "Build slices" item 4 of `HANDOFF.md`, plus the user's request of 2026-11-02 that the trust review leaves the
 mod pane. Read `HANDOFF.md` first (it wins on product intent; "Decided while building" overrides older parts), then
-`docs/slice-3.md` for the layout of the code, IPC and tests.
+`specs/slices/slice-3.md` for the layout of the code, IPC and tests.
 
 Fixed points: assay `39fbb20`, config `dd5dae2`.
 

@@ -1,4 +1,4 @@
-// The coverage bar (docs/process/testing.md): every file in scope reaches 90% of its lines and of its branches.
+// The coverage bar (docs/developer/testing.md): every file in scope reaches 90% of its lines and of its branches.
 // Node's coverage (coverage/lcov.info) covers src/core, src/server and src/hooks; coverage.py (coverage/python.json)
 // covers python/. ESLint and ruff fail on their own; this also refuses an `eslint-suppressions.json`, which would let
 // ESLint skip the violations it lists.

@@ -5,7 +5,7 @@ import { shouldRelease } from './release-paths.ts'
 
 test('a push that changes only docs, tests and CI does not release', () => {
   const paths = [
-    'docs/slice-11.md',
+    'specs/slices/slice-11.md',
     'README.md',
     'src/core/keymap.test.ts',
     'scripts/next-version.test.ts',
@@ -17,7 +17,7 @@ test('a push that changes only docs, tests and CI does not release', () => {
 })
 
 test('one source file among them releases', () => {
-  assert.equal(shouldRelease(['docs/slice-11.md', 'src/core/keymap.ts']), true)
+  assert.equal(shouldRelease(['specs/slices/slice-11.md', 'src/core/keymap.ts']), true)
 })
 
 test('python code, the lockfiles and the config release; a test helper outside tests/ does too', () => {

@@ -78,7 +78,7 @@ export const COMMANDS: readonly Command[] = [
   })),
 ]
 
-/** The commands the palette lists: Restart to update only while a downloaded update waits (docs/slice-11.md, 11d). */
+/** The commands the palette lists: Restart to update only while a downloaded update waits (specs/slices/slice-11.md, 11d). */
 export function paletteCommands({ isUpdateReady }: { isUpdateReady: boolean }): readonly Command[] {
   return isUpdateReady ? COMMANDS : COMMANDS.filter(c => c.id !== 'update.restart')
 }

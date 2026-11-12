@@ -1,4 +1,4 @@
-// The smell gate (docs/process/coding-standards.md). `npm run lint` fails on any warning or error; nothing is
+// The smell gate (docs/developer/coding-standards.md). `npm run lint` fails on any warning or error; nothing is
 // suppressed (scripts/coverage-bar.ts refuses an eslint-suppressions.json).
 import js from '@eslint/js'
 import reactHooks from 'eslint-plugin-react-hooks'

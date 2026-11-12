@@ -1,4 +1,4 @@
-// The Steps tab's requests (docs/slice-9.md): which runs were asked about, which requests wait for a reply, and what to do
+// The Steps tab's requests (specs/slices/slice-9.md): which runs were asked about, which requests wait for a reply, and what to do
 // when a reply, a refusal or the no-reply timeout comes. Pure: the tab keeps the timers and makes the `window.app` calls.
 
 /** No reply is expected after this long: the server only polls while Claude's session is alive. */

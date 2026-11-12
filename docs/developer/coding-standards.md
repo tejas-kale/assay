@@ -34,4 +34,4 @@ Beyond the limits, TypeScript runs typescript-eslint's `strictTypeChecked`, esli
 and, in `src/renderer`, eslint-plugin-react-hooks. Python runs ruff's `E`, `F`, `W`, `I`, `B`, `C90`, `PL`, `SIM`,
 `RUF`, `UP` and `N` at line length 120.
 
-All code meets them in full: there is no baseline of exceptions (`docs/process/testing.md`).
+All code meets them in full: there is no baseline of exceptions (`docs/developer/testing.md`).

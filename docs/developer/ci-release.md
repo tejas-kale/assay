@@ -11,7 +11,7 @@
 | `release` | macos-latest, environment `release` | a push to main, after both, unless the filter skips it | version, build, sign, notarize, fuse check, tag, GitHub release |
 
 Node comes from `.node-version` (22, the lowest supported); uv is pinned in `setup-uv`; Python and its dependencies
-come from `uv sync --frozen`. `scripts/workflow.test.ts` pins the workflow's security properties (docs/process/security.md).
+come from `uv sync --frozen`. `scripts/workflow.test.ts` pins the workflow's security properties (docs/developer/security.md).
 
 ## The release filter
 

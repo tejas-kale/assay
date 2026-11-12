@@ -110,8 +110,8 @@ export class Requests {
         return { proposals: (await this.trust.proposals()).map(({ name, kind, folder }) => ({ name, kind, folder })) }
       case 'trust-check':
         return okOrError(await this.trust.check(request.name))
-      case 'trust-answer':
-        return okOrError(await this.trust.answer(request.name, request.answer))
+      case 'trust-done':
+        return okOrError(await this.trust.done(request))
     }
   }
 

@@ -9,6 +9,7 @@ import type { cmdHold } from '../core/cmdHold.ts'
 import type { StripPrefs } from '../core/strip.ts'
 import type { TrustReview } from '../core/trust.ts'
 import type { PtySession } from './session.ts'
+import type { TrustLaunch } from './trustContext.ts'
 
 export type WindowCtx = {
   view: WebContentsView
@@ -16,6 +17,8 @@ export type WindowCtx = {
   id: number
   analysis: AnalysisRef | undefined
   session: PtySession | undefined
+  /** The analysis, root and ledger the session was launched with: the Trust tab's calls are bound to these, not to the settings now. */
+  trustLaunch?: TrustLaunch
   stopPoll: (() => void) | undefined
   /** The user (or Cmd+Q) asked to close while the session ran: close the view when it exits. */
   closeRequested: boolean

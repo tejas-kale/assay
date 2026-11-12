@@ -1,4 +1,4 @@
-// The overview documents of an analysis and its system (docs/slice-10.md, slice 10a): reading them with their
+// The overview documents of an analysis and its system (specs/slices/slice-10.md, slice 10a): reading them with their
 // baselines, the change signature the poll watches, and "Mark read".
 import { mkdir, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
@@ -17,7 +17,7 @@ async function readDoc(analysisPath: string, shown: { path: string; text: string
 }
 
 /**
- * The analysis overview, the system overview it names, and the baseline of each (docs/slice-10.md, slice 10a). Paths
+ * The analysis overview, the system overview it names, and the baseline of each (specs/slices/slice-10.md, slice 10a). Paths
  * in the state are from the root.
  */
 export async function readOverview(analysisPath: string): Promise<OverviewState> {

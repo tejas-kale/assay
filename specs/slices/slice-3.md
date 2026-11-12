@@ -1,8 +1,8 @@
 # Slice 3 spec: shared kernel, Python runs and Plots
 
 Implements "Build slices" item 3 of `HANDOFF.md`. Read `HANDOFF.md` first (it wins on product intent, and its
-"Decided while building" section overrides older parts of it), then `docs/slice-2b.md`: this slice extends its request
-and reply files to Python. `docs/slice-1.md` still holds for the layout of the code, IPC and tests.
+"Decided while building" section overrides older parts of it), then `specs/slices/slice-2b.md`: this slice extends its request
+and reply files to Python. `specs/slices/slice-1.md` still holds for the layout of the code, IPC and tests.
 
 ## Build environment
 

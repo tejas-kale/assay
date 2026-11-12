@@ -5,6 +5,7 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
+import { createHash } from 'node:crypto'
 
 import { Assay } from './assay.ts'
 import { byCodeUnit } from '../core/nameOrder.ts'
@@ -48,6 +49,8 @@ export type Fake = {
   analysis: string
   root: string
   venv: string
+  /** The app's side of Trust: a ledger entry for a proposal's files (basename to text), written to the session's ASSAY_LEDGER. */
+  approveInLedger: (kind: 'calculation' | 'dictionary', name: string, texts: Record<string, string>) => Promise<void>
   assay: Assay
   requests: Requests
   runs: (readonly string[])[]
@@ -158,10 +161,17 @@ async function scratch(files: Record<string, string>) {
   return { dir, analysis, root: join(dir, 'work'), venv: join(dir, 'opt/venv-assay'), pathOf, put }
 }
 
+/** The app's side of Trust: a ledger entry for a proposal's files (basename to text), written where the session reads it. */
+const ledgerWriter = (put: (path: string, text: string) => Promise<void>): Fake['approveInLedger'] => async (kind, name, texts) => {
+  const folder = kind === 'calculation' ? 'trusted' : 'dictionaries'
+  const files = Object.fromEntries(Object.entries(texts).map(([file, text]) => [`${folder}/${file}`, createHash('sha256').update(text).digest('hex')]))
+  await put('/ledger/ledger.json', JSON.stringify({ version: 1, entries: { [`${kind}:${name}`]: { kind, files, approvedAt: '2026-11-12T10:00:00.000Z', commit: '' } }, history: [] }))
+}
+
 export async function fake(files: Record<string, string> = { 'analysis.yaml': 'title: Feature\n' }, options: { currentCommit?: (name: string) => Promise<string | undefined> } = {}): Promise<Fake> {
   const { dir, analysis, root, venv, pathOf, put } = await scratch(files)
   const { script, runs, serves, proc } = scriptedProc()
-  const assay = new Assay({ analysis, root, venv, runner: RUNNER, tmp: join(dir, 'tmp'), proc, ...options })
+  const assay = new Assay({ analysis, root, venv, ledger: join(dir, 'ledger/ledger.json'), runner: RUNNER, tmp: join(dir, 'tmp'), proc, ...options })
   // The search line on a first run is tested on its own: set `assay.searchHinted = false` to get it.
   assay.searchHinted = true
   const requests = new Requests(assay)
@@ -170,6 +180,7 @@ export async function fake(files: Record<string, string> = { 'analysis.yaml': 't
     analysis,
     root,
     venv,
+    approveInLedger: ledgerWriter(put),
     assay,
     requests,
     runs,
@@ -187,10 +198,7 @@ export async function fake(files: Record<string, string> = { 'analysis.yaml': 't
     put,
     list: (under = '') => listFiles(analysis, under),
     status: () => readStatus(analysis),
-    call: async (tool, args = {}) => {
-      const { callTool } = await import('./tools.ts')
-      return callTool(assay, tool, args)
-    },
+    call: async (tool, args = {}) => (await import('./tools.ts')).callTool(assay, tool, args),
     done: async () => {
       requests.stop()
       assay.kernels.stop()

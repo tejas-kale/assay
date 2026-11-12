@@ -1,4 +1,4 @@
-// A SQL run: the SQL rules and the included trusted pieces first (`analysis_sql`, docs/slice-9.md and slice-10.md),
+// A SQL run: the SQL rules and the included trusted pieces first (`analysis_sql`, specs/slices/slice-9.md and slice-10.md),
 // then the statement saved under the next number and run on its engine.
 import { ANALYSIS_FILE } from '../core/analyses.ts'
 import { parseCliOutput, parsePsqlOutput, POSTGRES_MARK, readTarget } from '../core/engines.ts'
@@ -13,13 +13,13 @@ const HELPER_MS = 30_000
 /** psql's exit when the shell could not find it. */
 const NOT_FOUND = 127
 /** Only a launcher brings rds-psql; plain Claude Code has none. */
-export const NO_RDS_PSQL = 'Postgres runs need a launcher that provides rds-psql (docs/process/launch-contract.md).'
+export const NO_RDS_PSQL = 'Postgres runs need a launcher that provides rds-psql (docs/developer/launch-contract.md).'
 
 /** What `python -m analysis_sql lint` prints: rule breaks that stop the query, and warnings that do not. */
 export type SqlLint = { errors: string[]; warnings: string[] }
 export const SQL_RULES_REJECTED = 'Not run: the query breaks the SQL rules. Fix and send again:'
 
-/** What `python -m analysis_sql expand` prints (docs/slice-10.md, slice 10c). */
+/** What `python -m analysis_sql expand` prints (specs/slices/slice-10.md, slice 10c). */
 export type Expansion = {
   sql: string
   lint_sql: string
@@ -94,7 +94,7 @@ export type SqlRun = {
 }
 
 /**
- * Runs SQL as a new run. SQL that includes trusted pieces (`{{ name(...) }}`, docs/slice-10.md) is expanded first:
+ * Runs SQL as a new run. SQL that includes trusted pieces (`{{ name(...) }}`, specs/slices/slice-10.md) is expanded first:
  * the run keeps the SQL as written under a `-- built from:` line, and the expanded SQL, saved beside it, is what runs.
  * A failed expansion claims no number.
  */
@@ -137,7 +137,7 @@ export async function expandSql(assay: Assay, sql: string, engine: Engine): Prom
   return { errors: ['analysis_sql expand printed no expanded SQL'] }
 }
 
-/** The SQL rules' verdict on Claude's statement (docs/slice-9.md); undefined for one with no WITH and no JOIN. */
+/** The SQL rules' verdict on Claude's statement (specs/slices/slice-9.md); undefined for one with no WITH and no JOIN. */
 export async function lintSql(assay: Assay, sql: string, engine: Engine): Promise<SqlLint | { error: string } | undefined> {
   if (!/\b(with|join)\b/i.test(sql)) return undefined
   const found = await assay.helper<SqlLint>(['lint', engine], HELPER_MS, 'analysis_sql', sql)
@@ -146,7 +146,7 @@ export async function lintSql(assay: Assay, sql: string, engine: Engine): Promis
 }
 
 /**
- * The retype check (docs/slice-10.md, slice 10d): SQL that writes out a trusted definition's or block's logic by hand.
+ * The retype check (specs/slices/slice-10.md, slice 10d): SQL that writes out a trusted definition's or block's logic by hand.
  * A check that cannot run says nothing: the lint already reports a missing venv. Postgres is not checked: the
  * dictionary and trusted blocks describe Databricks tables.
  */

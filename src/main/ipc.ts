@@ -8,7 +8,7 @@ import { isIndex, parseRunRequest } from '../core/requests.ts'
 import { addThread, closeOpen, deleteClosed, deleteOpen, editOpen, moveOpen } from '../core/threads.ts'
 import type { ClosedThread } from '../core/threads.ts'
 import { CHANNELS } from '../shared/ipc.ts'
-import type { EditResult, NoteCreateResult, NoteReadResult, OpenResult, PlotResult, RequestResult, SetRootResult, SettingsView } from '../shared/ipc.ts'
+import type { EditResult, NoteCreateResult, NoteReadResult, OpenResult, PlotResult, RequestResult, SetRootResult, SettingsView, TrustAdoptResult, TrustApproveResult, TrustFilesResult, TrustUnadoptedResult } from '../shared/ipc.ts'
 import { analysisRoot, chooseRootPath, readSettings, saveRoot, saveStrip, saveTabs } from './settings.ts'
 import { listFiles, openChart, openFile, previewFile } from './browse.ts'
 import { fsPort, rootOf } from './fsAccess.ts'
@@ -17,6 +17,7 @@ import { readSearchContents } from './noteFiles.ts'
 import { markOverviewRead } from './overviewFiles.ts'
 import { editFile, writeRequest } from './requestFiles.ts'
 import { readPlot, readRun } from './runFiles.ts'
+import { trustAdoptFor, trustApproveFor, trustFilesFor, trustUnadoptedFor } from './trustContext.ts'
 import { addRootNote, readCitedRun, readRootNote, saveRootNote } from './notes.ts'
 import { doctorView, openBlocker, recheck } from './runtime.ts'
 import { forgetToken, requestRestart, saveToken, updateView } from './update.ts'
@@ -241,6 +242,26 @@ function registerRunIpc() {
   })
 }
 
+/**
+ * The Trust tab: the draft as main reads it, and the approval. Every call is bound to the root and analysis the
+ * window's Claude session was launched with (trustContext.ts), not to the current settings. Approving writes only the
+ * ledger, then tells the server with `trust-done`; the server copies and commits inside Claude's environment.
+ */
+function registerTrustIpc() {
+  handle(CHANNELS.trustFiles, (ctx, proposal): Promise<TrustFilesResult> | TrustFilesResult => trustFilesFor(ctx.trustLaunch, proposal))
+  handle(CHANNELS.trustApprove, async (ctx, raw): Promise<TrustApproveResult> => {
+    const result = await trustApproveFor(ctx.trustLaunch, raw, writeRequest)
+    await pushState(ctx)
+    return result
+  })
+  handle(CHANNELS.trustUnadopted, (ctx): Promise<TrustUnadoptedResult> | TrustUnadoptedResult => trustUnadoptedFor(ctx.trustLaunch))
+  handle(CHANNELS.trustAdopt, async (ctx, raw): Promise<TrustAdoptResult> => {
+    const result = await trustAdoptFor(ctx.trustLaunch, raw)
+    await pushState(ctx)
+    return result
+  })
+}
+
 function registerNoteIpc() {
   handle(CHANNELS.notesRead, (ctx, name): Promise<NoteReadResult> | NoteReadResult => {
     if (!ctx.analysis || typeof name !== 'string' || name.length > 255) return { ok: false, message: 'Invalid name' }
@@ -294,6 +315,7 @@ export function registerIpc() {
   registerThreadIpc()
   registerFileIpc()
   registerRunIpc()
+  registerTrustIpc()
   registerNoteIpc()
   registerWindowIpc()
 }

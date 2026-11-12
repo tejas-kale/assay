@@ -122,12 +122,12 @@ test('each request type through the files, including the trust ones and an answe
   expect((await ask({ kind: 'restart' })).error).toBe(VENV_ASSAY_HINT)
   expect((await ask({ kind: 'replay', runs: [1] })).error).toBe('Run 001 is not a Python run.')
   expect(await ask({ kind: 'trust-list' })).toMatchObject({ proposals: [{ name: 'ones', kind: 'calculation', folder: 'lib/trusted' }] })
-  expect(await ask({ kind: 'trust-answer', name: 'ones', answer: 'trust' })).toMatchObject({ error: 'No review of ones is waiting for an answer.' })
+  expect(await ask({ kind: 'trust-done', name: 'ones', outcome: 'approved' })).toMatchObject({ error: 'No review of ones is waiting for an answer.' })
   expect(await ask({ kind: 'trust-check', name: 'ones' })).toMatchObject({ ok: true })
   // Without a venv the helper cannot check it: the review ends in error, written to the trust file.
   const review = async () => JSON.parse((await s.file('.assay/trust/ones.json')) ?? '{}') as { state?: string }
   expect(await until(async () => ['failed', 'error'].includes((await review()).state ?? ''), 120_000)).toBe(true)
-  expect(await ask({ kind: 'trust-answer', name: 'ones', answer: 'trust' })).toMatchObject({ error: 'No review of ones is waiting for an answer.' })
+  expect(await ask({ kind: 'trust-done', name: 'ones', outcome: 'approved' })).toMatchObject({ error: 'No review of ones is waiting for an answer.' })
   // Nothing reached the shared trusted/ folder.
   expect(await readFile(join(s.root, 'trusted/ones.sql'), 'utf8').catch(() => undefined)).toBeUndefined()
   // The user's runs, for the next prompt's notice.

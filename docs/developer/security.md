@@ -1,7 +1,7 @@
 # Security
 
 What Assay defends, where its defences stop, and the risks it accepts. The audit that shaped this is
-`docs/security-audit-2026-11.md`; read this before changing a hook, a tool, an IPC handler, the updater or CI.
+`specs/audits/security-audit-2026-11.md`; read this before changing a hook, a tool, an IPC handler, the updater or CI.
 
 ## Threats
 
@@ -20,11 +20,23 @@ Claude's `python` tool runs any code Claude writes, by design, in a kernel that 
 hook can stop code that already runs. So Assay's rules hold in two strengths:
 
 - **Against a Claude that follows the rules**, everywhere: the hooks, the tools and the prompt keep it on the path.
-- **Against code Claude was steered into running**, only where a launcher contains it (docs/process/launch-contract.md):
+- **Against code Claude was steered into running**, only where a launcher contains it (docs/developer/launch-contract.md):
   the Podman wrapper, or Claude Code's own sandbox. Assay does not contain code execution; the launcher does.
 
 With plain Claude Code and no sandbox, an injected Claude can do whatever the user's account can. That is the user's
 choice of launcher, not a hole in Assay.
+
+The trust ledger (`ASSAY_LEDGER`, specs/trust-ledger.md) lives in the app's data folder and only the app writes it; a launcher must mount the `trust-ledger/` folder (or at least `ASSAY_LEDGER`'s file) read-only like `ASSAY_BACKEND`, and without a launcher Claude's code can write it.
+
+The app's main process runs on the host, outside the launcher's container, so it never touches what Claude's side can
+write: it runs no git in the root (`.git/config`, hooks and `.gitattributes` are Claude-writable, so git there is host
+code execution) and writes nothing into `trusted/` or `dictionaries/` (a directory link planted there could redirect a
+host write, for example a proposal named `sitecustomize` into a Python path). On Trust, main reads the draft (regular
+files, no links, the proposal's own names), compares the hashes the user was shown, and writes the ledger entry. The
+server, inside Claude's environment, then copies the draft into the shared folder and commits it there; it does so only
+when the ledger holds this proposal with the draft's exact hashes, so a forged `trust-done` copies and announces
+nothing. If the copy is wrong the files are simply not trusted. Each Trust-tab call is bound to the root and analysis
+its window's session was launched with, not to the settings root now.
 
 ## What Assay guarantees
 
@@ -50,26 +62,26 @@ choice of launcher, not a hole in Assay.
 - **Releases come from main.** Only the release job names the signing secrets, through the `release` environment that
   only main may use; its checkout keeps no token; no dependency's install script runs there; the built app's fuses
   are checked (`scripts/fuse-check.ts`). Every action is pinned by commit, uv and pip-audit by version.
+- **Trusted means approved in the app.** A calculation or dictionary file is trusted only when its sha256 is in the
+  trust ledger (`ASSAY_LEDGER`) as it is now. The listing (`analysis_library`), the `trusted` tool, trusted runs,
+  includes of blocks and definitions and the prompt hook's trusted list all read the ledger; the git commit is shown,
+  never trusted. No variable, no file or a damaged file trusts nothing, and the listing says why. Files trusted by a
+  commit before the ledger stay untrusted until the user adopts them in the Trust tab, one group at a time after
+  looking at its files.
 - **Dependencies are locked and audited.** Both lockfiles hold hashes and only the official registries; CI runs
   `npm audit --audit-level=high` and `pip-audit --require-hashes` on every Python group.
 
 `scripts/workflow.test.ts`, `scripts/fuse-check.test.ts` and the tests named in the audit pin each of these.
 
-## Open decisions
+## Known gaps
 
-PI-1 (critical) and PI-2 (high) are open: a review's answer arrives as a file the kernel can also write, and "trusted"
-means "committed in the root's git", which the kernel can also do. Both need trust to rest on something only the app
-writes, out of reach of the launcher's container:
+- A forged `sql` or `python` request file can make a run show as the user's (PI-1, run authorship).
+- A trusted calculation can import a module from `trusted/` only if that file is approved, and the app approves only
+  a proposal's own files, so a shared helper has to be proposed as a calculation of its own.
+- The trust ledger and the `app://assay` scheme (UI-3) are tested in code only, not yet in the running app on a Mac.
 
-- **The app answers on the host.** Main copies and commits the approved files itself when the user presses Trust;
-  the server keeps the check but loses `trust-answer`.
-- **Trust is recorded where Claude cannot write.** Either the launcher mounts `trusted/`, `dictionaries/` and the
-  root's `.git` read-only, or the app keeps the approved hashes in its own data folder, mounted read-only like
-  `ASSAY_BACKEND`, and a calculation is trusted only when its hash is there.
-
-UI-3 (medium) is fixed in code, untried on a Mac: the packaged renderer loads from the `app://assay` scheme
-(`src/core/appProtocol.ts` decides which file a request may read, `src/main/appScheme.ts` serves it), so `'self'` means
-the app alone, and `grantFileProtocolExtraPrivileges` is off. It needs the app run on a Mac or in CI's smoke test.
+Findings, their status and planned fixes: specs/audits/security-audit-2026-11.md. The trust ledger's design:
+specs/trust-ledger.md.
 
 ## Accepted lows
 
@@ -83,5 +95,5 @@ the app alone, and `grantFileProtocolExtraPrivileges` is off. It needs the app r
 | L-6 | The pinned setuptools build backend is fetched by version, not by hash. | uv's build constraints pin versions only; PyPI never lets a published file be replaced, so a pinned version's files cannot change under it. |
 | L-7 | The kernel puts the analysis folder first on `sys.path`, so a stray `pandas.py` shadows pandas. (DEP-8) | ipykernel puts the working folder first anyway, and the kernel runs Claude's code by design; moving it would gain nothing. Assay's own helpers run with `-I`, so this reaches only the kernel (PI-9). |
 | L-8 | `npm audit` reports moderate advisories (minimatch ReDoS) in ESLint, typescript-eslint and electron-builder. | Build and lint tools only, never shipped; their glob patterns come from the repo. The CI gate is high and above. |
-| L-9 | A symlinked `.assay/requests/` sends the app's request files elsewhere. | `.assay/` is refused to Write by name and through any link (PI-6). The channel's trust requests are PI-1, an open decision. |
+| L-9 | A symlinked `.assay/` or `.assay/requests/` could send the app's request files elsewhere. | Refused: before each request the app checks that both are real folders (a link or a file there fails the send), creates them only as real folders, and writes the file with a no-follow exclusive create, then renames it inside the checked folder. What remains is a swap of the folder between the check and the write; the file written is a request that carries no power to trust anything (PI-1). |
 | L-10 | The Write guard compares paths without Unicode normalisation (`trusted​/` passes) and does not guard paths outside the root such as `~/.claude/settings.json`. | A zero-width name does not reach the real folder; paths outside the root are the launcher's and Claude Code's permissions to guard. |

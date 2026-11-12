@@ -100,10 +100,12 @@ test('parseRunRequest refuses bad input with a reason', () => {
 test('the trust requests are checked and written; a reply may carry the proposals', () => {
   assert.deepEqual(parseRunRequest({ kind: 'trust-list' }), { kind: 'trust-list' })
   assert.deepEqual(parseRunRequest({ kind: 'trust-check', name: 'main.panel.sites' }), { kind: 'trust-check', name: 'main.panel.sites' })
-  assert.deepEqual(parseRunRequest({ kind: 'trust-answer', name: 'f', answer: 'reject' }), { kind: 'trust-answer', name: 'f', answer: 'reject' })
+  assert.deepEqual(parseRunRequest({ kind: 'trust-done', name: 'f', outcome: 'rejected' }), { kind: 'trust-done', name: 'f', outcome: 'rejected' })
+  // The renderer cannot report an approval, and the old answer request is gone (PI-1).
+  assert.deepEqual(parseRunRequest({ kind: 'trust-done', name: 'f', outcome: 'approved' }), { error: 'Invalid outcome' })
+  assert.deepEqual(parseRunRequest({ kind: 'trust-answer', name: 'f', answer: 'trust' }), { error: 'Invalid request' })
   assert.deepEqual(parseRunRequest({ kind: 'trust-check', name: '../x' }), { error: 'Invalid proposal' })
-  assert.deepEqual(parseRunRequest({ kind: 'trust-answer', name: 'f', answer: 'yes' }), { error: 'Invalid answer' })
-  assert.deepEqual(JSON.parse(requestText('i', { kind: 'trust-answer', name: 'f', answer: 'trust' })), { id: 'i', kind: 'trust-answer', name: 'f', answer: 'trust' })
+  assert.deepEqual(JSON.parse(requestText('i', { kind: 'trust-done', name: 'f', outcome: 'approved', message: 'm' })), { id: 'i', kind: 'trust-done', name: 'f', outcome: 'approved', message: 'm' })
   assert.deepEqual(parseReply('{"id":"a","proposals":[{"name":"f","kind":"calculation","folder":"lib/trusted"},{"name":3},{"name":"m.p.t","kind":"dictionary"}]}'), {
     id: 'a',
     proposals: [
@@ -170,12 +172,14 @@ test('a request file that is wrong says what is missing', () => {
   assert.equal(err('{}'), 'Unknown request kind: undefined.')
 })
 
-test('a trust request file names its proposal in lower case, and the answer is trust or reject', () => {
+test('a trust request file names its proposal in lower case; trust-done reports an outcome and trust-answer is refused', () => {
   assert.deepEqual(parseRequestFile('{"kind":"trust-check","name":"  Main.Panel "}'), { kind: 'trust-check', name: 'main.panel' })
-  assert.deepEqual(parseRequestFile('{"kind":"trust-answer","name":"F","answer":"trust"}'), { kind: 'trust-answer', name: 'f', answer: 'trust' })
-  assert.deepEqual(parseRequestFile('{"kind":"trust-answer","name":"f","answer":"yes"}'), { error: 'The answer is trust or reject.' })
+  assert.deepEqual(parseRequestFile('{"kind":"trust-done","name":"F","outcome":"approved","message":"ok"}'), { kind: 'trust-done', name: 'f', outcome: 'approved', message: 'ok' })
+  assert.deepEqual(parseRequestFile('{"kind":"trust-done","name":"f","outcome":"rejected"}'), { kind: 'trust-done', name: 'f', outcome: 'rejected' })
+  assert.deepEqual(parseRequestFile('{"kind":"trust-done","name":"f","outcome":"yes"}'), { error: 'The outcome is approved, unchanged or rejected.' })
+  assert.deepEqual(parseRequestFile('{"kind":"trust-answer","name":"f","answer":"trust"}'), { error: 'Unknown request kind: trust-answer.' })
   assert.deepEqual(parseRequestFile('{"kind":"trust-check","name":" "}'), { error: 'Name the proposal.' })
-  assert.deepEqual(parseRequestFile('{"kind":"trust-answer","name":5,"answer":"trust"}'), { error: 'Name the proposal.' })
+  assert.deepEqual(parseRequestFile('{"kind":"trust-done","name":5,"outcome":"approved"}'), { error: 'Name the proposal.' })
 })
 
 test('only interrupts, restarts, trust requests and lineage are urgent', () => {

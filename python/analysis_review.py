@@ -16,6 +16,7 @@ from typing import Any
 
 import yaml
 
+import analysis_child
 import analysis_runner
 import analysis_sql
 from analysis_blocks import Block, contract_step, grain_step, rebuild_step
@@ -25,7 +26,6 @@ from analysis_calc import (
     block_contract,
     cell,
     convert,
-    describe,
     placeholders,
     plural,
     split_template,
@@ -146,7 +146,8 @@ class _CalculationCheck:
 
     def run(self) -> None:
         try:
-            found = describe(self.folder, self.name)
+            # A Python proposal is imported in a child, never in this process, which prints the events.
+            found = analysis_child.describe(self.folder, self.name)
         except Exception as error:
             self.step({"step": "form", "ok": False, "text": str(error)})
             return
@@ -208,7 +209,7 @@ class _CalculationCheck:
     def _live(self, live_args: dict[str, Any]) -> None:
         try:
             if self.found["kind"] == "python":
-                table = analysis_runner.run(self.folder, self.name, live_args, self.analysis)
+                table = analysis_child.run(self.folder, self.name, live_args, self.analysis)
             else:
                 # Already expanded against the analysis root: the private copy has no shared folder beside it.
                 values = convert(self.found["parameters"], live_args)

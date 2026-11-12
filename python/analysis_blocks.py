@@ -1,4 +1,4 @@
-"""The Check's steps for a block (docs/slice-10.md, slice 10b).
+"""The Check's steps for a block (specs/slices/slice-10.md, slice 10b).
 
 A block is a SQL template whose front matter has a ``block:`` contract, params -> grain -> columns. It joins tables at
 a fixed grain, is about 30 lines at most, and is checked once against an independent rebuild, ``<name>.rebuild.sql``,

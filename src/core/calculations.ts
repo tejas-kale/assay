@@ -133,11 +133,11 @@ export type Calculation = {
   parameters: Param[]
   /** A template's SQL, without its front matter. */
   sql?: string
-  /** A block's contract (docs/slice-10.md): the columns that identify one row, and every output column in order. */
+  /** A block's contract (specs/slices/slice-10.md): the columns that identify one row, and every output column in order. */
   block?: { grain: string[]; columns: string[] }
-  /** The commit that last changed its file, 12 hex digits; '' when never committed. */
+  /** The commit that last changed its file, 12 hex digits; '' when never committed. For display: git never decides trust. */
   commit: string
-  /** Its file differs from that commit, or was never committed: not trusted until approved again. */
+  /** Its file's bytes are not in the app's trust ledger (never approved, or changed since): not trusted until approved in the app. */
   dirty: boolean
 }
 export type CalculationList = { calculations: Calculation[]; problems: string[] }

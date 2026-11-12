@@ -1,4 +1,4 @@
-// What the app does about its backend at launch and on Recheck (docs/slice-11.md, 11b), as decisions on its state:
+// What the app does about its backend at launch and on Recheck (specs/slices/slice-11.md, 11b), as decisions on its state:
 // which line it shows while it prepares, and when a venv build may start.
 import type { VenvBuild } from './venv.ts'
 

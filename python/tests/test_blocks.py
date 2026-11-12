@@ -1,4 +1,4 @@
-"""Tests for trusted blocks (docs/slice-10.md, slice 10b): <venv>/bin/python -m pytest python/tests"""
+"""Tests for trusted blocks (specs/slices/slice-10.md, slice 10b): <venv>/bin/python -m pytest python/tests"""
 
 from __future__ import annotations
 
