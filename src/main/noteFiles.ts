@@ -1,5 +1,7 @@
 // The root notes in `<root>/notes` and the `notes:` lists of an analysis, read for the state and for universal search.
-import { readFile, readdir, stat } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { lstat, open, readFile, readdir } from 'node:fs/promises'
+import type { Stats } from 'node:fs'
 import { join } from 'node:path'
 
 import { ANALYSIS_FILE } from '../core/analyses.ts'
@@ -17,10 +19,29 @@ const MAX_SEARCH_BYTES = 256 * 1024
 
 export const notesDir = (root: string) => join(root, NOTES_DIR)
 
-/** The note files in `<root>/notes`, sorted by name (so by ID). */
+/**
+ * The one reader of a note file, for every route (read, list, signature, search): a regular file only. A note that is
+ * a link may point anywhere on the Mac, so it is never opened (audit UI-6). Undefined when it is not a plain file.
+ */
+export async function readPlainNote(path: string, max: number): Promise<{ text: string; cut: boolean; info: Stats } | undefined> {
+  const info = await lstat(path)
+  if (!info.isFile()) return undefined
+  // O_NOFOLLOW closes the gap between the lstat and the open: a file swapped for a link in between is refused.
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
+  try {
+    const buffer = Buffer.alloc(Math.min(info.size, max))
+    await file.read(buffer, 0, buffer.length, 0)
+    return { text: buffer.toString('utf8'), cut: info.size > max, info }
+  } finally {
+    await file.close()
+  }
+}
+
+/** The note files in `<root>/notes`, sorted by name (so by ID). A link is not a note file. */
 export async function noteNames(root: string): Promise<string[]> {
   try {
-    return (await readdir(notesDir(root))).filter(name => parseNoteFileName(name)).toSorted(byCodeUnit)
+    const entries = await readdir(notesDir(root), { withFileTypes: true })
+    return entries.filter(entry => entry.isFile() && parseNoteFileName(entry.name)).map(entry => entry.name).toSorted(byCodeUnit)
   } catch {
     return []
   }
@@ -35,12 +56,13 @@ export async function readRootNotes(root: string): Promise<RootNote[]> {
     (await noteNames(root)).map(async name => {
       const path = join(notesDir(root), name)
       try {
-        const info = await stat(path)
+        const info = await lstat(path)
         const signature = statSignature(info)
         const cached = parsed.get(path)
         if (cached?.signature === signature) return cached.note
-        const text = (await readFile(path, 'utf8')).slice(0, MAX_NOTE_BYTES)
-        const note = parseRootNote(name, text, info)
+        const read = await readPlainNote(path, MAX_NOTE_BYTES)
+        if (!read) throw new Error('not a plain file')
+        const note = parseRootNote(name, read.text, read.info)
         parsed.set(path, { signature, note })
         return note
       } catch {
@@ -55,7 +77,7 @@ export async function readRootNotes(root: string): Promise<RootNote[]> {
 /** A change signature of `notes/` (names, sizes, mtimes) for the poll: editing a file in place does not touch the folder. */
 export async function notesSignature(root: string): Promise<string> {
   const parts = await Promise.all(
-    (await noteNames(root)).map(async name => `${name}:${statSignature(await stat(join(notesDir(root), name)).catch(() => undefined))}`),
+    (await noteNames(root)).map(async name => `${name}:${statSignature(await lstat(join(notesDir(root), name)).catch(() => undefined))}`),
   )
   return parts.join('|')
 }
@@ -86,7 +108,7 @@ export async function readSearchContents(folder: string): Promise<SearchContents
   const root = rootOf(folder)
   const [names, runs] = await Promise.all([noteNames(root), readQueryNames(folder).then(parseRuns)])
   const notes = await Promise.all(
-    names.map(async name => ({ name, text: await readHead(join(notesDir(root), name), MAX_SEARCH_BYTES).then(r => r.text, () => undefined) })),
+    names.map(async name => ({ name, text: await readPlainNote(join(notesDir(root), name), MAX_SEARCH_BYTES).then(r => r?.text, () => undefined) })),
   )
   const codes = await Promise.all(runs.map(async run => ({ number: run.number, code: await searchableCode(folder, run) })))
   return {

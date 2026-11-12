@@ -12,7 +12,7 @@ import { StaleEdit } from '../core/errors.ts'
 import { noteCitations, parseNoteFileName, writeRootNote } from '../core/rootNotes.ts'
 import type { EditResult, NoteCreateResult, NoteReadResult, RunView } from '../shared/ipc.ts'
 import { currentCommit } from '../shared/trustedCommit.ts'
-import { notesDir } from './noteFiles.ts'
+import { notesDir, readPlainNote } from './noteFiles.ts'
 import { editFile } from './requestFiles.ts'
 import { readRun } from './runFiles.ts'
 
@@ -37,10 +37,10 @@ export async function readRootNote(root: string, name: string): Promise<NoteRead
   if (!parseNoteFileName(name)) return { ok: false, message: 'Not a note file' }
   try {
     const path = join(notesDir(root), name)
-    const info = await lstat(path)
-    if (info.isSymbolicLink()) return { ok: false, message: LINKED }
-    if (info.size > MAX_NOTE_BYTES) return { ok: false, message: 'The note is too large to show' }
-    const text = await readFile(path, 'utf8')
+    const read = await readPlainNote(path, MAX_NOTE_BYTES)
+    if (!read) return { ok: false, message: LINKED }
+    if (read.cut) return { ok: false, message: 'The note is too large to show' }
+    const { text } = read
     const cited = noteCitations(text)
     const labels: Record<string, CitationLabel> = Object.fromEntries(await citationLabels(labelDeps(root), cited))
     return { ok: true, text, labels }
