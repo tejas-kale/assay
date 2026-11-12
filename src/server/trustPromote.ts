@@ -1,6 +1,6 @@
 // Approving a proposal: the files as checked are copied into the shared folder and committed there alone; the draft
 // files that still hold what was approved are then removed.
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve, sep } from 'node:path'
 
 import type { CheckAnswer } from '../core/calculations.ts'
@@ -34,10 +34,24 @@ function refusedName(review: Review, answer: CheckAnswer): string | undefined {
   return [...(answer.files ?? []), ...Object.keys(answer.texts ?? {})].find(file => !allowed.includes(file) || !isInside(file))
 }
 
+const isLink = (path: string) => lstat(path).then(
+  stat => stat.isSymbolicLink(),
+  () => false,
+)
+
+/** What approving must not write through: the target folder or one of the files in it being a link that leads elsewhere. */
+async function linkedName(review: Review, answer: CheckAnswer): Promise<string | undefined> {
+  if (await isLink(review.dest)) return `${review.dest} is a link: approving will not write through it.`
+  for (const file of answer.files ?? []) if (await isLink(`${review.dest}/${file}`)) return `${JSON.stringify(file)} is a link: approving will not write through it.`
+  return undefined
+}
+
 /** Copies the proposal's files into the shared folder exactly as the check read them, whatever happened to the draft since. */
 async function copyFiles(review: Review, answer: CheckAnswer): Promise<{ failed: string } | { written: Written[] }> {
   const refused = refusedName(review, answer)
   if (refused !== undefined) return { failed: `${JSON.stringify(refused)} is not a file this proposal may have.` }
+  const linked = await linkedName(review, answer)
+  if (linked !== undefined) return { failed: linked }
   const written: Written[] = []
   for (const file of answer.files ?? []) {
     const text = answer.texts?.[file]
