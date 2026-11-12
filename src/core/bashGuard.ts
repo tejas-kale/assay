@@ -33,6 +33,7 @@ class SegmentReader {
   private isWord = false
   private isPiped = false
   private hasRedirect = false
+  private isTarget = false
   private quote = ''
   private readonly text: string
 
@@ -87,6 +88,8 @@ class SegmentReader {
         return i
       case '<':
         return this.stepRedirect(i)
+      case '>':
+        return this.stepOutput(i)
       default:
         this.word += char
         this.isWord = true
@@ -106,11 +109,31 @@ class SegmentReader {
     this.hasRedirect = true
     let last = i
     while (this.text[last + 1] === '<') last++
+    this.isTarget = this.text[last + 1] !== '('
+    return last
+  }
+
+  /** `>`, `>>`, `>|`, `>&`, with a leading file descriptor: the next word is the target, not part of the command. `>(...)` is left alone. */
+  private stepOutput(i: number): number {
+    if (this.text[i + 1] === '(') {
+      this.word += '>'
+      this.isWord = true
+      return i
+    }
+    if (/^\d+$/.test(this.word)) {
+      this.word = ''
+      this.isWord = false
+    }
+    this.endWord()
+    let last = i
+    while (['>', '|', '&'].includes(this.text[last + 1] ?? '')) last++
+    this.isTarget = true
     return last
   }
 
   private endWord() {
-    if (this.isWord) this.words.push(this.word)
+    if (this.isWord && this.isTarget) this.isTarget = false
+    else if (this.isWord) this.words.push(this.word)
     this.word = ''
     this.isWord = false
   }
@@ -121,6 +144,7 @@ class SegmentReader {
     this.words = []
     this.isPiped = nextPiped
     this.hasRedirect = false
+    this.isTarget = false
     return last
   }
 }
@@ -200,6 +224,15 @@ function splitStringAt(words: readonly string[], at: number): readonly string[] 
   return [...(shellSegments(text)[0]?.words ?? []), ...words.slice(separate ? at + 2 : at + 1)]
 }
 
+/** How many words an option takes: two when it, or the last of its combined short options (`-iu`), takes a value as the next word. */
+function optionWidth(option: string, takesValue: ReadonlySet<string>): number {
+  if (takesValue.has(option)) return 2
+  if (option.startsWith('--')) return 1
+  const letters = option.slice(1)
+  const at = Array.from({ length: letters.length }, (_, k) => k).findIndex(k => takesValue.has(`-${letters.charAt(k)}`))
+  return at === letters.length - 1 ? 2 : 1
+}
+
 /** The words after a wrapper's own options (and its operand, for `timeout`). */
 function afterWrapper(wrapper: string, words: readonly string[]): readonly string[] {
   const takesValue = WRAPPERS.get(wrapper) ?? new Set<string>()
@@ -212,7 +245,7 @@ function afterWrapper(wrapper: string, words: readonly string[]): readonly strin
     }
     const split = wrapper === 'env' ? splitStringAt(words, at) : undefined
     if (split) return split
-    at += takesValue.has(option) ? 2 : 1
+    at += optionWidth(option, takesValue)
   }
   return words.slice(TAKES_OPERAND.has(wrapper) ? at + 1 : at)
 }
@@ -230,8 +263,14 @@ function withoutPrefixes(all: readonly string[]): readonly string[] {
   }
 }
 
-/** Whether a script given as text runs Python, up to three levels deep. */
-const scriptRunsPython = (script: string, depth: number) => depth < 3 && shellSegments(script).some(inner => segmentRunsPython(inner, depth + 1))
+// Nesting the parser follows; anything deeper counts as Python, so the guard fails closed.
+const MAX_DEPTH = 8
+// A script the parser reads as Python, standing for a construct it cannot follow.
+const TOO_DEEP = 'python -c 1'
+
+/** Whether a script given as text runs Python; a script nested deeper than the parser follows counts as running it. */
+const scriptRunsPython = (script: string, depth: number) =>
+  depth >= MAX_DEPTH || shellSegments(script).some(inner => segmentRunsPython(inner, depth + 1))
 
 /**
  * The script of `bash -c '<script>'` (`-lc`, `-c --` too) or `eval ...`, or of a quoted command a wrapper runs through
@@ -276,6 +315,7 @@ function segmentRunsPython(segment: Segment, depth = 0): boolean {
   const script = scriptOf(program, args)
   if (script !== undefined) return scriptRunsPython(script, depth)
   const executed = findExecWords(program, args)
+  if (executed && depth >= MAX_DEPTH) return true
   if (executed) return segmentRunsPython({ words: executed, isPiped: false, hasRedirect: false }, depth + 1)
   const viaUv = uvRunsPython(program, args, isFed)
   if (viaUv !== undefined) return viaUv
@@ -286,12 +326,14 @@ function segmentRunsPython(segment: Segment, depth = 0): boolean {
 function substitutions(command: string): string[] {
   const found: string[] = []
   let text = command
-  for (let pass = 0; pass < 5; pass++) {
+  for (let pass = 0; pass < MAX_DEPTH; pass++) {
     const inner = [...text.matchAll(/[$<>]\(([^()]*)\)|`([^`]*)`/g)]
     if (inner.length === 0) break
     for (const match of inner) found.push(match[1] ?? match[2] ?? '')
     text = text.replace(/[$<>]\(([^()]*)\)|`([^`]*)`/g, ' x ')
   }
+  // Still nested after the last pass: the guard cannot follow it, so it counts as Python.
+  if (/[$<>]\([^()]*\)|`[^`]*`/.test(text)) found.push(TOO_DEEP)
   return found
 }
 

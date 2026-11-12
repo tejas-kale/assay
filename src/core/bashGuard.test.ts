@@ -255,3 +255,39 @@ test('a trailing backslash and an unclosed quote end the command without a crash
   expectDecisions(false, ['echo \\', 'echo "abc', "echo 'abc", 'python -m "pytest'])
   expectDecisions(true, ['python x.py \\', 'python "x.py'])
 })
+
+test('PI-5: combined short wrapper options that end in an option taking a value do not hide the program', () => {
+  expectDecisions(true, [
+    'env -iu HOME /opt/py/bin/python -B -c 1',
+    'env -iuHOME python x.py',
+    'sudo -Eu root python x.py',
+    'nice -n5 python x.py',
+    'xargs -0n 1 python x.py',
+    'timeout -vk 5 9 python x.py',
+    'find . -exec python x.py {} +',
+  ])
+  expectDecisions(false, ['env -i FOO=1 ls', 'env -iu HOME ls', 'sudo -Eu root ls', 'nice -n5 ls', 'xargs -0n 1 echo'])
+})
+
+test('PI-5: a leading redirection does not hide the program', () => {
+  expectDecisions(true, [
+    '>/dev/null python -B -c 1',
+    '2>&1 python -c 1',
+    '<in python -c 1',
+    '< in python x.py',
+    '2> err python x.py',
+    '>> log python x.py',
+    '&>/dev/null python x.py',
+    'FOO=1 >/dev/null python -c 1',
+  ])
+  expectDecisions(false, ['>/dev/null ls', '2>&1 ls', '<in cat', '> out echo hi', 'ls 2>&1', '>/dev/null python -m pytest'])
+})
+
+test('PI-5: shell wrappers nested beyond the old depth limit are still refused, and too deep counts as Python', () => {
+  const quoted = (script: string) => "'" + script.replaceAll("'", "'\\''") + "'"
+  const wrap = (script: string, times: number): string => (times === 0 ? script : wrap('bash -c ' + quoted(script), times - 1))
+  expectDecisions(true, [wrap('python -c 1', 3), wrap('python -c 1', 5)])
+  expectDecisions(true, [wrap('ls', 12)])
+  expectDecisions(false, [wrap('ls', 2)])
+  expectDecisions(true, ['echo $(echo $(echo $(echo $(echo $(echo $(echo $(python x.py)))))))'])
+})
