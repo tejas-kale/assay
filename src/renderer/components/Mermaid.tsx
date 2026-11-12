@@ -18,7 +18,8 @@ let queue: Promise<unknown> = Promise.resolve()
 /** The diagram as SVG text, drawn in the app's colours for `mode`, or mermaid's error message. */
 export function renderMermaid(text: string, mode: ThemeMode): Promise<Rendered> {
   const job = queue.then(async (): Promise<Rendered> => {
-    const mermaid = await (mermaidModule ??= import('mermaid').then(m => m.default))
+    mermaidModule ??= import('mermaid').then(m => m.default)
+    const mermaid = await mermaidModule
     const ui = THEMES[mode].ui
     mermaid.initialize({
       startOnLoad: false,
@@ -39,7 +40,8 @@ export function renderMermaid(text: string, mode: ThemeMode): Promise<Rendered> 
         textColor: ui.text,
       },
     })
-    const id = `mermaid-${++counter}`
+    counter += 1
+    const id = `mermaid-${String(counter)}`
     try {
       const { svg } = await mermaid.render(id, text)
       return { svg }
@@ -59,7 +61,7 @@ export function renderMermaid(text: string, mode: ThemeMode): Promise<Rendered> 
  * `onNodeClick(i)` hears a click on a flowchart node whose id is our `n<i>`: the click handler is on the container, so
  * mermaid's strict mode (no click bindings in the SVG) stays on.
  */
-export function MermaidDiagram({ text, onNodeClick }: { text: string; onNodeClick?: (node: number) => void }) {
+export function MermaidDiagram({ text, onNodeClick }: Readonly<{ text: string; onNodeClick?: (node: number) => void }>) {
   const [mode, setMode] = useState(currentMode)
   const [out, setOut] = useState<{ for: string; value: Rendered }>()
   useEffect(() => onModeChange(setMode), [])

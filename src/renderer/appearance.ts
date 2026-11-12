@@ -8,9 +8,13 @@ const media = window.matchMedia('(prefers-color-scheme: dark)')
 export const currentMode = (): ThemeMode => (media.matches ? 'dark' : 'light')
 
 export function onModeChange(cb: (mode: ThemeMode) => void): () => void {
-  const listener = () => cb(currentMode())
+  const listener = () => {
+    cb(currentMode())
+  }
   media.addEventListener('change', listener)
-  return () => media.removeEventListener('change', listener)
+  return () => {
+    media.removeEventListener('change', listener)
+  }
 }
 
 function applyUi(mode: ThemeMode) {

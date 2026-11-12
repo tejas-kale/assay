@@ -20,6 +20,7 @@
 // a terminal keeps the theme it was created with and everything else still works.
 import * as ghostty from 'ghostty-web'
 
+import { cellAt, fitGrid, reportedSize, sizeChanged } from '../core/terminalGrid.ts'
 import { inputOverride, leavesTerminal, wheelLines, wheelReport } from '../core/terminalKeys.ts'
 import { MONO_FONT, THEMES, cellRecolor, minimumContrast } from '../core/theme.ts'
 import type { CellColors, ThemeMode } from '../core/theme.ts'
@@ -31,6 +32,7 @@ const FONT_FAMILY = MONO_FONT
 // descender, so its rows clip g, j and y and set lines touching; `roomyRows` replaces that.
 const LINE_HEIGHT = 1.35
 const RESIZE_DEBOUNCE_MS = 100
+const FONT_SPEC = `${String(FONT_SIZE)}px ${FONT_FAMILY}`
 
 export type TerminalSize = { cols: number; rows: number }
 
@@ -90,7 +92,9 @@ function followSystemTheme(term: RawTerminal, created: ThemeMode): () => void {
   let recolor: ((cells: CellColors[]) => CellColors[]) | undefined
   // Always on, after the theme swap: text a program drew in its own colour must still read.
   let legible = minimumContrast(original)
-  renderer.renderLine = (cells, y, cols) => drawLine.call(renderer, legible(recolor ? recolor(cells) : cells), y, cols)
+  renderer.renderLine = (cells, y, cols) => {
+    drawLine.call(renderer, legible(recolor ? recolor(cells) : cells), y, cols)
+  }
 
   return onModeChange(mode => {
     recolor = mode === created ? undefined : cellRecolor(original, THEMES[mode].terminal)
@@ -105,7 +109,7 @@ function followSystemTheme(term: RawTerminal, created: ThemeMode): () => void {
 function cellMetrics(): CellMetrics {
   const ctx = document.createElement('canvas').getContext('2d')
   if (!ctx) return { width: Math.ceil(FONT_SIZE * 0.6), height: Math.ceil(FONT_SIZE * LINE_HEIGHT), baseline: FONT_SIZE }
-  ctx.font = `${FONT_SIZE}px ${FONT_FAMILY}`
+  ctx.font = FONT_SPEC
   const m = ctx.measureText('M')
   const ascent = m.fontBoundingBoxAscent || FONT_SIZE * 0.8
   const descent = m.fontBoundingBoxDescent || FONT_SIZE * 0.2
@@ -116,7 +120,7 @@ function cellMetrics(): CellMetrics {
 /** Makes the library use `cellMetrics`, now and whenever it remeasures. */
 function roomyRows(term: RawTerminal) {
   const renderer = term.renderer
-  if (!renderer || !renderer.metrics) return
+  if (!renderer?.metrics) return
   renderer.measureFont = cellMetrics
   renderer.metrics = cellMetrics()
 }
@@ -131,82 +135,94 @@ function innerSize(el: HTMLElement): { width: number; height: number } {
   }
 }
 
-export async function createTerminal(el: HTMLElement): Promise<TerminalHandle> {
+type Listeners = Set<(data: string) => void>
+
+/** Starts the library and makes a terminal in `el`, in the system's theme and with room in its rows. */
+async function openTerminal(el: HTMLElement) {
   await (library['init'] as () => Promise<unknown>)()
   // The canvas measures cells from the font as it is when the terminal is made: load it first, or the
   // cells are sized for the fallback. A missing font resolves to nothing and the fallback is used.
-  await document.fonts.load(`${FONT_SIZE}px ${FONT_FAMILY}`).catch(() => undefined)
+  await document.fonts.load(FONT_SPEC).catch(() => undefined)
   const Ctor = library['Terminal'] as new (options: unknown) => RawTerminal
   const created = currentMode()
   const term = new Ctor({ fontSize: FONT_SIZE, fontFamily: FONT_FAMILY, theme: THEMES[created].terminal })
   term.open(el)
   roomyRows(term)
-  const stopFollowingTheme = followSystemTheme(term, created)
+  return { term, stopFollowingTheme: followSystemTheme(term, created) }
+}
 
-  let fitAddon: RawFit | undefined
+/** The library's fit addon, when it has one and the terminal can load it. */
+function loadFitAddon(term: RawTerminal): RawFit | undefined {
   const FitCtor = library['FitAddon'] as (new () => RawFit) | undefined
-  if (typeof FitCtor === 'function' && typeof term.loadAddon === 'function') {
-    fitAddon = new FitCtor()
-    term.loadAddon(fitAddon)
-  }
+  if (typeof FitCtor !== 'function' || typeof term.loadAddon !== 'function') return undefined
+  const addon = new FitCtor()
+  term.loadAddon(addon)
+  return addon
+}
 
-  // The library listens on `el` and its textarea is the target, so stopping here in the capture phase
-  // keeps the key from the library without preventDefault, and the app menu still gets it.
+/**
+ * Keys the app owns, rewrites and wheel reports: all of them send input to `listeners`. Returns the undo.
+ * The library listens on `el` and its textarea is the target, so stopping a Cmd key here in the capture phase
+ * keeps it from the library without preventDefault, and the app menu still gets it.
+ */
+function routeInput(term: RawTerminal, el: HTMLElement, listeners: Listeners): () => void {
   const releaseKey = (event: KeyboardEvent) => {
     if (leavesTerminal(event)) event.stopPropagation()
   }
   el.addEventListener('keydown', releaseKey, true)
-
-  // Input goes to these, whether it comes from the library or from a key rewritten here.
-  const dataListeners = new Set<(data: string) => void>()
   // The library treats `true` as "handled": it skips its own encoding and calls preventDefault.
   term.attachCustomKeyEventHandler?.(event => {
     if (event.type !== 'keydown') return false
     const data = inputOverride(event)
     if (data === undefined) return false
-    for (const cb of dataListeners) cb(data)
+    for (const cb of listeners) cb(data)
     return true
   })
+  routeWheel(term, el, listeners)
+  return () => {
+    el.removeEventListener('keydown', releaseKey, true)
+  }
+}
 
-  // With mouse tracking on (Claude's full-screen view), the library turns the wheel into arrow keys;
-  // send wheel reports instead so Claude scrolls its transcript. `true` means handled.
-  let wheelCarry = 0
+/**
+ * With mouse tracking on (Claude's full-screen view), the library turns the wheel into arrow keys;
+ * send wheel reports instead so Claude scrolls its transcript. `true` means handled.
+ */
+function routeWheel(term: RawTerminal, el: HTMLElement, listeners: Listeners) {
+  let carried = 0
   term.attachCustomWheelEventHandler?.(event => {
     const wasm = term.wasmTerm
     if (!wasm?.hasMouseTracking?.()) return false
-    const [lines, carry] = wheelLines(event.deltaY, wheelCarry)
-    wheelCarry = carry
+    const [lines, carry] = wheelLines(event.deltaY, carried)
+    carried = carry
     if (lines !== 0) {
       const cell = term.renderer?.metrics ?? cellMetrics()
-      const canvas = el.querySelector('canvas')
-      const box = (canvas ?? el).getBoundingClientRect()
-      const col = Math.max(1, Math.min(term.cols ?? 80, Math.floor((event.clientX - box.left) / cell.width) + 1))
-      const row = Math.max(1, Math.min(term.rows ?? 24, Math.floor((event.clientY - box.top) / cell.height) + 1))
+      const origin = (el.querySelector('canvas') ?? el).getBoundingClientRect()
+      const grid = { cols: term.cols ?? 80, rows: term.rows ?? 24 }
+      const { col, row } = cellAt({ x: event.clientX, y: event.clientY }, origin, cell, grid)
       const data = wheelReport(lines, col, row, wasm.getMode?.(1006, false) ?? true)
-      for (const cb of dataListeners) cb(data)
+      for (const cb of listeners) cb(data)
     }
     return true
   })
+}
 
-  const resizeListeners = new Set<(cols: number, rows: number) => void>()
+/** Fits the terminal to `el` and tells `listeners` when the size changed. Resizing the element refits after a pause. */
+function createFitter(term: RawTerminal, el: HTMLElement, fitAddon: RawFit | undefined) {
+  const listeners = new Set<(cols: number, rows: number) => void>()
   let last: TerminalSize | undefined
-
-  const size = (): TerminalSize => ({ cols: Math.max(1, term.cols ?? 80), rows: Math.max(1, term.rows ?? 24) })
 
   function fit(): TerminalSize {
     if (fitAddon) {
       fitAddon.fit()
     } else if (typeof term.resize === 'function') {
-      const cell = term.renderer?.metrics ?? cellMetrics()
-      const box = innerSize(el)
-      if (cell.width > 0 && cell.height > 0 && box.width > 0 && box.height > 0) {
-        term.resize(Math.max(2, Math.floor(box.width / cell.width)), Math.max(1, Math.floor(box.height / cell.height)))
-      }
+      const grid = fitGrid(term.renderer?.metrics ?? cellMetrics(), innerSize(el))
+      if (grid) term.resize(grid.cols, grid.rows)
     }
-    const now = size()
-    if (!last || last.cols !== now.cols || last.rows !== now.rows) {
+    const now = reportedSize(term.cols, term.rows)
+    if (sizeChanged(last, now)) {
       last = now
-      for (const cb of resizeListeners) cb(now.cols, now.rows)
+      for (const cb of listeners) cb(now.cols, now.rows)
     }
     return now
   }
@@ -218,24 +234,46 @@ export async function createTerminal(el: HTMLElement): Promise<TerminalHandle> {
   })
   observer.observe(el)
 
-  const hasFocus = () => el.contains(document.activeElement)
-
-  function focus() {
-    term.focus?.()
-    if (hasFocus()) return
-    // The library's focus did nothing we can see: focus an inner element, else the host itself.
-    const inner = el.querySelector<HTMLElement>('textarea, [contenteditable="true"], canvas')
-    if (inner) {
-      if (inner.tabIndex < 0) inner.tabIndex = 0
-      inner.focus()
-    } else {
-      el.tabIndex = -1
-      el.focus()
-    }
-  }
-
   return {
-    write: data => term.write(data),
+    fit,
+    onResize(cb: (cols: number, rows: number) => void) {
+      listeners.add(cb)
+      return () => {
+        listeners.delete(cb)
+      }
+    },
+    stop() {
+      clearTimeout(timer)
+      observer.disconnect()
+      listeners.clear()
+    },
+  }
+}
+
+/** Gives the terminal the keyboard focus, even when the library's own focus does nothing we can see. */
+function focusTerminal(term: RawTerminal, el: HTMLElement) {
+  term.focus?.()
+  if (el.contains(document.activeElement)) return
+  const inner = el.querySelector<HTMLElement>('textarea, [contenteditable="true"], canvas')
+  if (!inner) {
+    el.tabIndex = -1
+    el.focus()
+    return
+  }
+  if (inner.tabIndex < 0) inner.tabIndex = 0
+  inner.focus()
+}
+
+export async function createTerminal(el: HTMLElement): Promise<TerminalHandle> {
+  const { term, stopFollowingTheme } = await openTerminal(el)
+  // Input goes to these, whether it comes from the library or from a key rewritten here.
+  const dataListeners: Listeners = new Set()
+  const stopRoutingInput = routeInput(term, el, dataListeners)
+  const fitter = createFitter(term, el, loadFitAddon(term))
+  return {
+    write: data => {
+      term.write(data)
+    },
     onData(cb) {
       dataListeners.add(cb)
       const sub = term.onData(cb)
@@ -244,19 +282,16 @@ export async function createTerminal(el: HTMLElement): Promise<TerminalHandle> {
         sub?.dispose()
       }
     },
-    onResize(cb) {
-      resizeListeners.add(cb)
-      return () => resizeListeners.delete(cb)
+    onResize: cb => fitter.onResize(cb),
+    fit: () => fitter.fit(),
+    focus: () => {
+      focusTerminal(term, el)
     },
-    fit,
-    focus,
-    hasFocus,
+    hasFocus: () => el.contains(document.activeElement),
     dispose() {
-      clearTimeout(timer)
+      fitter.stop()
       stopFollowingTheme()
-      observer.disconnect()
-      el.removeEventListener('keydown', releaseKey, true)
-      resizeListeners.clear()
+      stopRoutingInput()
       dataListeners.clear()
       term.dispose()
     },

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useEffectEvent } from 'react'
 
 import { COMMANDS, PANE_KEYS, shortcutLabel } from '../../core/keymap.ts'
 import type { CommandId } from '../../core/keymap.ts'
@@ -33,13 +33,14 @@ export function GlobalHints() {
 
 const OVERLAY_MS = 6000
 
-/** Every shortcut at once, from the palette's Show Shortcuts. Goes after a few seconds, or on any key or click. */
-export function ShortcutsOverlay({ onDone }: { onDone: () => void }) {
-  // A ref, so a parent re-render (a new onDone) does not restart the timer.
-  const doneRef = useRef(onDone)
-  doneRef.current = onDone
+/** Calls `onDone` after a few seconds, or on any key or click. */
+function useDismiss(onDone: () => void) {
+  // An effect event, so a parent re-render (a new onDone) does not restart the timer.
+  const finished = useEffectEvent(onDone)
   useEffect(() => {
-    const done = () => doneRef.current()
+    const done = () => {
+      finished()
+    }
     const timer = setTimeout(done, OVERLAY_MS)
     // Added after this frame, so the Enter that ran the command does not dismiss it.
     const frame = requestAnimationFrame(() => {
@@ -53,7 +54,11 @@ export function ShortcutsOverlay({ onDone }: { onDone: () => void }) {
       window.removeEventListener('mousedown', done, true)
     }
   }, [])
+}
 
+/** Every shortcut at once, from the palette's Show Shortcuts. Goes after a few seconds, or on any key or click. */
+export function ShortcutsOverlay({ onDone }: Readonly<{ onDone: () => void }>) {
+  useDismiss(onDone)
   const global = COMMANDS.filter(c => c.accelerator)
   return (
     <div className="shortcuts" role="dialog" aria-label="Shortcuts">
