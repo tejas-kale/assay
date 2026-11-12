@@ -22,6 +22,7 @@ A build-ready plan for the **hybrid** Assay: a native Swift Mac app, with CodeMi
 
 <!-- one line per resolved ticket: [title](issues/NN-slug.md): gist -->
 
+- [Which terminal component runs Claude Code in the native shell](issues/03-terminal-choice.md): SwiftTerm or GhosttyKit, decided by a side-by-side spike on the Mac; libghostty-vt waits for the fully native phase.
 - [What the TypeScript server, hooks and shared core do, and what moves to Python](issues/04-server-inventory.md): mostly orchestration over Python that already exists; the parsing rules shared with the app would be written twice unless Python serves parsed views; the launch contract and the Podman wrapper must change together.
 
 ## Not yet specified
