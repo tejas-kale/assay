@@ -3,15 +3,16 @@
 import { app, dialog } from 'electron'
 import type { BaseWindow } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-import { normalizeRoot, parseSettings, rootFor, serializeSettings } from '../core/settings.ts'
+import { parseSettings, rootFor, serializeSettings } from '../core/settings.ts'
 import type { Settings } from '../core/settings.ts'
 import { parseStripPrefs } from '../core/strip.ts'
 import { parseTabPrefs } from '../core/tabs.ts'
 import type { SetRootResult } from '../shared/ipc.ts'
+import { resolveRoot } from './rootPath.ts'
 
 const settingsPath = () => join(app.getPath('userData'), 'settings.json')
 /** Where the strip's side lived before settings.json held it (docs/slice-11.md, 11e). */
@@ -63,10 +64,8 @@ export async function analysisRoot(): Promise<string | undefined> {
 }
 
 export async function saveRoot(input: string): Promise<SetRootResult> {
-  const result = normalizeRoot(input, homedir())
+  const result = await resolveRoot(input, homedir())
   if (!result.ok) return result
-  const info = await stat(result.path).catch(() => undefined)
-  if (!info?.isDirectory()) return { ok: false, message: `No such folder: ${result.path}` }
   await updateSettings(settings => ({ ...settings, root: result.path }))
   return { ok: true, root: result.path }
 }

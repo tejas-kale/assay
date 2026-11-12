@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readFile, readdir, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -166,4 +166,32 @@ test('a venv whose folder cannot be made fails as a value, with the reason, and 
   const built = await buildReleaseVenv({ project: '/b/python', venv: join(home, 'venvs/0.4.3'), runUv: fakeUv().run, stamp: 's1', onState: state => states.push(state.state) })
   assert.ok(built.state === 'failed' && built.error.includes('venvs'), JSON.stringify(built))
   assert.deepEqual(states, ['failed'])
+})
+
+test('a linked or added __pycache__ in the installed backend makes the launch replace the copy (audit UP-1)', async () => {
+  const { dir, shipped, home } = await scratch()
+  const backend = await installBackend({ shipped, home, version: '0.4.3' })
+  await mkdir(join(dir, 'evil'))
+  await writeFile(join(dir, 'evil/x.pyc'), 'bytecode')
+  await symlink(join(dir, 'evil'), join(backend, 'python/__pycache__'))
+  await installBackend({ shipped, home, version: '0.4.3' })
+  assert.deepEqual(await readdir(join(backend, 'python')), ['pyproject.toml'])
+  await mkdir(join(backend, 'python/__pycache__'))
+  await installBackend({ shipped, home, version: '0.4.3' })
+  assert.deepEqual(await readdir(join(backend, 'python')), ['pyproject.toml'])
+  await symlink('/etc/hosts', join(backend, 'plugin/link'))
+  await installBackend({ shipped, home, version: '0.4.3' })
+  await assert.rejects(lstat(join(backend, 'plugin/link')))
+})
+
+test('a shipped backend that holds bytecode is installed without it, and then launches without a copy', async () => {
+  const { shipped, home } = await scratch()
+  await mkdir(join(shipped, 'python/__pycache__'))
+  await writeFile(join(shipped, 'python/__pycache__/m.cpython-312.pyc'), 'x')
+  await writeFile(join(shipped, 'python/stray.pyc'), 'x')
+  const backend = await installBackend({ shipped, home, version: '0.4.3' })
+  assert.deepEqual(await readdir(join(backend, 'python')), ['pyproject.toml'])
+  const before = (await stat(join(backend, 'python/pyproject.toml'))).ino
+  await installBackend({ shipped, home, version: '0.4.3' })
+  assert.equal((await stat(join(backend, 'python/pyproject.toml'))).ino, before)
 })

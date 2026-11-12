@@ -2,8 +2,9 @@
 // launch: the plugin, server, hooks and Python project are copied once per version, and uv builds the venv from
 // them. No Electron here, so the tests run it on a temp folder.
 import { createHash, randomUUID } from 'node:crypto'
-import { cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, join, relative } from 'node:path'
+import type { Dirent } from 'node:fs'
+import { cp, mkdir, readFile, readdir, readlink, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { basename, dirname, join, relative, sep } from 'node:path'
 
 import { staleEntries, TEMP_PREFIX } from '../core/backendLayout.ts'
 import { parseVenvBuild, venvStatusPath } from '../core/venv.ts'
@@ -15,15 +16,35 @@ const randomSuffix = () => randomUUID().slice(0, 8)
 /** The file in an installed backend, and in a built venv, that names the shipped content it came from. */
 const STAMP = '.assay-stamp'
 
-/** A hash of every file's path and content under a folder: the identity of a shipped backend. */
-export async function backendStamp(folder: string): Promise<string> {
+/** Python's bytecode caches: never shipped in the copy, so a planted one is an unexpected entry (audit UP-1). */
+const isCache = (name: string) => name === '__pycache__' || name.endsWith('.pyc') || name.endsWith('.pyo')
+
+const entryKind = (entry: Dirent) => {
+  if (entry.isFile()) return 'f'
+  if (entry.isDirectory()) return 'd'
+  return entry.isSymbolicLink() ? 'l' : 'o'
+}
+const entryBody = async (kind: string, path: string) => {
+  if (kind === 'f') return readFile(path)
+  return kind === 'l' ? readlink(path) : ''
+}
+
+/**
+ * A hash of every entry's kind, path and content under a folder: the identity of a shipped backend. Links (by
+ * target) and folders count, not only files, so an added link or `__pycache__` changes it. `skipCaches` leaves
+ * out bytecode, for the shipped folder, whose copy is made without it.
+ */
+export async function backendStamp(folder: string, { skipCaches = false } = {}): Promise<string> {
   const entries = await readdir(folder, { recursive: true, withFileTypes: true })
-  const files = entries
-    .filter(entry => entry.isFile() && entry.name !== STAMP)
-    .map(entry => relative(folder, join(entry.parentPath, entry.name)))
-    .sort((a, b) => a.localeCompare(b, 'en'))
+  const kept = entries
+    .map(entry => ({ entry, path: relative(folder, join(entry.parentPath, entry.name)) }))
+    .filter(({ path }) => path !== STAMP && !(skipCaches && path.split(sep).some(isCache)))
+    .toSorted((a, b) => a.path.localeCompare(b.path, 'en'))
   const hash = createHash('sha256')
-  for (const file of files) hash.update(file).update('\0').update(await readFile(join(folder, file))).update('\0')
+  for (const { entry, path } of kept) {
+    const kind = entryKind(entry)
+    hash.update(kind).update('\0').update(path).update('\0').update(await entryBody(kind, join(folder, path))).update('\0')
+  }
   return hash.digest('hex')
 }
 
@@ -39,12 +60,12 @@ export const installedStamp = (folder: string) => readFile(join(folder, STAMP), 
  */
 export async function installBackend({ shipped, home, version }: { shipped: string; home: string; version: string }): Promise<string> {
   const target = join(home, 'backend', version)
-  const stamp = await backendStamp(shipped)
+  const stamp = await backendStamp(shipped, { skipCaches: true })
   const installed = await exists(target) ? await backendStamp(target).catch(() => undefined) : undefined
   if (installed === stamp && (await installedStamp(target)) === stamp) return target
   await mkdir(join(home, 'backend'), { recursive: true })
   const temporary = join(home, 'backend', `${TEMP_PREFIX}${version}-${randomSuffix()}`)
-  await cp(shipped, temporary, { recursive: true })
+  await cp(shipped, temporary, { recursive: true, verbatimSymlinks: true, filter: source => !isCache(basename(source)) })
   await writeFile(join(temporary, STAMP), `${stamp}\n`, 'utf8')
   // The old copy moves aside under the temporary prefix, so pruning removes it if this launch crashes before rm.
   const old = join(home, 'backend', `${TEMP_PREFIX}old-${version}-${randomSuffix()}`)

@@ -7,6 +7,7 @@ import { test } from 'node:test'
 import { promisify } from 'node:util'
 
 import { loadState } from './files.ts'
+import { noteNames, notesSignature, readRootNotes, readSearchContents } from './noteFiles.ts'
 import { addRootNote, readCitedRun, readRootNote, saveRootNote } from './notes.ts'
 
 /** A root with analysis `a` (and `b` holding runs when asked). */
@@ -100,4 +101,18 @@ test('a note file that is a link is neither shown nor saved (audit UI-6)', async
   assert.equal(read.ok, false)
   assert.equal((await saveRootNote(root, name, 'token\n', 'x')).ok, false)
   assert.equal(await readFile(secret, 'utf8'), 'token\n')
+})
+
+test('a linked note never appears in listing, signature, parsed notes or search (audit UI-6)', async () => {
+  const { root, analysis } = await scratch()
+  const secret = join(root, 'secret.txt')
+  await writeFile(secret, '# Token\n\nhunter2\n')
+  await mkdir(join(root, 'notes'), { recursive: true })
+  await symlink(secret, join(root, 'notes', '20261102T090000-linked.md'))
+  await writeFile(join(root, 'notes', '20261102T090001-plain.md'), '# Plain\n\nfine\n')
+  assert.deepEqual(await noteNames(root), ['20261102T090001-plain.md'])
+  assert.deepEqual((await readRootNotes(root)).map(n => n.id), ['20261102T090001'])
+  assert.ok(!(await notesSignature(root)).includes('linked'))
+  const found = await readSearchContents(analysis.path)
+  assert.deepEqual(found.notes.map(n => n.name), ['20261102T090001-plain.md'])
 })
