@@ -1,16 +1,11 @@
 // Python runs and their replies, ported from the analysis mod's hooks/model.ts: the kernel's events, the one JSON
 // line `analysis_kernel.py run` prints, and the text Claude gets back. Also the reply text of a SQL run.
+import { kebabCase } from './slugText.ts'
 
 export const queryLabel = (n: number) => String(n).padStart(3, '0')
 
 /** A run's slug: short kebab case, `query` when nothing is left. */
-export const runSlug = (text: string) =>
-  text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48)
-    .replace(/-+$/, '') || 'query'
+export const runSlug = (text: string) => kebabCase(text, 48) || 'query'
 
 const csvCell = (cell: string) => (/[",\n\r]/.test(cell) ? `"${cell.replaceAll('"', '""')}"` : cell)
 
@@ -80,6 +75,28 @@ export type PythonRun = {
 
 const strings = (value: unknown): string[] => (Array.isArray(value) ? value.map(String) : [])
 
+/** A table of the runner's output; none when it names no file. */
+function parseTable(each: unknown): PythonTable[] {
+  const table = each as Record<string, unknown> | null
+  if (!table || typeof table.file !== 'string') return []
+  const rows = Array.isArray(table.rows) ? table.rows.map(row => (Array.isArray(row) ? row.map(String) : [])) : []
+  return [
+    {
+      file: table.file,
+      columns: strings(table.columns),
+      rows,
+      rowCount: typeof table.rowCount === 'number' ? table.rowCount : rows.length,
+      truncated: table.truncated === true,
+    },
+  ]
+}
+
+/** A plot of the runner's output, given as a file name or as `{ file }`. */
+function plotFile(each: unknown): string[] {
+  const file = typeof each === 'string' ? each : (each as { file?: unknown } | null)?.file
+  return typeof file === 'string' ? [file] : []
+}
+
 /** The one JSON line `analysis_kernel.py run` prints, or why it is not one. */
 export function parsePythonRun(stdout: string): PythonRun | { error: string } {
   const line = stdout.trim().split('\n').filter(Boolean).at(-1) ?? ''
@@ -93,24 +110,8 @@ export function parsePythonRun(stdout: string): PythonRun | { error: string } {
   if (!body || (status !== 'ok' && status !== 'error' && status !== 'interrupted')) {
     return { error: `The kernel runner gave no status: ${cut(line, 200)}` }
   }
-  const tables = (Array.isArray(body.tables) ? body.tables : []).flatMap((each: unknown): PythonTable[] => {
-    const table = each as Record<string, unknown> | null
-    if (!table || typeof table.file !== 'string') return []
-    const rows = Array.isArray(table.rows) ? table.rows.map(row => (Array.isArray(row) ? row.map(String) : [])) : []
-    return [
-      {
-        file: table.file,
-        columns: strings(table.columns),
-        rows,
-        rowCount: typeof table.rowCount === 'number' ? table.rowCount : rows.length,
-        truncated: table.truncated === true,
-      },
-    ]
-  })
-  const plots = (Array.isArray(body.plots) ? body.plots : []).flatMap((each: unknown) => {
-    const file = typeof each === 'string' ? each : (each as { file?: unknown } | null)?.file
-    return typeof file === 'string' ? [file] : []
-  })
+  const tables = (Array.isArray(body.tables) ? body.tables : []).flatMap(parseTable)
+  const plots = (Array.isArray(body.plots) ? body.plots : []).flatMap(plotFile)
   const error = body.error && typeof body.error === 'object' ? (body.error as PythonRun['error']) : undefined
   return {
     status,
@@ -125,12 +126,27 @@ export function parsePythonRun(stdout: string): PythonRun | { error: string } {
 
 const TRACEBACK_LINES = 30
 
+/** The reply lines of one table: its heading, up to 50 rows, and a note when rows are missing. */
+function tableReply(table: PythonTable, i: number, queriesDir: string, maxCell: number): string[] {
+  const shown = table.rows.slice(0, 50)
+  const rows = `${String(table.rowCount)} ${table.rowCount === 1 ? 'row' : 'rows'}`
+  const file = `${queriesDir}/${table.file}`
+  const lines = [`Table ${String(i + 1)} (${file}): ${rows}. Columns: ${table.columns.join(', ')}`]
+  if (shown.length > 0) lines.push(formatTable(table.columns, shown, maxCell))
+  if (table.rowCount > shown.length) {
+    const has = table.truncated ? 'the first 100000 of them' : 'all of them'
+    lines.push(`Truncated: showing ${String(shown.length)} of ${String(table.rowCount)} rows. ${file} has ${has}.`)
+  }
+  return lines
+}
+
 /**
  * Claude's reply for a finished Python run: its status and time, the tail of
  * stdout, the error's traceback (last 30 lines), each table (at most 50 rows)
  * and each plot's file.
  */
-export function formatPythonRun(number: number, run: PythonRun, ms: number, queriesDir = 'queries', maxCell = 80): string {
+export function formatPythonRun(number: number, run: PythonRun, ms: number, ...where: [queriesDir?: string, maxCell?: number]): string {
+  const [queriesDir = 'queries', maxCell = 80] = where
   const lines = [`Run ${queryLabel(number)}: ${run.status} (${((run.durationMs ?? ms) / 1000).toFixed(1)} s).`]
   if (run.stdout.trim()) lines.push(run.stdout.trimEnd())
   if (run.error) {
@@ -138,12 +154,7 @@ export function formatPythonRun(number: number, run: PythonRun, ms: number, quer
     lines.push(traceback || [run.error.name, run.error.message].filter(Boolean).join(': '))
   }
   run.tables.forEach((table, i) => {
-    const shown = table.rows.slice(0, 50)
-    const rows = `${table.rowCount} ${table.rowCount === 1 ? 'row' : 'rows'}`
-    const file = `${queriesDir}/${table.file}`
-    lines.push(`Table ${i + 1} (${file}): ${rows}. Columns: ${table.columns.join(', ')}`)
-    if (shown.length > 0) lines.push(formatTable(table.columns, shown, maxCell))
-    if (table.rowCount > shown.length) lines.push(`Truncated: showing ${shown.length} of ${table.rowCount} rows. ${file} has ${table.truncated ? 'the first 100000 of them' : 'all of them'}.`)
+    lines.push(...tableReply(table, i, queriesDir, maxCell))
   })
   for (const plot of run.plots) lines.push(`Plot: ${queriesDir}/${plot} (Read it to check the chart.)`)
   return lines.join('\n')
@@ -164,6 +175,9 @@ export const pythonBody = (text: string) => text.replace(/^(?:# (?:author|from|r
 export function venvCandidates(dir: string): string[] {
   const parts = dir.split('/').filter(Boolean)
   const candidates: string[] = []
-  for (let i = parts.length; i >= 0; i--) candidates.push(`${i === 0 ? '' : `/${parts.slice(0, i).join('/')}`}/.venv/bin/python`)
+  for (let i = parts.length; i >= 0; i--) {
+    const folder = i === 0 ? '' : '/' + parts.slice(0, i).join('/')
+    candidates.push(`${folder}/.venv/bin/python`)
+  }
   return candidates
 }

@@ -40,7 +40,13 @@ export function normalizeRoot(input: string, home: string): RootResult {
   const expanded = text === '~' || text.startsWith('~/') ? join(home, text.slice(1)) : text
   if (!isAbsolute(expanded)) return { ok: false, message: 'Use a full path, starting with / or ~/.' }
   const path = normalize(expanded)
-  return { ok: true, path: rootFor(path.length > 1 ? path.replace(/\/+$/, '') : path) }
+  return { ok: true, path: rootFor(path.length > 1 ? withoutTrailingSlashes(path) : path) }
+}
+
+function withoutTrailingSlashes(path: string): string {
+  let end = path.length
+  while (end > 0 && path[end - 1] === '/') end--
+  return path.slice(0, end)
 }
 
 /** The folder holding `analyses/`, given a path the user picked. Picking `analyses/` itself or one analysis inside it means its root. */

@@ -98,3 +98,58 @@ test('baselines live under .assay/overview-read, the system one by its path from
   assert.equal(baselinePath('system', 'systems/x.md'), '.assay/overview-read/systems/x.md')
   assert.equal(baselinePath('system', undefined), undefined)
 })
+
+test('blocks: where each kind of block ends and the next begins', () => {
+  const text = [
+    '| a |',
+    'after a table',
+    '- item',
+    'not indented, so a new paragraph',
+    '- item two',
+    '  indented, so the same item',
+    '# Heading right after text',
+    'tail',
+    '~~~',
+    'tilde fence ``` stays open',
+    '```',
+    '~~~',
+    '   - indented list item',
+    '2) numbered',
+    '4 spaces is code, not a list',
+    '    - deep',
+  ].join('\n')
+  assert.deepEqual(markdownBlocks(text), [
+    '| a |',
+    'after a table',
+    '- item',
+    'not indented, so a new paragraph',
+    '- item two\n  indented, so the same item',
+    '# Heading right after text',
+    'tail',
+    '~~~\ntilde fence ``` stays open\n```\n~~~',
+    '   - indented list item',
+    '2) numbered',
+    '4 spaces is code, not a list\n    - deep',
+  ])
+})
+
+test('blocks: a fence that never closes runs to the end, and blank text has no blocks', () => {
+  assert.deepEqual(markdownBlocks('before\n```\ncode\n\nmore'), ['before', '```\ncode\n\nmore'])
+  assert.deepEqual(markdownBlocks('para\n```a\n```\n```b'), ['para', '```a\n```', '```b'])
+  assert.deepEqual(markdownBlocks(''), [])
+  assert.deepEqual(markdownBlocks('\n\n  \n'), [])
+})
+
+test('a diff of blocks that moved or repeat', () => {
+  assert.deepEqual(overviewDiff('A\n\nB\n\nA\n', 'B\n\nA\n'), [
+    { kind: 'removed', text: 'A' },
+    { kind: 'same', text: 'B' },
+    { kind: 'same', text: 'A' },
+  ])
+  assert.deepEqual(overviewDiff('A\n\nB\n', ''), [
+    { kind: 'removed', text: 'A' },
+    { kind: 'removed', text: 'B' },
+  ])
+  assert.deepEqual(overviewDiff('', 'A\n'), [{ kind: 'added', text: 'A' }])
+  assert.deepEqual(overviewDiff('A\n\nB\n', 'B\n\nA\n').map(b => b.kind), ['removed', 'same', 'added'])
+})

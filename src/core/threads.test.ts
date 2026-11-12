@@ -100,3 +100,29 @@ test('moveOpen shifts a thread by delta and clamps at the ends', () => {
   assert.deepEqual(parseThreads(moveOpen(abc, 2, 'C?', 1)).open, ['A?', 'B?', 'C?'])
   assert.throws(() => moveOpen(abc, 1, 'A?', 1), StaleEdit)
 })
+
+test('open and closed lines parse by their marker, with any spacing', () => {
+  const text = [
+    '## Open',
+    '1.no space',
+    '  2.   spaced out  ',
+    '3. ',
+    '4.  \t ',
+    ' 5. non-breaking indent',
+    '7. line break inside',
+    '## Closed',
+    '-no space',
+    '   -   padded → said   ',
+    '- ',
+    '-\t\ttabbed',
+  ].join('\n')
+  assert.deepEqual(parseThreads(text), {
+    open: ['spaced out', 'non-breaking indent'],
+    closed: [{ thread: 'padded', outcome: 'said' }, { thread: 'tabbed' }],
+  })
+})
+
+test('lines that end in a carriage return are not threads', () => {
+  assert.deepEqual(parseThreads('## Open\r\n1. a\r\n## Closed\r\n- b\r\n'), { open: [], closed: [] })
+  assert.deepEqual(parseThreads('## Open\n1. \r x\n## Closed\n- \r y'), { open: ['x'], closed: [{ thread: 'y' }] })
+})

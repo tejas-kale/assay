@@ -58,11 +58,11 @@ test('a note previews its text once read, else its title', () => {
 test('search puts name hits first, then body hits with the matching line', () => {
   const hits = search(searchEntries(sources), 'churn')
   const kinds = hits.map(h => h.entry.target)
-  assert.deepEqual(kinds.slice(0, 3).map(t => t.kind).sort(), ['note', 'run', 'thread'])
+  assert.deepEqual(kinds.slice(0, 3).map(t => t.kind).sort((a, b) => a.localeCompare(b)), ['note', 'run', 'thread'])
   const body = search(searchEntries(sources), 'test accounts')
   assert.equal(body.length, 1)
   assert.deepEqual(body[0]?.entry.target, { kind: 'note', name: '20261001T090000-x.md' })
-  assert.equal(body[0]?.snippet, 'We drop test accounts before counting.')
+  assert.equal(body[0].snippet, 'We drop test accounts before counting.')
 })
 
 test('a body hit is not repeated when the name already matched', () => {
@@ -90,4 +90,47 @@ test('snippetOf cuts a long line around the match', () => {
 test('sameTarget compares by value', () => {
   assert.ok(sameTarget({ kind: 'run', number: 1 }, { kind: 'run', number: 1 }))
   assert.ok(!sameTarget({ kind: 'thread', closed: false, index: 0 }, { kind: 'thread', closed: true, index: 0 }))
+})
+
+test('a run with no code file previews a line saying so, and one with its code file previews the path', () => {
+  const bare = { number: 7, label: '007', slug: 'x', files: [], code: undefined } as unknown as ReturnType<typeof parseRuns>[number]
+  const entries = searchEntries({ threads: { open: [], closed: [] }, notes: [], runs: [bare, ...runs.slice(0, 1)] })
+  assert.deepEqual(entries[1]?.preview, { type: 'text', text: 'Run 007 has no code file.' })
+  assert.deepEqual(entries[0]?.preview, { type: 'path', path: 'queries/011_daily_users.sql' })
+  assert.equal(entries[0].body, undefined)
+})
+
+test('entries without contents or files carry no body, and a note previews its title', () => {
+  const entries = searchEntries({ threads: { open: ['t'], closed: [{ thread: 'c' }] }, notes: [note('20261001T090000', 'Method')], runs: [] })
+  assert.deepEqual(entries.map(e => e.title), ['t', 'Method', 'c'])
+  assert.ok(entries.every(e => e.body === undefined))
+})
+
+test('only a file straight inside queries/ that a run owns is covered by it', () => {
+  const files = ['a.png', 'queries/012_churn.json', 'queries/deep/012_churn.json', 'other/012_churn.json', 'queries'].map(
+    path => ({ path, size: 1, mtimeMs: 1, kind: 'text' as const }),
+  )
+  const kept = searchEntries({ threads: { open: [], closed: [] }, notes: [], runs: [], files }).map(e => e.title)
+  assert.deepEqual(kept, ['a.png', 'queries/deep/012_churn.json', 'other/012_churn.json', 'queries'])
+})
+
+test('snippetOf keeps a short line whole and ellipses only the cut sides of a long one', () => {
+  assert.equal(snippetOf('first\n  second needle  \nthird', 'needle'), 'second needle')
+  assert.equal(snippetOf('needle at the start', 'needle'), 'needle at the start')
+  const head = `needle ${'b'.repeat(200)}`
+  assert.equal(snippetOf(head, 'needle')?.startsWith('…'), false)
+  assert.equal(snippetOf(head, 'needle')?.endsWith('…'), true)
+  const tail = `${'a'.repeat(200)} needle`
+  assert.equal(snippetOf(tail, 'needle')?.startsWith('…'), true)
+  assert.equal(snippetOf(tail, 'needle')?.endsWith('…'), false)
+})
+
+test('a body that holds the query only by case or only past the name still hits; an empty snippet line still counts', () => {
+  const entries = [
+    { target: { kind: 'file' as const, path: 'a' }, title: 'zzz', body: '  \nQuery here', preview: { type: 'text' as const, text: '' } },
+    { target: { kind: 'file' as const, path: 'b' }, title: 'qqq', preview: { type: 'text' as const, text: '' } },
+  ]
+  const hits = search(entries, 'query')
+  assert.equal(hits.length, 1)
+  assert.equal(hits[0]?.snippet, 'Query here')
 })

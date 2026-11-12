@@ -44,57 +44,146 @@ const LIST_ITEM = /^\s{0,3}(?:[-*+]|\d+[.)])\s+/
 const HEADING = /^#{1,6}\s/
 const TABLE_ROW = /^\s*\|/
 
+type BlockKind = 'paragraph' | 'item' | 'table'
+
+/** The blocks so far, and the lines of the one still open. */
+function blockBuilder() {
+  const blocks: string[] = []
+  let current: string[] = []
+  let kind: BlockKind | undefined
+  return {
+    blocks,
+    kind: () => kind,
+    flush() {
+      if (current.length > 0) blocks.push(current.join('\n'))
+      current = []
+      kind = undefined
+    },
+    emit(block: string) {
+      blocks.push(block)
+    },
+    add(line: string, as: BlockKind) {
+      kind = as
+      current.push(line)
+    },
+  }
+}
+
+type BlockBuilder = ReturnType<typeof blockBuilder>
+
+/** A fenced block from its opening line at `start` to the closing line (or the end): its text, and the last line index it used. */
+function fencedBlock(lines: readonly string[], start: number, fence: string): { block: string; end: number } {
+  const code = [lines[start] ?? '']
+  let end = start + 1
+  for (; end < lines.length; end++) {
+    const line = lines[end] ?? ''
+    code.push(line)
+    if (line.trimStart().startsWith(fence)) break
+  }
+  return { block: code.join('\n'), end }
+}
+
+function addLine(builder: BlockBuilder, line: string) {
+  if (line.trim() === '') {
+    builder.flush()
+  } else if (HEADING.test(line)) {
+    builder.flush()
+    builder.emit(line)
+  } else if (TABLE_ROW.test(line)) {
+    if (builder.kind() !== 'table') builder.flush()
+    builder.add(line, 'table')
+  } else if (LIST_ITEM.test(line)) {
+    builder.flush()
+    builder.add(line, 'item')
+  } else {
+    // An indented line continues a list item; any other line continues its paragraph, or starts one.
+    const kind = builder.kind()
+    if (kind === 'table' || (kind === 'item' && !/^\s/.test(line))) builder.flush()
+    builder.add(line, builder.kind() ?? 'paragraph')
+  }
+}
+
 /**
  * The Markdown as blocks, each its source text: a heading, a fenced code block, a table, each list item (with its
  * indented continuation lines), and each paragraph. Blank lines separate; they belong to no block.
  */
 export function markdownBlocks(text: string): string[] {
-  const blocks: string[] = []
-  let current: string[] = []
-  let kind: 'paragraph' | 'item' | 'table' | undefined
-  const flush = () => {
-    if (current.length > 0) blocks.push(current.join('\n'))
-    current = []
-    kind = undefined
-  }
+  const builder = blockBuilder()
   const lines = text.replace(/\n$/, '').split('\n')
-  for (let i = 0; i < lines.length; i++) {
+  let i = 0
+  while (i < lines.length) {
     const line = lines[i] ?? ''
     const fence = FENCE.exec(line)?.[1]
     if (fence) {
-      flush()
-      const code = [line]
-      for (i++; i < lines.length; i++) {
-        code.push(lines[i] ?? '')
-        if ((lines[i] ?? '').trimStart().startsWith(fence)) break
-      }
-      blocks.push(code.join('\n'))
-      continue
-    }
-    if (line.trim() === '') flush()
-    else if (HEADING.test(line)) {
-      flush()
-      blocks.push(line)
-    } else if (TABLE_ROW.test(line)) {
-      if (kind !== 'table') flush()
-      kind = 'table'
-      current.push(line)
-    } else if (LIST_ITEM.test(line)) {
-      flush()
-      kind = 'item'
-      current.push(line)
+      builder.flush()
+      const { block, end } = fencedBlock(lines, i, fence)
+      builder.emit(block)
+      i = end + 1
     } else {
-      // An indented line continues a list item; any other line continues its paragraph, or starts one.
-      if (kind === 'table' || (kind === 'item' && !/^\s/.test(line))) flush()
-      kind ??= 'paragraph'
-      current.push(line)
+      addLine(builder, line)
+      i++
     }
   }
-  flush()
-  return blocks
+  builder.flush()
+  return builder.blocks
 }
 
 export type DiffBlock = { kind: 'same' | 'added' | 'removed'; text: string }
+
+/** lcs[i][j]: the common subsequence length of before[i..] and now[j..]. */
+function commonLengths(before: readonly string[], now: readonly string[]): (i: number, j: number) => number {
+  const lcs: number[][] = Array.from({ length: before.length + 1 }, () => new Array<number>(now.length + 1).fill(0))
+  const at = (i: number, j: number) => lcs[i]?.[j] ?? 0
+  for (let i = before.length - 1; i >= 0; i--) {
+    const row = lcs[i] ?? []
+    for (let j = now.length - 1; j >= 0; j--) {
+      row[j] = before[i] === now[j] ? at(i + 1, j + 1) + 1 : Math.max(at(i + 1, j), at(i, j + 1))
+    }
+  }
+  return at
+}
+
+/** The walk down the common subsequence: each block is same, added or removed. */
+function walkBlocks(before: readonly string[], now: readonly string[]): DiffBlock[] {
+  const common = commonLengths(before, now)
+  const out: DiffBlock[] = []
+  let i = 0
+  let j = 0
+  while (i < before.length || j < now.length) {
+    const old = before[i]
+    const fresh = now[j]
+    if (old !== undefined && old === fresh) {
+      out.push({ kind: 'same', text: old })
+      i++
+      j++
+    } else if (fresh !== undefined && (old === undefined || common(i + 1, j) < common(i, j + 1))) {
+      out.push({ kind: 'added', text: fresh })
+      j++
+    } else if (old !== undefined) {
+      out.push({ kind: 'removed', text: old })
+      i++
+    }
+  }
+  return out
+}
+
+/** Within a run of changes, removals first: a rewritten paragraph reads old, then new. */
+function removalsFirst(diff: readonly DiffBlock[]): DiffBlock[] {
+  const ordered: DiffBlock[] = []
+  let run: DiffBlock[] = []
+  const flush = () => {
+    ordered.push(...run.filter(b => b.kind === 'removed'), ...run.filter(b => b.kind === 'added'))
+    run = []
+  }
+  for (const block of diff) {
+    if (block.kind === 'same') {
+      flush()
+      ordered.push(block)
+    } else run.push(block)
+  }
+  flush()
+  return ordered
+}
 
 /**
  * The document's blocks against the baseline's, by longest common subsequence. A changed block shows as the old one
@@ -103,48 +192,7 @@ export type DiffBlock = { kind: 'same' | 'added' | 'removed'; text: string }
 export function overviewDiff(baseline: string | undefined, text: string): DiffBlock[] {
   const now = markdownBlocks(text)
   if (baseline === undefined) return now.map(block => ({ kind: 'added', text: block }))
-  const before = markdownBlocks(baseline)
-  const n = before.length
-  const m = now.length
-  // lcs[i][j]: the common subsequence length of before[i..] and now[j..].
-  const lcs: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0))
-  for (let i = n - 1; i >= 0; i--) {
-    for (let j = m - 1; j >= 0; j--) {
-      const row = lcs[i] as number[]
-      row[j] = before[i] === now[j] ? (lcs[i + 1]?.[j + 1] ?? 0) + 1 : Math.max(lcs[i + 1]?.[j] ?? 0, row[j + 1] ?? 0)
-    }
-  }
-  const out: DiffBlock[] = []
-  let i = 0
-  let j = 0
-  while (i < n || j < m) {
-    if (i < n && j < m && before[i] === now[j]) {
-      out.push({ kind: 'same', text: now[j] ?? '' })
-      i++
-      j++
-    } else if (j < m && (i >= n || (lcs[i + 1]?.[j] ?? 0) < (lcs[i]?.[j + 1] ?? 0))) {
-      out.push({ kind: 'added', text: now[j] ?? '' })
-      j++
-    } else {
-      out.push({ kind: 'removed', text: before[i] ?? '' })
-      i++
-    }
-  }
-  // Within a run of changes, removals first: a rewritten paragraph reads old, then new.
-  const ordered: DiffBlock[] = []
-  let run: DiffBlock[] = []
-  const flush = () => {
-    ordered.push(...run.filter(b => b.kind === 'removed'), ...run.filter(b => b.kind === 'added'))
-    run = []
-  }
-  for (const block of out) {
-    if (block.kind === 'same') {
-      flush()
-      ordered.push(block)
-    } else run.push(block)
-  }
-  flush()
-  return ordered
+  return removalsFirst(walkBlocks(markdownBlocks(baseline), now))
 }
 
 /** Whether the diff holds any change. */

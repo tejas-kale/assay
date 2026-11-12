@@ -6,7 +6,12 @@ export type WatchPort = {
 }
 
 /** `mtime:size`, or `missing`. */
-export const statSignature = (stat: WatchStat | undefined) => (stat ? `${stat.mtimeMs}:${stat.size}` : 'missing')
+export const statSignature = (stat: WatchStat | undefined) => (stat ? `${String(stat.mtimeMs)}:${String(stat.size)}` : 'missing')
+
+/** A tick that throws is an unhandled rejection, as it was when the interval callback was async. */
+const rethrow = (error: unknown): never => {
+  throw error
+}
 
 /**
  * Calls `onChange(path)` when a file's mtime, size or existence changes (a rename-over save
@@ -20,7 +25,7 @@ export function pollFiles(port: WatchPort, paths: readonly string[], onChange: (
   const look = (path: string) => port.stat(path).then(statSignature, () => 'missing')
   const ready = Promise.all(paths.map(async path => seen.set(path, await look(path))))
 
-  const stop = port.setInterval(async () => {
+  const tick = async () => {
     if (isBusy) return
     isBusy = true
     try {
@@ -37,6 +42,9 @@ export function pollFiles(port: WatchPort, paths: readonly string[], onChange: (
     } finally {
       isBusy = false
     }
+  }
+  const stop = port.setInterval(() => {
+    tick().catch(rethrow)
   }, intervalMs)
 
   return () => {
@@ -53,7 +61,7 @@ export function pollSignature(port: Pick<WatchPort, 'setInterval'>, read: () => 
   let seen: string | undefined
   let isStopped = false
   let isBusy = false
-  const stop = port.setInterval(async () => {
+  const tick = async () => {
     if (isBusy) return
     isBusy = true
     try {
@@ -67,6 +75,9 @@ export function pollSignature(port: Pick<WatchPort, 'setInterval'>, read: () => 
     } finally {
       isBusy = false
     }
+  }
+  const stop = port.setInterval(() => {
+    tick().catch(rethrow)
   }, intervalMs)
   return () => {
     isStopped = true

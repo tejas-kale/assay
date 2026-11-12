@@ -14,10 +14,10 @@ export function parseThreads(text: string): Threads {
     if (/^##\s+open\b/i.test(line)) section = 'open'
     else if (/^##\s+closed\b/i.test(line)) section = 'closed'
     else if (section === 'open') {
-      const item = /^\s*\d+\.\s+(.*)$/.exec(line)
+      const item = /^\s*\d+\.\s+(\S.*)$/.exec(line)
       if (item?.[1]) threads.open.push(item[1].trim())
     } else if (section === 'closed') {
-      const item = /^\s*-\s+(.*)$/.exec(line)
+      const item = /^\s*-\s+(\S.*)$/.exec(line)
       if (!item?.[1]) continue
       const at = item[1].indexOf(ARROW)
       threads.closed.push(
@@ -31,7 +31,7 @@ export function parseThreads(text: string): Threads {
 }
 
 export function formatThreads({ open, closed }: Threads): string {
-  const openLines = open.map((thread, i) => `${i + 1}. ${thread}\n`).join('')
+  const openLines = open.map((thread, i) => `${String(i + 1)}. ${thread}\n`).join('')
   const closedLines = closed
     .map(({ thread, outcome }) => `- ${thread}${outcome ? ARROW + outcome : ''}\n`)
     .join('')
@@ -45,7 +45,7 @@ function required(text: string, what: string) {
 }
 
 function openAt(threads: Threads, index: number, expected: string) {
-  if (threads.open[index] !== expected) throw new StaleEdit(`Open thread ${index + 1} changed on disk`)
+  if (threads.open[index] !== expected) throw new StaleEdit(`Open thread ${String(index + 1)} changed on disk`)
 }
 
 export function addThread(text: string, thread: string): string {
@@ -80,7 +80,7 @@ export function deleteClosed(text: string, index: number, expected: ClosedThread
   const threads = parseThreads(text)
   const found = threads.closed[index]
   if (!found || found.thread !== expected.thread || found.outcome !== expected.outcome) {
-    throw new StaleEdit(`Closed thread ${index + 1} changed on disk`)
+    throw new StaleEdit(`Closed thread ${String(index + 1)} changed on disk`)
   }
   return formatThreads({ ...threads, closed: threads.closed.filter((_, i) => i !== index) })
 }
@@ -111,7 +111,7 @@ function findOpen(threads: Threads, ref: string): { index: number } | { error: s
   }
   if (index < 0 && !/^\d+$/.test(wanted)) {
     const matches = threads.open.flatMap((open, i) => (open.toLowerCase().includes(wanted) ? [i] : []))
-    if (matches.length > 1) return { error: `${matches.length} open threads match "${ref}"; give its number.` }
+    if (matches.length > 1) return { error: `${String(matches.length)} open threads match "${ref}"; give its number.` }
     index = matches[0] ?? -1
   }
   return threads.open[index] === undefined ? { error: `No open thread matches "${ref}".` } : { index }

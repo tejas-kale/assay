@@ -139,3 +139,69 @@ test('the lineage request is checked, written, read by the server and urgent', (
   assert.deepEqual(parseRequestFile('{"kind":"lineage","run":0}'), { error: 'Name the run, by number.' })
   assert.equal(isUrgent({ kind: 'lineage', run: 3 }), true)
 })
+
+test('a request file is read per kind, with defaults for the engine, the slug and a missing origin', () => {
+  assert.deepEqual(parseRequestFile('{"kind":"sql","sql":"select 1"}'), { kind: 'sql', sql: 'select 1', engine: 'databricks', slug: 'query' })
+  assert.deepEqual(parseRequestFile('{"kind":"sql","sql":"s","engine":"postgres","from":4,"slug":"orders"}'), { kind: 'sql', sql: 's', engine: 'postgres', from: 4, slug: 'orders' })
+  assert.deepEqual(parseRequestFile('{"kind":"sql","sql":"s","from":0,"slug":5}'), { kind: 'sql', sql: 's', engine: 'databricks', slug: 'query' })
+  assert.deepEqual(parseRequestFile('{"kind":"python","code":"x=1","from":2,"slug":"s"}'), { kind: 'python', code: 'x=1', from: 2, slug: 's' })
+  assert.deepEqual(parseRequestFile('{"kind":"python","code":"x=1"}'), { kind: 'python', code: 'x=1', slug: 'query' })
+  assert.deepEqual(parseRequestFile('{"kind":"interrupt"}'), { kind: 'interrupt' })
+  assert.deepEqual(parseRequestFile('{"kind":"restart","junk":1}'), { kind: 'restart' })
+  assert.deepEqual(parseRequestFile('{"kind":"trust-list"}'), { kind: 'trust-list' })
+  assert.deepEqual(parseRequestFile('{"kind":"replay","runs":[1,2]}'), { kind: 'replay', runs: [1, 2] })
+})
+
+test('a request file that is wrong says what is missing', () => {
+  const err = (text: string) => (parseRequestFile(text) as { error: string }).error
+  assert.equal(err('nope'), 'The request is not valid JSON.')
+  assert.equal(err('null'), 'The request is not a JSON object.')
+  assert.equal(err('5'), 'The request is not a JSON object.')
+  assert.equal(err('{"kind":"sql","sql":"  "}'), 'The SQL is empty.')
+  assert.equal(err('{"kind":"sql"}'), 'The SQL is empty.')
+  assert.equal(err('{"kind":"sql","sql":"s","engine":"mysql"}'), 'Unknown engine: mysql.')
+  assert.equal(err('{"kind":"sql","sql":"s","engine":{}}'), 'Unknown engine: [object Object].')
+  assert.equal(err('{"kind":"python","code":" "}'), 'The code is empty.')
+  assert.equal(err('{"kind":"python"}'), 'The code is empty.')
+  assert.equal(err('{"kind":"replay","runs":[]}'), 'Name the runs to replay, by number.')
+  assert.equal(err('{"kind":"replay","runs":[1,0]}'), 'Name the runs to replay, by number.')
+  assert.equal(err('{"kind":"replay","runs":"1"}'), 'Name the runs to replay, by number.')
+  assert.equal(err('{"kind":"nope"}'), 'Unknown request kind: nope.')
+  assert.equal(err('{}'), 'Unknown request kind: undefined.')
+})
+
+test('a trust request file names its proposal in lower case, and the answer is trust or reject', () => {
+  assert.deepEqual(parseRequestFile('{"kind":"trust-check","name":"  Main.Panel "}'), { kind: 'trust-check', name: 'main.panel' })
+  assert.deepEqual(parseRequestFile('{"kind":"trust-answer","name":"F","answer":"trust"}'), { kind: 'trust-answer', name: 'f', answer: 'trust' })
+  assert.deepEqual(parseRequestFile('{"kind":"trust-answer","name":"f","answer":"yes"}'), { error: 'The answer is trust or reject.' })
+  assert.deepEqual(parseRequestFile('{"kind":"trust-check","name":" "}'), { error: 'Name the proposal.' })
+  assert.deepEqual(parseRequestFile('{"kind":"trust-answer","name":5,"answer":"trust"}'), { error: 'Name the proposal.' })
+})
+
+test('only interrupts, restarts, trust requests and lineage are urgent', () => {
+  assert.equal(isUrgent({ kind: 'interrupt' }), true)
+  assert.equal(isUrgent({ kind: 'restart' }), true)
+  assert.equal(isUrgent({ kind: 'trust-list' }), true)
+  assert.equal(isUrgent({ kind: 'sql', sql: 's', engine: 'databricks', slug: 's' }), false)
+  assert.equal(isUrgent({ kind: 'python', code: 'c', slug: 's' }), false)
+  assert.equal(isUrgent({ kind: 'replay', runs: [1] }), false)
+})
+
+test('a run request from the renderer keeps its origin, and a proposal name may be any case with up to three parts', () => {
+  assert.deepEqual(parseRunRequest({ kind: 'sql', sql: 's', engine: 'databricks', from: 0, slug: '' }), { kind: 'sql', sql: 's', engine: 'databricks', from: 0, slug: '' })
+  assert.deepEqual(parseRunRequest({ kind: 'steps', run: 999_999 }), { kind: 'steps', run: 999_999 })
+  assert.deepEqual(parseRunRequest({ kind: 'steps', run: 1_000_000 }), { error: 'Invalid run' })
+  assert.deepEqual(parseRunRequest({ kind: 'replay', runs: [0, 999_999] }), { kind: 'replay', runs: [0, 999_999] })
+  assert.deepEqual(parseRunRequest({ kind: 'replay', runs: 'x' }), { error: 'Invalid runs' })
+  assert.deepEqual(parseRunRequest({ kind: 'sql', sql: 's', engine: 'postgres', slug: 7 }), { error: 'Invalid slug' })
+  assert.deepEqual(parseRunRequest({ kind: 'sql', sql: 's', engine: 'postgres', from: -1 }), { error: 'Invalid origin' })
+  assert.deepEqual(parseRunRequest({ kind: 'sql', sql: 5, engine: 'postgres' }), { error: 'Invalid SQL' })
+  assert.deepEqual(parseRunRequest({ kind: 'python', code: 'x'.repeat((1 << 20) + 1) }), { error: 'Invalid code' })
+  for (const name of ['A_1', 'a.b', 'a.b.c', 'a.B_2.c3']) assert.deepEqual(parseRunRequest({ kind: 'trust-check', name }), { kind: 'trust-check', name })
+  for (const name of ['1a', 'a.', '.a', 'a.b.c.d', 'a-b', 'a b', 'a.b\n', '', 5]) assert.deepEqual(parseRunRequest({ kind: 'trust-check', name }), { error: 'Invalid proposal' }, String(name))
+  assert.deepEqual(parseRunRequest(5), { error: 'Invalid request' })
+})
+
+test('newRequestId clamps a random of 1 to the last letter', () => {
+  assert.equal(newRequestId(1, () => 1), '0000000000001-999999')
+})

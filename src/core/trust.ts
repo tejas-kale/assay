@@ -109,7 +109,11 @@ export function justFailed(before: TrustReview | null | undefined, after: TrustR
 }
 
 const MAX_FAILURE = 700
-const oneLine = (text: string) => text.replace(/[\x00-\x1f\x7f]+/g, ' ').replace(/\s+/g, ' ').trim()
+const isControl = (char: string) => {
+  const code = char.charCodeAt(0)
+  return code <= 0x1f || code === 0x7f
+}
+const oneLine = (text: string) => Array.from(text, char => (isControl(char) ? ' ' : char)).join('').replace(/\s+/g, ' ').trim()
 
 /**
  * What the app types into Claude's session when a check failed: the failed steps in one line, where the whole
@@ -134,7 +138,7 @@ export function stepTitle(step: TrustStep): string {
 
 /** What the Trust tab's "new since you looked" marker compares: changes when the review moves on. */
 export const trustSeenKey = (review: TrustReview): string =>
-  `${review.startedAt}:${review.state}:${review.steps.length}:${review.sample?.rows.length ?? 0}`
+  `${String(review.startedAt)}:${review.state}:${String(review.steps.length)}:${String(review.sample?.rows.length ?? 0)}`
 
 /** A step's text without a leading PASSED or FAILED (the line shows that as its marker). */
 export function stepDetail(step: TrustStep): string {
@@ -157,12 +161,17 @@ export type DiffLine = { kind: 'add' | 'del' | 'same'; text: string }
 
 /** A step's diff: `- ` lines were expected only, `+ ` lines were got only. */
 export function diffLines(diff: string): DiffLine[] {
-  return diff.split('\n').map(text => ({ kind: text.startsWith('+ ') ? 'add' : text.startsWith('- ') ? 'del' : 'same', text }))
+  return diff.split('\n').map(text => ({ kind: diffKind(text), text }))
+}
+
+function diffKind(text: string): DiffLine['kind'] {
+  if (text.startsWith('+ ')) return 'add'
+  return text.startsWith('- ') ? 'del' : 'same'
 }
 
 /** The state line: the ticking count while checking, a pointer while asking, else the message. */
 export function stateLine(review: TrustReview, now: number): { text: string; tone: Tone } {
-  if (review.state === 'checking') return { text: `checking… ${Math.max(0, Math.round((now - review.startedAt) / 1000))} s`, tone: 'dim' }
+  if (review.state === 'checking') return { text: `checking… ${String(Math.max(0, Math.round((now - review.startedAt) / 1000)))} s`, tone: 'dim' }
   if (review.state === 'asking') return { text: 'Every check passed: Trust (t) or Reject (r).', tone: 'dim' }
   return { text: review.message ?? review.state, tone: stateTone(review.state) }
 }

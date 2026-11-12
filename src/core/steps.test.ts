@@ -34,8 +34,8 @@ test('a join passes; a many side observed as 1 passes with the observed cardinal
   const ok = stepChecks({ joins: [join] }, counts())
   assert.deepEqual(ok, [{ kind: 'join', ok: true, text: 'join order_lines 1:many on order_id: left 31 rows, 31 keys; right 40 rows, 36 keys' }])
   const single = stepChecks({ joins: [join] }, counts({ assay_j1_right_rows: '31', assay_j1_right_keys: '31' }))
-  assert.equal(single[0]?.ok, true)
-  assert.match(single[0]?.text ?? '', /\(observed 1:1\)$/)
+  assert.equal(single.at(0)?.ok, true)
+  assert.match(single.at(0)?.text ?? '', /\(observed 1:1\)$/)
 })
 
 test('unchecked joins and joins with missing counts give no check; their reasons are dim lines', () => {

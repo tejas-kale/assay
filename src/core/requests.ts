@@ -7,7 +7,7 @@ const ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789'
 /** `<13-digit time>-<6 random [a-z0-9]>`, so file names sort by time. */
 export function newRequestId(now: number, random: () => number): string {
   let suffix = ''
-  for (let i = 0; i < 6; i++) suffix += ALPHABET[Math.min(ALPHABET.length - 1, Math.floor(random() * ALPHABET.length))]
+  for (let i = 0; i < 6; i++) suffix += ALPHABET.charAt(Math.min(ALPHABET.length - 1, Math.floor(random() * ALPHABET.length)))
   return `${String(now).padStart(13, '0')}-${suffix}`
 }
 
@@ -108,7 +108,7 @@ export function canRerun(run: Run, header: RunHeader, body?: string): string | u
 }
 
 /** A proposal's name: a calculation's or a table's full name (as the server's PROPOSAL_NAME, any case). */
-const PROPOSAL = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+){0,2}$/
+const PROPOSAL = /^[A-Za-z]\w*(\.\w+){0,2}$/
 
 /** The most text a request may carry (1 MiB). */
 export const MAX_REQUEST_TEXT = 1 << 20
@@ -117,23 +117,22 @@ const MAX_REPLAY_RUNS = 500
 /** A run or table number: a non-negative integer below a million. */
 export const isIndex = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1_000_000
 
-/** Checks what the renderer sent, per kind, and returns the request or the reason it is refused. */
-export function parseRunRequest(input: unknown): RunRequest | { error: string } {
-  if (typeof input !== 'object' || input === null) return { error: 'Invalid request' }
-  const { kind, sql, code, engine, from, slug, runs, name, answer, run } = input as Record<string, unknown>
-  if (kind === 'lineage' || kind === 'steps') return isIndex(run) && run > 0 ? { kind, run } : { error: 'Invalid run' }
-  if (kind === 'interrupt' || kind === 'restart' || kind === 'trust-list') return { kind }
-  if (kind === 'trust-check' || kind === 'trust-answer') {
-    if (typeof name !== 'string' || !PROPOSAL.test(name)) return { error: 'Invalid proposal' }
-    if (kind === 'trust-check') return { kind, name }
-    if (answer !== 'trust' && answer !== 'reject') return { error: 'Invalid answer' }
-    return { kind, name, answer }
-  }
-  if (kind === 'replay') {
-    if (!Array.isArray(runs) || runs.length === 0 || runs.length > MAX_REPLAY_RUNS || !runs.every(isIndex)) return { error: 'Invalid runs' }
-    return { kind, runs: runs as number[] }
-  }
-  if (kind !== 'python' && kind !== 'sql') return { error: 'Invalid request' }
+type Fields = Record<string, unknown>
+
+function parseTrustRunRequest(kind: 'trust-check' | 'trust-answer', { name, answer }: Fields): RunRequest | { error: string } {
+  if (typeof name !== 'string' || !PROPOSAL.test(name)) return { error: 'Invalid proposal' }
+  if (kind === 'trust-check') return { kind, name }
+  if (answer !== 'trust' && answer !== 'reject') return { error: 'Invalid answer' }
+  return { kind, name, answer }
+}
+
+function parseReplayRunRequest({ runs }: Fields): RunRequest | { error: string } {
+  if (!Array.isArray(runs) || runs.length === 0 || runs.length > MAX_REPLAY_RUNS || !runs.every(isIndex)) return { error: 'Invalid runs' }
+  return { kind: 'replay', runs }
+}
+
+/** A `sql` or `python` request: its origin first, then its text (and, for SQL, its engine). */
+function parseCodeRunRequest(kind: 'sql' | 'python', { sql, code, engine, from, slug }: Fields): RunRequest | { error: string } {
   if (from !== undefined && !isIndex(from)) return { error: 'Invalid origin' }
   if (slug !== undefined && (typeof slug !== 'string' || slug.length > 200)) return { error: 'Invalid slug' }
   const origin = { ...(from !== undefined && { from }), ...(slug !== undefined && { slug }) }
@@ -146,6 +145,19 @@ export function parseRunRequest(input: unknown): RunRequest | { error: string } 
   if (sql.trim() === '') return { error: 'The SQL is empty' }
   if (engine !== 'databricks' && engine !== 'postgres') return { error: 'Invalid engine' }
   return { kind, sql, engine, ...origin }
+}
+
+/** Checks what the renderer sent, per kind, and returns the request or the reason it is refused. */
+export function parseRunRequest(input: unknown): RunRequest | { error: string } {
+  if (typeof input !== 'object' || input === null) return { error: 'Invalid request' }
+  const fields = input as Fields
+  const { kind, run } = fields
+  if (kind === 'lineage' || kind === 'steps') return isIndex(run) && run > 0 ? { kind, run } : { error: 'Invalid run' }
+  if (kind === 'interrupt' || kind === 'restart' || kind === 'trust-list') return { kind }
+  if (kind === 'trust-check' || kind === 'trust-answer') return parseTrustRunRequest(kind, fields)
+  if (kind === 'replay') return parseReplayRunRequest(fields)
+  if (kind === 'python' || kind === 'sql') return parseCodeRunRequest(kind, fields)
+  return { error: 'Invalid request' }
 }
 
 /** The Steps tab asks for run `run`'s lineage (docs/slice-9.md): the server writes `queries/NNN.lineage.json` and replies ok. */
@@ -185,6 +197,31 @@ export const isUrgent = (request: ServerRequest) => request.kind !== 'sql' && re
 
 const isRunNumber = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value > 0
 
+const show = (value: unknown) => String(value)
+
+function parseSqlFile({ sql, engine, from, slug }: Fields): ServerRequest | { error: string } {
+  if (typeof sql !== 'string' || !sql.trim()) return { error: 'The SQL is empty.' }
+  if (engine !== undefined && engine !== 'databricks' && engine !== 'postgres') return { error: `Unknown engine: ${show(engine)}.` }
+  return { kind: 'sql', sql, engine: engine ?? 'databricks', ...(isRunNumber(from) ? { from } : {}), slug: typeof slug === 'string' ? slug : 'query' }
+}
+
+function parsePythonFile({ code, from, slug }: Fields): ServerRequest | { error: string } {
+  if (typeof code !== 'string' || !code.trim()) return { error: 'The code is empty.' }
+  return { kind: 'python', code, ...(isRunNumber(from) ? { from } : {}), slug: typeof slug === 'string' ? slug : 'query' }
+}
+
+function parseTrustFile(kind: 'trust-check' | 'trust-answer', { name, answer }: Fields): ServerRequest | { error: string } {
+  if (typeof name !== 'string' || !name.trim()) return { error: 'Name the proposal.' }
+  if (kind === 'trust-check') return { kind, name: name.trim().toLowerCase() }
+  if (answer !== 'trust' && answer !== 'reject') return { error: 'The answer is trust or reject.' }
+  return { kind, name: name.trim().toLowerCase(), answer }
+}
+
+function parseReplayFile({ runs }: Fields): ServerRequest | { error: string } {
+  if (!Array.isArray(runs) || runs.length === 0 || !runs.every(isRunNumber)) return { error: 'Name the runs to replay, by number.' }
+  return { kind: 'replay', runs }
+}
+
 /** A request file's text as a request, or why it is refused. */
 export function parseRequestFile(text: string): ServerRequest | { error: string } {
   let body: unknown
@@ -194,31 +231,15 @@ export function parseRequestFile(text: string): ServerRequest | { error: string 
     return { error: 'The request is not valid JSON.' }
   }
   if (typeof body !== 'object' || body === null) return { error: 'The request is not a JSON object.' }
-  const { kind, sql, code, engine, from, slug, runs, name, answer, run } = body as Record<string, unknown>
-  const origin = isRunNumber(from) ? { from } : {}
-  const slugText = typeof slug === 'string' ? slug : 'query'
-  if (kind === 'sql') {
-    if (typeof sql !== 'string' || !sql.trim()) return { error: 'The SQL is empty.' }
-    if (engine !== undefined && engine !== 'databricks' && engine !== 'postgres') return { error: `Unknown engine: ${String(engine)}.` }
-    return { kind, sql, engine: engine ?? 'databricks', ...origin, slug: slugText }
-  }
-  if (kind === 'python') {
-    if (typeof code !== 'string' || !code.trim()) return { error: 'The code is empty.' }
-    return { kind, code, ...origin, slug: slugText }
-  }
+  const fields = body as Fields
+  const { kind, run } = fields
+  if (kind === 'sql') return parseSqlFile(fields)
+  if (kind === 'python') return parsePythonFile(fields)
   if (kind === 'interrupt' || kind === 'restart' || kind === 'trust-list') return { kind }
   if (kind === 'lineage' || kind === 'steps') return isRunNumber(run) ? { kind, run } : { error: 'Name the run, by number.' }
-  if (kind === 'replay') {
-    if (!Array.isArray(runs) || runs.length === 0 || !runs.every(isRunNumber)) return { error: 'Name the runs to replay, by number.' }
-    return { kind, runs }
-  }
-  if (kind === 'trust-check' || kind === 'trust-answer') {
-    if (typeof name !== 'string' || !name.trim()) return { error: 'Name the proposal.' }
-    if (kind === 'trust-check') return { kind, name: name.trim().toLowerCase() }
-    if (answer !== 'trust' && answer !== 'reject') return { error: 'The answer is trust or reject.' }
-    return { kind, name: name.trim().toLowerCase(), answer }
-  }
-  return { error: `Unknown request kind: ${String(kind)}.` }
+  if (kind === 'replay') return parseReplayFile(fields)
+  if (kind === 'trust-check' || kind === 'trust-answer') return parseTrustFile(kind, fields)
+  return { error: `Unknown request kind: ${show(kind)}.` }
 }
 
 /** The slug a run of selected SQL gets, so its files read `NNN_selection.sql`. */

@@ -88,6 +88,37 @@ const field = (v: object, key: string): unknown => Reflect.get(v, key)
 const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v : fallback)
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? (v as unknown[]) : [])
 
+/** The table entries of a result; one with no file name is dropped. */
+function resultTables(raw: object): RunResult['tables'] {
+  const tables: RunResult['tables'] = []
+  for (const t of list(field(raw, 'tables'))) {
+    if (!isObject(t) || typeof field(t, 'file') !== 'string') continue
+    const rowCount = field(t, 'rowCount')
+    tables.push({
+      file: str(field(t, 'file')),
+      columns: list(field(t, 'columns')).filter((c): c is string => typeof c === 'string'),
+      rowCount: typeof rowCount === 'number' ? rowCount : 0,
+      truncated: field(t, 'truncated') === true,
+    })
+  }
+  return tables
+}
+
+/** The optional scalar fields of a result: kernel, the two times and the truncation mark. */
+function resultExtras(raw: object): Partial<RunResult> {
+  const kernel = field(raw, 'kernel')
+  const startedAt = field(raw, 'startedAt')
+  const endedAt = field(raw, 'endedAt')
+  const error = field(raw, 'error')
+  return {
+    ...(typeof kernel === 'string' && { kernel }),
+    ...(typeof startedAt === 'number' && { startedAt }),
+    ...(typeof endedAt === 'number' && { endedAt }),
+    ...(field(raw, 'stdoutTruncated') === true && { stdoutTruncated: true as const }),
+    ...(isObject(error) && { error: { name: str(field(error, 'name')), message: str(field(error, 'message')), traceback: str(field(error, 'traceback')) } }),
+  }
+}
+
 /** Reads the `.json` safely: unknown fields are ignored; undefined when it is not a result. */
 export function parseRunResult(text: string): RunResult | undefined {
   let raw: unknown
@@ -99,83 +130,69 @@ export function parseRunResult(text: string): RunResult | undefined {
   if (!isObject(raw)) return undefined
   const status = field(raw, 'status')
   if (!RESULT_STATUSES.includes(status)) return undefined
-  const result: RunResult = {
+  return {
     status: status as ResultStatus,
+    ...resultExtras(raw),
     stdout: str(field(raw, 'stdout')),
-    tables: [],
-    plots: [],
-    reads: [],
+    tables: resultTables(raw),
+    plots: list(field(raw, 'plots')).flatMap(p => (isObject(p) && typeof field(p, 'file') === 'string' ? [str(field(p, 'file'))] : [])),
+    reads: list(field(raw, 'reads')).filter((n): n is number => typeof n === 'number'),
   }
-  const kernel = field(raw, 'kernel')
-  if (typeof kernel === 'string') result.kernel = kernel
-  const startedAt = field(raw, 'startedAt')
-  if (typeof startedAt === 'number') result.startedAt = startedAt
-  const endedAt = field(raw, 'endedAt')
-  if (typeof endedAt === 'number') result.endedAt = endedAt
-  if (field(raw, 'stdoutTruncated') === true) result.stdoutTruncated = true
-  const error = field(raw, 'error')
-  if (isObject(error)) {
-    result.error = { name: str(field(error, 'name')), message: str(field(error, 'message')), traceback: str(field(error, 'traceback')) }
-  }
-  for (const t of list(field(raw, 'tables'))) {
-    if (!isObject(t) || typeof field(t, 'file') !== 'string') continue
-    const rowCount = field(t, 'rowCount')
-    result.tables.push({
-      file: str(field(t, 'file')),
-      columns: list(field(t, 'columns')).filter((c): c is string => typeof c === 'string'),
-      rowCount: typeof rowCount === 'number' ? rowCount : 0,
-      truncated: field(t, 'truncated') === true,
-    })
-  }
-  for (const p of list(field(raw, 'plots'))) if (isObject(p) && typeof field(p, 'file') === 'string') result.plots.push(str(field(p, 'file')))
-  result.reads = list(field(raw, 'reads')).filter((n): n is number => typeof n === 'number')
-  return result
 }
 
 export type Table = { columns: string[]; rows: string[][]; truncated: boolean }
 
+/** The CSV reader's position in a record: the finished records, the open one, the open field, and whether it is inside quotes. */
+type CsvState = { records: string[][]; record: string[]; field: string; quoted: boolean }
+
+function endRecord(state: CsvState) {
+  state.record.push(state.field)
+  state.field = ''
+  if (!(state.record.length === 1 && state.record[0] === '')) state.records.push(state.record)
+  state.record = []
+}
+
+/** Reads the character at `i`; says how many characters it used (a doubled quote or CR LF uses two) and whether a record ended. */
+function readCsvChar(state: CsvState, text: string, i: number): { used: number; ended: boolean } {
+  const ch = text.charAt(i)
+  const next = text.charAt(i + 1)
+  if (state.quoted) {
+    if (ch !== '"') state.field += ch
+    else if (next === '"') state.field += '"'
+    else state.quoted = false
+    return { used: ch === '"' && next === '"' ? 2 : 1, ended: false }
+  }
+  if (ch === '"') state.quoted = true
+  else if (ch === ',') {
+    state.record.push(state.field)
+    state.field = ''
+  } else if (ch === '\n' || ch === '\r') {
+    endRecord(state)
+    return { used: ch === '\r' && next === '\n' ? 2 : 1, ended: true }
+  } else state.field += ch
+  return { used: 1, ended: false }
+}
+
 /** RFC 4180 CSV: quoted fields may hold commas, doubled quotes and newlines. Stops after `maxRows` data rows. */
 export function parseCsv(text: string, maxRows: number): Table {
-  const records: string[][] = []
-  let record: string[] = []
-  let field = ''
-  let quoted = false
+  const state: CsvState = { records: [], record: [], field: '', quoted: false }
   let i = 0
   let truncated = false
-  const endRecord = () => {
-    record.push(field)
-    field = ''
-    if (!(record.length === 1 && record[0] === '')) records.push(record)
-    record = []
+  let stopped = false
+  while (i < text.length && !stopped) {
+    const { used, ended } = readCsvChar(state, text, i)
+    i += used
+    if (ended && state.records.length > maxRows) {
+      truncated = i < text.length
+      stopped = true
+    }
   }
-  for (; i < text.length; i++) {
-    const ch = text[i]
-    if (quoted) {
-      if (ch === '"') {
-        if (text[i + 1] === '"') {
-          field += '"'
-          i++
-        } else quoted = false
-      } else field += ch
-    } else if (ch === '"') quoted = true
-    else if (ch === ',') {
-      record.push(field)
-      field = ''
-    } else if (ch === '\n' || ch === '\r') {
-      if (ch === '\r' && text[i + 1] === '\n') i++
-      endRecord()
-      if (records.length > maxRows) {
-        truncated = i + 1 < text.length
-        break
-      }
-    } else field += ch
-  }
-  if (i >= text.length && (field !== '' || record.length > 0)) endRecord()
-  if (records.length > maxRows + 1) {
-    records.length = maxRows + 1
+  if (!stopped && (state.field !== '' || state.record.length > 0)) endRecord(state)
+  if (state.records.length > maxRows + 1) {
+    state.records.length = maxRows + 1
     truncated = true
   }
-  const [columns = [], ...rows] = records
+  const [columns = [], ...rows] = state.records
   return { columns, rows, truncated }
 }
 
@@ -189,36 +206,48 @@ export type RunStatus = {
   kernel?: { state: KernelState; message?: string }
 }
 
+/** The object at `raw[key]`, when it is one. */
+function objectField(raw: object, key: string): object | undefined {
+  const value: unknown = Reflect.get(raw, key)
+  return typeof value === 'object' && value !== null ? value : undefined
+}
+
+function runningOf(raw: object): RunStatus['running'] {
+  const running = objectField(raw, 'running')
+  if (!running) return undefined
+  const number: unknown = Reflect.get(running, 'number')
+  const startedAt: unknown = Reflect.get(running, 'startedAt')
+  return typeof number === 'number' && typeof startedAt === 'number' ? { number, startedAt } : undefined
+}
+
+function failedOf(raw: object): RunStatus['failed'] {
+  const failed: RunStatus['failed'] = {}
+  for (const [key, message] of Object.entries(objectField(raw, 'failed') ?? {})) {
+    if (/^\d+$/.test(key) && typeof message === 'string') failed[Number(key)] = message
+  }
+  return failed
+}
+
+function kernelOf(raw: object): RunStatus['kernel'] {
+  const kernel = objectField(raw, 'kernel')
+  if (!kernel) return undefined
+  const state: unknown = Reflect.get(kernel, 'state')
+  const message: unknown = Reflect.get(kernel, 'message')
+  if (!KERNEL_STATES.includes(state)) return undefined
+  return { state: state as KernelState, ...(typeof message === 'string' && message !== '' && { message }) }
+}
+
 export function parseRunStatus(text: string): RunStatus {
-  const status: RunStatus = { failed: {} }
   let raw: unknown
   try {
     raw = JSON.parse(text)
   } catch {
-    return status
+    return { failed: {} }
   }
-  if (typeof raw !== 'object' || raw === null) return status
-  const running: unknown = Reflect.get(raw, 'running')
-  if (typeof running === 'object' && running !== null) {
-    const number: unknown = Reflect.get(running, 'number')
-    const startedAt: unknown = Reflect.get(running, 'startedAt')
-    if (typeof number === 'number' && typeof startedAt === 'number') status.running = { number, startedAt }
-  }
-  const failed: unknown = Reflect.get(raw, 'failed')
-  if (typeof failed === 'object' && failed !== null) {
-    for (const [key, message] of Object.entries(failed)) {
-      if (/^\d+$/.test(key) && typeof message === 'string') status.failed[Number(key)] = message
-    }
-  }
-  const kernel: unknown = Reflect.get(raw, 'kernel')
-  if (typeof kernel === 'object' && kernel !== null) {
-    const state: unknown = Reflect.get(kernel, 'state')
-    const message: unknown = Reflect.get(kernel, 'message')
-    if (KERNEL_STATES.includes(state)) {
-      status.kernel = { state: state as KernelState, ...(typeof message === 'string' && message !== '' && { message }) }
-    }
-  }
-  return status
+  if (typeof raw !== 'object' || raw === null) return { failed: {} }
+  const running = runningOf(raw)
+  const kernel = kernelOf(raw)
+  return { ...(running && { running }), failed: failedOf(raw), ...(kernel && { kernel }) }
 }
 
 export type RunHeader = {
@@ -234,26 +263,33 @@ export type RunHeader = {
 const SQL_HEADER_LINE = /^-- (?:author: |from: |trusted: |commit: |args: |built from: |postgres\s*$)/
 const PYTHON_HEADER_LINE = /^# (?:author: |from: |replay: )/
 
+type HeaderValue = (key: string) => string | undefined
+
+const isNumber = (text: string | undefined): text is string => text !== undefined && /^\d+$/.test(text)
+
+/** The SQL-only header lines: the trusted name, what a run is built from, and the engine. */
+function readSqlHeader(header: RunHeader, value: HeaderValue, line: string) {
+  const trusted = value('trusted')
+  if (trusted) header.trusted = trusted.split(/\s/)[0] ?? trusted
+  const built = value('built from')
+  if (built) header.builtFrom = built.split(',').map(piece => piece.trim()).filter(Boolean)
+  if (/^-- postgres\s*$/.test(line)) header.engine = 'postgres'
+}
+
 /** The mod's header lines, read from the leading comment lines only (`-- ` for SQL, `# ` for Python). A run with no `author:` line is Claude's. */
 export function parseRunHeader(text: string, language: 'sql' | 'python' = 'sql'): RunHeader {
   const header: RunHeader = { author: 'claude', engine: 'databricks' }
   const comment = language === 'python' ? '#' : '--'
   for (const line of text.split('\n')) {
     if (!line.startsWith(comment)) break
-    const value = (key: string) => (line.startsWith(`${comment} ${key}: `) ? line.slice(comment.length + key.length + 3).trim() : undefined)
+    const value: HeaderValue = key => (line.startsWith(`${comment} ${key}: `) ? line.slice(comment.length + key.length + 3).trim() : undefined)
     if (value('author') === 'user') header.author = 'user'
     const from = value('from')
-    if (from !== undefined && /^\d+$/.test(from)) header.from = Number(from)
+    if (isNumber(from)) header.from = Number(from)
     if (language === 'python') {
       const replay = value('replay')
-      if (replay !== undefined && /^\d+$/.test(replay)) header.replay = Number(replay)
-      continue
-    }
-    const trusted = value('trusted')
-    if (trusted) header.trusted = trusted.split(/\s/)[0] ?? trusted
-    const built = value('built from')
-    if (built) header.builtFrom = built.split(',').map(piece => piece.trim()).filter(Boolean)
-    if (/^-- postgres\s*$/.test(line)) header.engine = 'postgres'
+      if (isNumber(replay)) header.replay = Number(replay)
+    } else readSqlHeader(header, value, line)
   }
   return header
 }

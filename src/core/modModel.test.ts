@@ -24,7 +24,7 @@ const THREADS = `## Open
 - Is the table partitioned?
 `
 
-test('threads.md parses and formats back unchanged', async () => {
+test('threads.md parses and formats back unchanged', () => {
   const threads = parseThreads(THREADS)
   expect(threads.open).toEqual([
     'Why do some panels have alpha = 0?',
@@ -37,17 +37,17 @@ test('threads.md parses and formats back unchanged', async () => {
   expect(formatThreads(threads)).toBe(THREADS)
 })
 
-test('an empty threads.md is no threads', async () => {
+test('an empty threads.md is no threads', () => {
   expect(parseThreads('')).toEqual({ open: [], closed: [] })
   expect(formatThreads({ open: [], closed: [] })).toBe('## Open\n\n## Closed\n')
 })
 
-test('park appends to the open list', async () => {
+test('park appends to the open list', () => {
   const threads = parkThread(parseThreads(''), '  Why is beta null?\n')
   expect(threads.open).toEqual(['Why is beta null?'])
 })
 
-test('close matches by number, exact text or a unique part', async () => {
+test('close matches by number, exact text or a unique part', () => {
   const threads = parseThreads(THREADS)
 
   const byNumber = closeThread(threads, '2', 'per respondent')
@@ -67,7 +67,7 @@ test('close matches by number, exact text or a unique part', async () => {
   expect(closeThread(threads, '7').error).toMatch(/No open thread/)
 })
 
-test('focus moves the named open thread to the top, keeping the rest in order', async () => {
+test('focus moves the named open thread to the top, keeping the rest in order', () => {
   const threads = parseThreads(THREADS)
   const focused = focusThread(threads, 'completion')
   expect(focused.focused).toBe('Is `completion_rate` per respondent or per survey?')
@@ -80,7 +80,7 @@ test('focus moves the named open thread to the top, keeping the rest in order', 
   expect(focusThread(threads, '?').error).toMatch(/2 open threads match/)
 })
 
-test('order moves the named threads to the top in turn, the rest keep their order', async () => {
+test('order moves the named threads to the top in turn, the rest keep their order', () => {
   const threads = parseThreads('## Open\n1. A?\n2. B?\n3. C?\n4. D?\n')
   expect(orderThreads(threads, ['4', 'B?']).threads.open).toEqual(['D?', 'B?', 'A?', 'C?'])
   expect(orderThreads(threads, ['9']).error).toMatch(/No open thread/)
@@ -88,7 +88,7 @@ test('order moves the named threads to the top in turn, the rest keep their orde
   expect(orderThreads(threads, ['9']).threads).toBe(threads)
 })
 
-test('query files are numbered after the highest one', async () => {
+test('query files are numbered after the highest one', () => {
   expect(nextRunNumber([])).toBe(1)
   expect(nextRunNumber(['001_a.sql', '001_a.csv', '009_b.sql', 'notes.txt'])).toBe(10)
   expect(parseRuns(['012_beta-params.sql'])).toMatchObject([{ number: 12, slug: 'beta-params', code: '012_beta-params.sql', language: 'sql' }])
@@ -104,13 +104,13 @@ test('Python run files are named like SQL ones; tables and plots belong to their
   expect(run?.data).toBeUndefined()
 })
 
-test('slugs are short kebab case', async () => {
+test('slugs are short kebab case', () => {
   expect(runSlug('Beta Params by_Panel!')).toBe('beta-params-by-panel')
   expect(runSlug('***')).toBe('query')
   expect(runSlug('a'.repeat(80))).toHaveLength(48)
 })
 
-test('CSV round-trips quotes, commas and newlines', async () => {
+test('CSV round-trips quotes, commas and newlines', () => {
   const rows = [
     ['a', 'b,c'],
     ['say "hi"', 'two\nlines'],
@@ -123,7 +123,7 @@ test('CSV round-trips quotes, commas and newlines', async () => {
   expect(parsePsqlOutput(1, '', 'psql:queries/001_x.sql:1: ERROR:  relation "x" does not exist\n')).toEqual({ error: 'ERROR:  relation "x" does not exist' })
 })
 
-test('the target comes from analysis.yaml, with defaults', async () => {
+test('the target comes from analysis.yaml, with defaults', () => {
   expect(readTarget('')).toEqual({ profile: 'Cint mkt', warehouse: '455a178462311474' })
   expect(readTarget('title: Churn\nprofile: DEFAULT\nwarehouse: abc # why\npg_database: panel\n')).toEqual({
     profile: 'DEFAULT',
@@ -132,7 +132,7 @@ test('the target comes from analysis.yaml, with defaults', async () => {
   })
 })
 
-test('the CLI output gives columns and rows, or the error', async () => {
+test('the CLI output gives columns and rows, or the error', () => {
   const ok = JSON.stringify([
     { sql: 'x', state: 'SUCCEEDED', columns: ['a'], rows: [['1'], ['2']] },
     { sql: 'SELECT 1', state: 'SUCCEEDED', columns: ['1'], rows: [['1']] },
@@ -147,7 +147,7 @@ test('the CLI output gives columns and rows, or the error', async () => {
   expect(parseCliOutput('', '')).toEqual({ error: 'The Databricks CLI gave no output.' })
 })
 
-test('a SUCCEEDED statement with no result set is a success with no columns', async () => {
+test('a SUCCEEDED statement with no result set is a success with no columns', () => {
   const select1 = { sql: 'SELECT 1', state: 'SUCCEEDED', columns: ['1'], rows: [['1']] }
   for (const sql of ['CREATE OR REPLACE TEMPORARY VIEW v AS SELECT 1 AS x', 'DROP VIEW v', "COMMENT ON TABLE t IS 'x'"]) {
     expect(parseCliOutput(JSON.stringify([{ sql, state: 'SUCCEEDED' }, select1]), '')).toEqual({ columns: [], rows: [] })
@@ -155,7 +155,7 @@ test('a SUCCEEDED statement with no result set is a success with no columns', as
   }
 })
 
-test('a FAILED, CANCELED or CLOSED statement is an error, with its message or else its state', async () => {
+test('a FAILED, CANCELED or CLOSED statement is an error, with its message or else its state', () => {
   for (const state of ['FAILED', 'CANCELED', 'CLOSED']) {
     expect(parseCliOutput(JSON.stringify([{ sql: 'x', state, error: { message: 'boom' } }]), '')).toEqual({ error: 'boom' })
     expect(parseCliOutput(JSON.stringify([{ sql: 'x', state }]), '')).toEqual({ error: `Databricks reported the statement ${state}.` })
@@ -236,7 +236,7 @@ test('a Python run reply: status and time, stdout, traceback tail, tables and pl
   const base: PythonRun = { status: 'ok', stdout: '', tables: [], plots: [], reads: [] }
   expect(formatPythonRun(14, base, 2300)).toBe('Run 014: ok (2.3 s).')
   expect(formatPythonRun(14, { ...base, stdout: 'hello\n' }, 100)).toBe('Run 014: ok (0.1 s).\nhello')
-  const traceback = Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join('\n')
+  const traceback = Array.from({ length: 40 }, (_, i) => `line ${String(i + 1)}`).join('\n')
   const failed = formatPythonRun(15, { ...base, status: 'error', error: { name: 'KeyError', message: "'x'", traceback } }, 50).split('\n')
   expect(failed[0]).toBe('Run 015: error (0.1 s).')
   expect(failed).toHaveLength(31)
@@ -306,69 +306,71 @@ test('the run notice', () => {
 test('the run notice carries the step checks that failed, with or without runs', () => {
   const lines = ['q042 step spend: grain customer_id has 3 duplicate rows.', 'q042 step final: grain none (one row) has 7 rows.']
   expect(runNotice([], 'analyses/a', [])).toBeUndefined()
-  expect(runNotice([], 'analyses/a', lines)).toBe(`Step checks failed since your last turn:\n- ${lines[0]}\n- ${lines[1]}`)
+  expect(runNotice([], 'analyses/a', lines)).toBe(`Step checks failed since your last turn:\n- ${lines.join('\n- ')}`)
   expect(runNotice([{ number: 15, language: 'sql' }], 'analyses/a', lines.slice(0, 1))).toBe(
     'Since your last turn the user ran: 015 sql. Read analyses/a/queries/<file> when it matters.\nStep checks failed since your last turn:\n- q042 step spend: grain customer_id has 3 duplicate rows.',
   )
   expect(analysisRules(undefined, 'analyses/a')).toContain("or step k of a SQL run's Steps with q(N, step=k)")
 })
 
+const REFUSED_COMMANDS = [
+  'python x.py',
+  'python3 analysis/x.py --flag',
+  'python3.12 script.py',
+  'ipython x.py',
+  '/work/.venv/bin/python x.py',
+  '.venv/bin/python3 x.py',
+  'uv run python x.py',
+  'uv run --with pandas python3 -c "print(1)"',
+  'python -c "print(1)"',
+  "python3 -c 'import os'",
+  'python -u x.py',
+  'python -',
+  'python <<EOF\nprint(1)\nEOF',
+  "python3 - <<'PY'\nimport os\nPY",
+  'python < x.py',
+  'cat x.py | python',
+  'curl -s http://x | python3',
+  'cd sub && python x.py',
+  'ls; python x.py',
+  'FOO=1 python x.py',
+  'env FOO=1 python x.py',
+  'time python x.py',
+  'sudo -n python x.py',
+  'bash -c "python x.py"',
+  'python -W ignore x.py',
+]
+
+const ALLOWED_COMMANDS = [
+  'python -m pytest tests',
+  'python3 -m pytest -q',
+  '/work/.venv/bin/python -m pytest tests',
+  "cd analyses/a && '/Users/me/Library/Application Support/Assay/venvs/0.4.3/bin/python' -m pytest tests",
+  'python -mpytest',
+  'python -m pip install x',
+  'python --version',
+  'python3 -V',
+  'pytest tests',
+  'claude-pkg uv add pandas',
+  'uv sync',
+  'uv add pandas',
+  'uv run pytest',
+  'uv run python -m pytest',
+  'ls -la',
+  'grep python x.txt',
+  'echo "python x.py"',
+  'cat notes.md | grep python',
+  'python',
+  'curl x | python -m json.tool',
+  'git commit -m "python x.py"',
+  'cat <<EOF\npython x.py\nEOF',
+  'pythonic x.py',
+  'ls x.py',
+]
+
 test('the Bash guard refuses commands that run Python code, and lets pytest, pip and package commands through', () => {
-  const refused = [
-    'python x.py',
-    'python3 analysis/x.py --flag',
-    'python3.12 script.py',
-    'ipython x.py',
-    '/work/.venv/bin/python x.py',
-    '.venv/bin/python3 x.py',
-    'uv run python x.py',
-    'uv run --with pandas python3 -c "print(1)"',
-    'python -c "print(1)"',
-    "python3 -c 'import os'",
-    'python -u x.py',
-    'python -',
-    'python <<EOF\nprint(1)\nEOF',
-    "python3 - <<'PY'\nimport os\nPY",
-    'python < x.py',
-    'cat x.py | python',
-    'curl -s http://x | python3',
-    'cd sub && python x.py',
-    'ls; python x.py',
-    'FOO=1 python x.py',
-    'env FOO=1 python x.py',
-    'time python x.py',
-    'sudo -n python x.py',
-    'bash -c "python x.py"',
-    'python -W ignore x.py',
-  ]
-  for (const command of refused) expect([command, bashRunsPython(command)]).toEqual([command, true])
-  const allowed = [
-    'python -m pytest tests',
-    'python3 -m pytest -q',
-    '/work/.venv/bin/python -m pytest tests',
-    "cd analyses/a && '/Users/me/Library/Application Support/Assay/venvs/0.4.3/bin/python' -m pytest tests",
-    'python -mpytest',
-    'python -m pip install x',
-    'python --version',
-    'python3 -V',
-    'pytest tests',
-    'claude-pkg uv add pandas',
-    'uv sync',
-    'uv add pandas',
-    'uv run pytest',
-    'uv run python -m pytest',
-    'ls -la',
-    'grep python x.txt',
-    'echo "python x.py"',
-    'cat notes.md | grep python',
-    'python',
-    'curl x | python -m json.tool',
-    'git commit -m "python x.py"',
-    'cat <<EOF\npython x.py\nEOF',
-    'pythonic x.py',
-    'ls x.py',
-  ]
-  for (const command of allowed) expect([command, bashRunsPython(command)]).toEqual([command, false])
+  for (const command of REFUSED_COMMANDS) expect([command, bashRunsPython(command)]).toEqual([command, true])
+  for (const command of ALLOWED_COMMANDS) expect([command, bashRunsPython(command)]).toEqual([command, false])
   expect(BASH_PYTHON_DENY).toBe('Run Python with mcp__assay__python: it runs in the kernel the user sees, and every run is saved. pytest and package commands stay allowed.')
 })
 
@@ -379,7 +381,7 @@ test('the rules send findings to the note tools, cited and linked, and never to 
   expect(rules.length).toBeLessThan(3200)
 })
 
-test('a table aligns columns and cuts wide cells', async () => {
+test('a table aligns columns and cuts wide cells', () => {
   const table = formatTable(['id', 'name'], [['1', 'alpha'], ['22', 'x'.repeat(30)]], 10)
   expect(table).toBe('id  name\n1   alpha\n22  xxxxxxxxx…')
 })

@@ -4,14 +4,15 @@ import { test } from 'node:test'
 import { THEMES, cellRecolor, contrastRatio, minimumContrast } from './theme.ts'
 
 const { light, dark } = THEMES
-const cell = (fg: number[], bg: number[]) => ({
+type Rgb = readonly [number, number, number]
+const cell = ([fgR, fgG, fgB]: Rgb, [bgR, bgG, bgB]: Rgb) => ({
   codepoint: 97,
-  fg_r: fg[0]!,
-  fg_g: fg[1]!,
-  fg_b: fg[2]!,
-  bg_r: bg[0]!,
-  bg_g: bg[1]!,
-  bg_b: bg[2]!,
+  fg_r: fgR,
+  fg_g: fgG,
+  fg_b: fgB,
+  bg_r: bgR,
+  bg_g: bgG,
+  bg_b: bgB,
 })
 
 test('default text and background swap to the other theme', () => {
@@ -24,7 +25,7 @@ test('ANSI colours swap, and swapping back restores the cell', () => {
   const red = cell([0xea, 0x6c, 0x73], [0x0b, 0x0e, 0x14])
   const [lit] = cellRecolor(dark.terminal, light.terminal)([red])
   assert.deepEqual(lit, cell([0xea, 0x6c, 0x6d], [0xf8, 0xf9, 0xfa]))
-  assert.deepEqual(cellRecolor(light.terminal, dark.terminal)([lit!])[0], red)
+  assert.deepEqual(cellRecolor(light.terminal, dark.terminal)([lit])[0], red)
 })
 
 test('colours outside the theme stay, and the input is not changed', () => {
@@ -38,15 +39,15 @@ test('colours outside the theme stay, and the input is not changed', () => {
 
 test('no theme uses one colour for two cell roles, or a swap could not be undone', () => {
   for (const { terminal } of [light, dark]) {
-    const { cursor: _c, cursorAccent: _a, selectionBackground: _b, selectionForeground: _f, ...cellColors } = terminal
-    const values = Object.values(cellColors)
+    const notCellRoles = new Set(['cursor', 'cursorAccent', 'selectionBackground', 'selectionForeground'])
+    const values = Object.entries(terminal).filter(([role]) => !notCellRoles.has(role)).map(([, color]) => color)
     assert.equal(new Set(values).size, values.length)
   }
 })
 
 test('minimumContrast repaints unreadable text and leaves readable text alone', () => {
   const fix = minimumContrast(light.terminal)
-  const bg = [0xf8, 0xf9, 0xfa]
+  const bg: Rgb = [0xf8, 0xf9, 0xfa]
   // Claude Code's dark-theme white on Light's background becomes Light's text colour.
   assert.deepEqual(fix([cell([255, 255, 255], bg)]), [cell([0x5c, 0x61, 0x66], bg)])
   // Normal and dim text stay.

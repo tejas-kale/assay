@@ -3,6 +3,13 @@ import { test } from 'node:test'
 
 import { canAnswer, canCheck, earlierReview, outcomeWord, TRUST_STATES, diffLines, isActive, latestReview, parseTrustReview, stateLine, stateTone, stepDetail, stepTitle, trustSeenKey, justAnswered, justFailed, failedMessage } from './trust.ts'
 
+/** The review a file with these fields holds; the test fails when it is not one. */
+function parsed(fields: object) {
+  const review = parseTrustReview(JSON.stringify(fields))
+  assert.ok(review)
+  return review
+}
+
 const base = {
   name: 'c',
   kind: 'calculation',
@@ -53,8 +60,8 @@ test('unknown fields are ignored, bad steps dropped, bad language becomes absent
 })
 
 test('latestReview picks the largest startedAt', () => {
-  const a = parseTrustReview(JSON.stringify({ ...base, name: 'a', startedAt: 5 }))!
-  const b = parseTrustReview(JSON.stringify({ ...base, name: 'b', startedAt: 9 }))!
+  const a = parsed({ ...base, name: 'a', startedAt: 5 })
+  const b = parsed({ ...base, name: 'b', startedAt: 9 })
   assert.equal(latestReview([a, b, a])?.name, 'b')
   assert.equal(latestReview([]), undefined)
 })
@@ -86,7 +93,7 @@ test('stateTone and isActive', () => {
 })
 
 test('stateLine ticks while checking, asks for Trust or Reject, else shows the message', () => {
-  const r = parseTrustReview(JSON.stringify({ ...base, steps: [], message: 'Trusted c: committed in trusted/.' }))!
+  const r = parsed({ ...base, steps: [], message: 'Trusted c: committed in trusted/.' })
   assert.deepEqual(stateLine(r, 4100), { text: 'checking… 4 s', tone: 'dim' })
   assert.equal(stateLine({ ...r, state: 'asking' }, 9000).text, 'Every check passed: Trust (t) or Reject (r).')
   assert.deepEqual(stateLine({ ...r, state: 'approved' }, 9000), { text: 'Trusted c: committed in trusted/.', tone: 'good' })
@@ -102,12 +109,11 @@ test('diffLines tags by the first characters', () => {
 })
 
 test('trustSeenKey changes with the start, state, step count and sample rows', () => {
-  const r = parseTrustReview(JSON.stringify({ ...base, steps: [{ step: 'a', ok: true, text: '' }], sample: { columns: ['a'], rows: [['1'], ['2']] } }))!
-  assert.equal(trustSeenKey(r), `${r.startedAt}:${r.state}:1:2`)
+  const r = parsed({ ...base, steps: [{ step: 'a', ok: true, text: '' }], sample: { columns: ['a'], rows: [['1'], ['2']] } })
+  assert.equal(trustSeenKey(r), `${String(r.startedAt)}:${r.state}:1:2`)
   assert.notEqual(trustSeenKey(r), trustSeenKey({ ...r, state: 'approved' }))
   assert.equal(trustSeenKey({ ...r, steps: [] }).split(':')[2], '0')
-  const { sample: _drop, ...bare } = r
-  assert.equal(trustSeenKey(bare).split(':')[3], '0')
+  assert.equal(trustSeenKey({ ...r, sample: undefined }).split(':')[3], '0')
 })
 
 test('Trust and Reject are offered only while asking; Check only when no review is open', () => {
@@ -172,14 +178,14 @@ test('justFailed: a check that ended failed or error since the window last looke
 })
 
 test('failedMessage: the failed steps on one line, the review file, one Enter at the end', () => {
-  const review = parseTrustReview(JSON.stringify({
+  const review = parsed({
     ...base,
     state: 'failed',
     steps: [
       { step: 'transpile', ok: true, text: 'PASSED' },
       { step: 'test', name: 'case 2', ok: false, text: 'FAILED expected 3 rows\ngot 2', diff: '- a\n+ b' },
     ],
-  }))!
+  })
   const text = failedMessage(review)
   assert.match(text, /^The Trust tab check of c failed: test case 2: expected 3 rows got 2\. /)
   assert.match(text, /\.assay\/trust\/c\.json/)
@@ -187,4 +193,9 @@ test('failedMessage: the failed steps on one line, the review file, one Enter at
   assert.doesNotMatch(text.slice(0, -1), /[\n\r]/)
   const broke = failedMessage({ ...review, state: 'error', steps: [], message: 'x'.repeat(2000) })
   assert.match(broke, /^The Trust tab check of c broke: x+…\. /)
+})
+
+test('failedMessage turns control characters into spaces and collapses every run of white space', () => {
+  const review = parsed({ ...base, state: 'failed', steps: [{ step: 'test', ok: false, text: 'FAILED a\x00\x01b\x1fc\x7fd\t\te\u00a0f' }] })
+  assert.match(failedMessage(review), /^The Trust tab check of c failed: test: a b c d e f\. /)
 })
