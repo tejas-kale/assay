@@ -143,7 +143,7 @@ test('the notice carries the step check lines the server recorded, once', async 
 test('a Write or Edit into another analysis is refused, naming the open one; the open one is allowed', async () => {
   const { root, analysis, env } = await scratch()
   const write = (tool: string, input: object) => hook('write', { hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, cwd: root }, env)
-  const reason = (other: string) => `${other} is not the open analysis. The open analysis is "Panel sites" (analyses/panel/): write only there.`
+  const reason = (other: string) => `${other} is not the open analysis. The open analysis is in analyses/panel/: write only there.`
   const cases: [string, string][] = [
     [`${root}/analyses/other/lib/x.py`, 'analyses/other'],
     ['analyses/other/notes.md', 'analyses/other'],

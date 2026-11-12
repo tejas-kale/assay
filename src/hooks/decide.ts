@@ -70,7 +70,7 @@ async function openRef(analysis: string, home: string): Promise<OpenAnalysis> {
 }
 
 /** PreToolUse on Write, Edit, MultiEdit and NotebookEdit: never into the shared dictionaries/, trusted/ or notes/, the root's git, the analysis's .assay/ or queries/, nor into another analysis. */
-export async function writeDecision(input: Record<string, unknown>, env: Env) {
+export function writeDecision(input: Record<string, unknown>, env: Env) {
   const home = env.ASSAY_ROOT
   if (!home || !env.ASSAY_ANALYSIS) return undefined
   const tool = toolInput(input)
@@ -82,8 +82,8 @@ export async function writeDecision(input: Record<string, unknown>, env: Env) {
   const realRoot = realPath(root, '/')
   const other = otherAnalysis(real, realRoot, realPath(env.ASSAY_ANALYSIS, '/'), '/')
   if (other) {
-    const open = await openRef(env.ASSAY_ANALYSIS, root)
-    return deny(`${other} is not the open analysis. The open analysis is "${open.title}" (${open.folder}/): write only there.`)
+    // The folder, not the title: the title is file text, kept out of anything Claude reads as an instruction (PI-4).
+    return deny(`${other} is not the open analysis. The open analysis is in ${relative(root, env.ASSAY_ANALYSIS)}/: write only there.`)
   }
   const installed = [env.ASSAY_BACKEND, env.ASSAY_VENV].filter((folder): folder is string => Boolean(folder)).map(folder => stripTrailingSlashes(folder))
   const analysis = normalPath(env.ASSAY_ANALYSIS, '/')
