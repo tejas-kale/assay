@@ -43,7 +43,7 @@ class EnvSplitter {
       this.quote = char
       this.isWord = true
     } else if (char === '\\') return this.stepEscape(i, false)
-    else if (char === '$') this.isBroken = true
+    else if (char === '$') return this.stepDollar(i)
     else if (char === '#' && !this.isWord) return -1
     else if (/\s/.test(char)) this.endWord()
     else this.add(char)
@@ -54,9 +54,20 @@ class EnvSplitter {
     const char = this.text[i] ?? ''
     if (char === this.quote) this.quote = ''
     else if (char === '\\') return this.stepEscape(i, true)
-    else if (char === '$' && this.quote === '"') this.isBroken = true
+    else if (char === '$' && this.quote === '"') return this.stepDollar(i)
     else this.add(char)
     return i
+  }
+
+  /** `${NAME...}` is kept as written, an opaque word env expands later; any other `$` cannot be followed. */
+  private stepDollar(i: number): number {
+    const close = this.text.indexOf('}', i)
+    if (this.text[i + 1] !== '{' || close < 0) {
+      this.isBroken = true
+      return i
+    }
+    this.add(this.text.slice(i, close + 1))
+    return close
   }
 
   /** `\c` ends the string; `\_` is a space in double quotes and ends the word outside quotes; other escapes are listed; the rest cannot be followed. */
@@ -77,7 +88,7 @@ class EnvSplitter {
   }
 }
 
-/** The words of an `env -S` string, or undefined when it cannot be followed (a `${VAR}` expansion, a bad escape, an open quote). */
+/** The words of an `env -S` string, or undefined when it cannot be followed (a `$VAR` expansion, an unclosed `${`, a bad escape, an open quote). */
 export function envSplitWords(text: string): string[] | undefined {
   const splitter = new EnvSplitter(text)
   splitter.run()

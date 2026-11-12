@@ -2,29 +2,12 @@
 // through Bash.
 import { envSplitWords } from './envSplit.ts'
 import { toolName } from './rules.ts'
+import { joinContinuations, withoutHeredocBodies } from './shellText.ts'
 
 export const BASH_PYTHON_DENY =
   `Run Python with ${toolName('python')}: it runs in the kernel the user sees, and every run is saved. pytest and package commands stay allowed.`
 
 type Segment = { words: string[]; isPiped: boolean; hasRedirect: boolean }
-
-const HEREDOC_START = /<<-?\s*(['"]?)([A-Za-z_]\w*)\1/
-
-/** The command's lines without heredoc bodies: after a `<<WORD` line, everything up to the line that is WORD. */
-function withoutHeredocBodies(command: string): string {
-  const lines = command.split('\n')
-  const kept: string[] = []
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? ''
-    kept.push(line)
-    const heredoc = HEREDOC_START.exec(line)
-    if (heredoc && !line.includes('<<<')) {
-      while (i + 1 < lines.length && (lines[i + 1] ?? '').trim() !== heredoc[2]) i++
-      i++
-    }
-  }
-  return kept.join('\n')
-}
 
 /** Reads the text one character at a time; `step` returns the index of the last character it consumed. */
 class SegmentReader {
@@ -75,6 +58,10 @@ class SegmentReader {
       case '\\':
         this.isWord = true
         return this.addEscaped(i)
+      case '#':
+        return this.stepHash(i)
+      case '$':
+        return this.stepDollar(i)
       case '|':
         return this.stepPipe(i)
       case '&':
@@ -96,6 +83,27 @@ class SegmentReader {
         this.isWord = true
         return i
     }
+  }
+
+  /** A `#` at the start of a word is a comment: the rest of the line, separators included, is not commands. */
+  private stepHash(i: number): number {
+    if (this.isWord) {
+      this.word += '#'
+      return i
+    }
+    const end = this.text.indexOf('\n', i)
+    return end < 0 ? this.text.length : end - 1
+  }
+
+  /** `${...}` stays in the word whole, so a `#` or a space in it does not end anything. */
+  private stepDollar(i: number): number {
+    this.word += '$'
+    this.isWord = true
+    if (this.text[i + 1] !== '{') return i
+    const close = this.text.indexOf('}', i)
+    const last = close < 0 ? this.text.length - 1 : close
+    this.word += this.text.slice(i + 1, last + 1)
+    return last
   }
 
   /** `|` feeds the next segment; `||` does not. */
@@ -156,7 +164,7 @@ class SegmentReader {
 }
 
 /** A command line split at `;`, `&&`, `||`, `|`, `&` and newlines into segments of words (quotes honoured), with heredoc bodies dropped. */
-const shellSegments = (command: string): Segment[] => new SegmentReader(withoutHeredocBodies(command)).read()
+const shellSegments = (command: string): Segment[] => new SegmentReader(withoutHeredocBodies(joinContinuations(command))).read()
 
 // Ignoring case: macOS finds `Python` as `python`. `t` is the free-threaded build (python3.13t); py and pypy run code too.
 const PYTHON_NAMES = [/^i?python[23]?(?:\.\d+)?t?$/i, /^(?:pypy[23]?(?:\.\d+)?|py)$/i]
@@ -164,6 +172,11 @@ const PYTHON_PROGRAM = { test: (word: string) => PYTHON_NAMES.some(name => name.
 // Each wrapper that runs the command after it, with its options that take a value as the next word.
 const WRAPPERS = new Map<string, ReadonlySet<string>>([
   ['env', new Set(['-u', '--unset', '-C', '--chdir'])],
+  ['setsid', new Set()],
+  ['chrt', new Set()],
+  ['ionice', new Set(['-c', '--class', '-n', '--classdata'])],
+  ['taskset', new Set()],
+  ['unbuffer', new Set()],
   ['time', new Set(['-f', '--format', '-o', '--output'])],
   ['nohup', new Set()],
   ['exec', new Set(['-a'])],
@@ -180,7 +193,8 @@ const WRAPPERS = new Map<string, ReadonlySet<string>>([
   ['xargs', new Set(['-a', '--arg-file', '-d', '--delimiter', '-E', '-I', '-L', '-n', '--max-args', '-P', '--max-procs', '-s', '--max-chars'])],
 ])
 // Wrappers whose first word after the options is theirs (a duration), not the command's.
-const TAKES_OPERAND = new Set(['timeout', 'flock'])
+// (`chrt`'s priority and `taskset`'s mask too.)
+const TAKES_OPERAND = new Set(['timeout', 'flock', 'chrt', 'taskset'])
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish'])
 // Words that start a compound command or negate one: what follows is the command.
 const KEYWORDS = new Set(['!', '{', 'if', 'then', 'else', 'elif', 'do', 'while', 'until'])
@@ -205,6 +219,7 @@ const isCodeFlag = (arg: string) =>
 /** Whether python with these arguments (after the program) runs code: a script, `-c`, `-`, stdin. `-m`, `--version` and the like do not. */
 function pythonRunsCode(args: readonly string[], isFed: boolean): boolean {
   for (const [i, arg] of args.entries()) {
+    if (args[i - 1] === '-W' || args[i - 1] === '-X') continue
     if (isModuleFlag(arg)) return CODE_MODULES.has(arg === '-m' ? (args[i + 1] ?? '') : arg.slice(2))
     if (INFO_FLAGS.has(arg)) return false
     if (isCodeFlag(arg) || arg === '-' || !arg.startsWith('-')) return true
@@ -232,7 +247,10 @@ function splitStringAt(words: readonly string[], at: number): readonly string[] 
   if (!split) return undefined
   const isSeparate = split.value === '' && !(words[at] ?? '').includes('=')
   const text = isSeparate ? (words[at + 1] ?? '') : split.value
-  return [...(envSplitWords(text) ?? TOO_DEEP_WORDS), ...words.slice(isSeparate ? at + 2 : at + 1)]
+  const splitWords = envSplitWords(text)
+  // A program named by an expansion cannot be known: fail closed.
+  const own = !splitWords || splitWords[0]?.startsWith('$') ? TOO_DEEP_WORDS : splitWords
+  return [...own, ...words.slice(isSeparate ? at + 2 : at + 1)]
 }
 
 /** How many words an option takes: two when it, or the last of its combined short options (`-iu`), takes a value as the next word. */
@@ -342,7 +360,7 @@ function segmentRunsPython(segment: Segment, depth = 0): boolean {
 const FAILED = -1
 const STOPPED = -2
 
-type Frame = { isNested: boolean; isDouble: boolean; parens: number; closedAt: number }
+type Frame = { isNested: boolean; isDouble: boolean; parens: number; braces: number; closedAt: number }
 
 /** Reads text for `$(...)`, `<(...)`, `>(...)` and backticks, honouring quotes, backslashes and nesting; `found` gets each command's text. */
 class SubstitutionScanner {
@@ -351,7 +369,7 @@ class SubstitutionScanner {
   /** The index of the `)` that ends a nested scan, or the text's length; -1 when it cannot be followed. */
   scan(text: string, start: number, isNested: boolean, depth: number): number {
     if (depth > MAX_DEPTH) return this.giveUp()
-    const frame: Frame = { isNested, isDouble: false, parens: 0, closedAt: -1 }
+    const frame: Frame = { isNested, isDouble: false, parens: 0, braces: 0, closedAt: -1 }
     let at = start
     while (at >= 0 && at < text.length && frame.closedAt < 0) at = this.step(text, at, frame, depth)
     if (at === FAILED) return FAILED
@@ -368,10 +386,23 @@ class SubstitutionScanner {
       return i + 1
     }
     if (char === "'" && !frame.isDouble) return this.afterSingleQuote(text, i, frame.isNested)
-    if (char === '#' && !frame.isDouble && this.startsWord(text, i)) return this.afterComment(text, i)
+    if (char === '#' && !frame.isDouble && frame.braces === 0 && this.startsWord(text, i)) return this.afterComment(text, i)
+    if (char === '$' && text[i + 1] === '{') return this.openBrace(frame, i)
+    if (char === '}' && frame.braces > 0) return this.closeBrace(frame, i)
     if (char === '`') return this.afterBacktick(text, i, depth)
     if (this.opensSubstitution(text, i, frame.isDouble)) return this.afterParenthesised(text, i, depth)
     if (frame.isNested && !frame.isDouble) this.countParen(char, i, frame)
+    return i + 1
+  }
+
+  /** Inside `${...}` a `#` is not a comment. */
+  private openBrace(frame: Frame, i: number): number {
+    frame.braces++
+    return i + 2
+  }
+
+  private closeBrace(frame: Frame, i: number): number {
+    frame.braces--
     return i + 1
   }
 
@@ -428,7 +459,7 @@ class SubstitutionScanner {
 /** The commands inside `$(...)`, `<(...)`, `>(...)` and backticks at any depth, as text; one that cannot be followed counts as Python. */
 function substitutions(command: string): string[] {
   const scanner = new SubstitutionScanner()
-  scanner.scan(command, 0, false, 0)
+  scanner.scan(withoutHeredocBodies(joinContinuations(command), true), 0, false, 0)
   return scanner.found
 }
 

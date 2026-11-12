@@ -13,8 +13,9 @@ test('env -S strings split by whitespace, quotes and escapes, with no shell synt
   expect(envSplitWords('a \\c b')).toEqual(['a'])
   expect(envSplitWords("'$x'")).toEqual(['$x'])
   expect(envSplitWords('')).toEqual([])
+  expect(envSplitWords('echo ${HOME} "a${B:-c d}" x')).toEqual(['echo', '${HOME}', 'a${B:-c d}', 'x'])
 })
 
 test('env -S strings that cannot be followed give undefined', () => {
-  for (const text of ['${X} y', '$X', '"$X"', '"a', "'a", 'a\\q', '"a\\c"', 'a\\']) expect([text, envSplitWords(text)]).toEqual([text, undefined])
+  for (const text of ['${X', '$X', '"$X"', '"a', "'a", 'a\\q', '"a\\c"', 'a\\']) expect([text, envSplitWords(text)]).toEqual([text, undefined])
 })

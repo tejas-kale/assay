@@ -374,3 +374,55 @@ test('PI-5: a comment hides a lone backtick or parenthesis, and only a comment',
   expectDecisions(false, ['echo hi # `', 'echo hi # $(', 'echo hi #`python -c 1`', 'echo a;# `\necho b'])
   expectDecisions(true, ['echo hi#`python -c 1`', 'echo a # c\n echo `python -c 1`', 'echo "# `python -c 1`"', 'echo a\\ #`python -c 1`', 'echo ${#x} `python -c 1`'])
 })
+
+test('PI-5: setsid, chrt, ionice, taskset, caffeinate and unbuffer are seen through', () => {
+  expectDecisions(true, [
+    'setsid python3 -c 1',
+    'setsid --wait python3 -c 1',
+    'setsid -w -f python3 -c 1',
+    'chrt 10 python3 -c 1',
+    'chrt --other 0 python3 -c 1',
+    'chrt -o 0 python3 -c 1',
+    'chrt -r 5 python3 x.py',
+    'ionice -c 3 python3 -c 1',
+    'ionice -c3 -n 7 -t python3 -c 1',
+    'taskset 0x1 python3 -c 1',
+    'taskset -c 0-3 python3 -c 1',
+    'caffeinate -i -s python3 -c 1',
+    'caffeinate -w 123 python3 -c 1',
+    'unbuffer python3 -c 1',
+    'unbuffer -p python3 -c 1',
+    'nice setsid ionice -c 2 chrt 0 python3 -c 1',
+  ])
+  expectDecisions(false, ['setsid ls', 'chrt 10 ls', 'ionice -c 3 ls', 'taskset 0x1 ls', 'caffeinate -i ls', 'unbuffer ls'])
+})
+
+test('PI-5: a backslash-newline joins lines, except in single quotes and comments', () => {
+  expectDecisions(true, ['pyth\\\non3 -c 1', 'python3 \\\n-c 1', 'echo "a\\\nb"; python3 -c 1', 'echo hi # x \\\npython3 -c 1', 'echo \\\\\npython3 -c 1'])
+  expectDecisions(false, ["echo 'pyth\\\non3 -c 1'", 'echo a\\\nb'])
+})
+
+test('PI-5: a # inside ${...} is not a comment', () => {
+  expectDecisions(true, ['echo ${v:- #$(python3 -c 1)}', 'echo "${v:- #`python3 -c 1`}"'])
+  expectDecisions(false, ['echo ${v:- #}', 'echo ${#v}'])
+})
+
+test('PI-5: a comment hides the rest of its line, separators included', () => {
+  expectDecisions(false, ['echo hi # ; python3 -c 1', 'echo hi # && python3 -c 1', 'echo hi # | python3 -c 1'])
+  expectDecisions(true, ['echo hi # x\npython3 -c 1', 'echo hi#x; python3 -c 1', 'echo "a # b"; python3 -c 1', 'echo a\\ #b; python3 -c 1'])
+})
+
+test('PI-5: a quoted heredoc body is literal; an unquoted one is still scanned', () => {
+  expectDecisions(false, ["cat <<'EOF'\n`\nEOF", 'cat <<"EOF"\n$(\nEOF', "cat <<'EOF'\n$(python3 -c 1)\nEOF"])
+  expectDecisions(true, ['cat <<EOF\n$(python3 -c 1)\nEOF', "cat <<'EOF'\nx\nEOF\npython3 -c 1", 'cat <<EOF\n`python3 -c 1`\nEOF'])
+})
+
+test('PI-5: python that only prints its version passes, even after options with values', () => {
+  expectDecisions(false, ['python3 -I -B -W default --version', 'python3 --version', 'python3 -V', 'python3 -X dev -V'])
+  expectDecisions(true, ['python3 -W default x.py', 'python3 -W default -c 1', 'python3 x.py --version'])
+})
+
+test('PI-5: env -S keeps ${VAR} as an opaque word, and fails closed when it could be the program', () => {
+  expectDecisions(false, ["env -S 'echo ${HOME}'", "env -S 'ls \"${HOME}/x\"'"])
+  expectDecisions(true, ["env -S '${PY} x.py'", "p=python3; env -S 'nice ${p} -c 1'"])
+})
