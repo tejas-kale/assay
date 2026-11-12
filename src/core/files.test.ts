@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { chartPage, ghosttyArgs, ghosttyTabArgs, isMermaidFile, kindByBytes, kindByName, MAX_FILES, walkFiles } from './files.ts'
+import { chartPage, defaultOpening, ghosttyArgs, ghosttyTabArgs, isMermaidFile, kindByBytes, kindByName, MAX_FILES, walkFiles } from './files.ts'
 import type { WalkPort } from './files.ts'
 
 test('kindByName knows images, text and binary data by extension, and leaves the rest to the bytes', () => {
@@ -100,4 +100,12 @@ test('walkFiles stops at MAX_FILES, in the middle of a folder', async () => {
   }
   assert.equal((await walkFiles(port, '/a')).length, MAX_FILES)
   assert.equal(statted.length, MAX_FILES)
+})
+
+test('only a document that is not executable opens in its default app; anything else is shown in Finder (audit UI-1)', () => {
+  assert.equal(defaultOpening('report.pdf', 0o644), 'default')
+  assert.equal(defaultOpening('out/Deck.PPTX', 0o600), 'default')
+  for (const [name, mode] of [['report.pdf', 0o755], ['queries/summary', 0o755], ['summary', 0o644], ['x.jar', 0o644], ['x.command', 0o644], ['x.webloc', 0o644], ['x.app', 0o755], ['data.parquet', 0o644], ['.pdf', 0o644]] as const) {
+    assert.equal(defaultOpening(name, mode), 'finder', name)
+  }
 })

@@ -95,6 +95,17 @@ export function updateBanner(state: UpdateState): string | undefined {
   return state.status === 'ready' ? `Assay ${state.version} is ready.` : undefined
 }
 
+/**
+ * The updater's settings that keep an update to the newest signed release. Differential downloads stay off: electron-
+ * updater 6 keeps the token's Authorization header when it follows the asset's redirect to the download host.
+ */
+export const UPDATER_OPTIONS = {
+  autoDownload: true,
+  allowDowngrade: false,
+  allowPrerelease: false,
+  disableDifferentialDownload: true,
+} as const
+
 const FIRST_CHECK_MS = 10_000
 const CHECK_EVERY_MS = 60 * 60 * 1000
 

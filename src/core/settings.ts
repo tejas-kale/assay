@@ -41,7 +41,11 @@ export function normalizeRoot(input: string, home: string): RootResult {
   const expanded = text === '~' || text.startsWith('~/') ? join(home, text.slice(1)) : text
   if (!isAbsolute(expanded)) return { ok: false, message: 'Use a full path, starting with / or ~/.' }
   const path = normalize(expanded)
-  return { ok: true, path: rootFor(path.length > 1 ? stripTrailingSlashes(path) : path) }
+  const root = rootFor(path.length > 1 ? stripTrailingSlashes(path) : path)
+  // The root is Claude's working folder, and what a launcher mounts for it: never the home folder or one above it.
+  const homeFolder = stripTrailingSlashes(home)
+  if (root === '/' || homeFolder === root || homeFolder.startsWith(`${root}/`)) return { ok: false, message: `${root} holds your home folder: pick the folder that holds analyses/.` }
+  return { ok: true, path: root }
 }
 
 /** The folder holding `analyses/`, given a path the user picked. Picking `analyses/` itself or one analysis inside it means its root. */

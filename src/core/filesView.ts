@@ -15,8 +15,9 @@ export function splitPath(path: string): { folder: string; name: string } {
   return { folder: path.slice(0, cut), name: path.slice(cut) }
 }
 
-export function openedMessage(how: 'nvim' | 'browser' | 'default', path: string): string {
+export function openedMessage(how: 'nvim' | 'browser' | 'default' | 'finder', path: string): string {
   if (how === 'nvim') return `Opened ${path} in Neovim`
+  if (how === 'finder') return `Showed ${path} in Finder: Assay opens only documents in their app`
   if (how === 'browser') return `Opened the chart of ${path} in your browser`
   return `Opened ${path}`
 }

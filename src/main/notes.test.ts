@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -87,4 +87,17 @@ test('a cited run is read from any analysis under the root, and only by a plain 
   assert.deepEqual(view.table?.rows, [['5']])
   assert.equal(await readCitedRun(root, '..', 5), undefined)
   assert.equal(await readCitedRun(root, 'b', 6), undefined)
+})
+
+test('a note file that is a link is neither shown nor saved (audit UI-6)', async () => {
+  const { root } = await scratch()
+  const secret = join(root, 'secret.txt')
+  await writeFile(secret, 'token\n')
+  await mkdir(join(root, 'notes'), { recursive: true })
+  const name = '20261102T090000-linked.md'
+  await symlink(secret, join(root, 'notes', name))
+  const read = await readRootNote(root, name)
+  assert.equal(read.ok, false)
+  assert.equal((await saveRootNote(root, name, 'token\n', 'x')).ok, false)
+  assert.equal(await readFile(secret, 'utf8'), 'token\n')
 })

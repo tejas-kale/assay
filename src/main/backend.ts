@@ -32,13 +32,16 @@ export const installedStamp = (folder: string) => readFile(join(folder, STAMP), 
 
 /**
  * This version's backend folder, copied from the shipped one when it is missing or holds other content: every local
- * build is the same version, so the version alone cannot tell two builds apart. The copy goes to a temporary folder
+ * build is the same version, so the version alone cannot tell two builds apart. The copy is hashed again at each
+ * launch, not trusted by its stamp: its hooks and server enforce Assay's rules, and anything running as the user
+ * could edit them, where the shipped copy is sealed by the app's signature. The copy goes to a temporary folder
  * beside it and is renamed into place, so a crash mid-copy never leaves a backend that looks installed.
  */
 export async function installBackend({ shipped, home, version }: { shipped: string; home: string; version: string }): Promise<string> {
   const target = join(home, 'backend', version)
   const stamp = await backendStamp(shipped)
-  if ((await installedStamp(target)) === stamp) return target
+  const installed = await exists(target) ? await backendStamp(target).catch(() => undefined) : undefined
+  if (installed === stamp && (await installedStamp(target)) === stamp) return target
   await mkdir(join(home, 'backend'), { recursive: true })
   const temporary = join(home, 'backend', `${TEMP_PREFIX}${version}-${randomSuffix()}`)
   await cp(shipped, temporary, { recursive: true })
@@ -118,7 +121,8 @@ export async function buildReleaseVenv(options: VenvOptions & { stamp: string })
     return current
   }
   if (!sameBackend) await rm(options.venv, { recursive: true, force: true }).catch(() => undefined)
-  const built = await syncVenv(options, ['--no-editable'])
+  // The dev group (pytest-cov, ruff) is for the repo's own checks, not the app's venv.
+  const built = await syncVenv(options, ['--no-editable', '--no-dev'])
   if (built.state === 'ready') await writeFile(join(options.venv, STAMP), `${options.stamp}\n`, 'utf8').catch(() => undefined)
   return built
 }

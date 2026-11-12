@@ -1,5 +1,5 @@
 // The pages a window's views load, and the rules every one of them follows.
-import { nativeTheme } from 'electron'
+import { app, nativeTheme } from 'electron'
 import type { WebContents } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -27,7 +27,8 @@ export function followSystemTheme() {
 }
 
 export function loadPage(wc: WebContents, hash?: string) {
-  const devUrl = process.env['ELECTRON_RENDERER_URL']
+  // Only a dev build loads the dev server: a packaged app would show any page this names with the preload's API.
+  const devUrl = app.isPackaged ? undefined : process.env['ELECTRON_RENDERER_URL']
   if (devUrl) void wc.loadURL(hash ? `${devUrl}#${hash}` : devUrl)
   else void wc.loadFile(join(here, '../renderer/index.html'), hash ? { hash } : {})
 }

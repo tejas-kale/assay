@@ -58,6 +58,19 @@ ${svg}
 `
 }
 
+// Documents the default app may open: none of their usual apps runs code from the file. Anything else that is not
+// text or an image (an executable, a .jar, a .command, a .webloc, a bundle) is shown in Finder instead, since its
+// default handler may run it, and Claude can write any file into the analysis.
+const DOCUMENTS = new Set(['pdf', 'xlsx', 'xls', 'docx', 'pptx', 'numbers', 'pages', 'key', 'mp4', 'mov', 'mp3', 'wav', 'm4a'])
+
+/** How a file that is neither text nor an image opens: in its default app only when it is a document and not executable. */
+export function defaultOpening(name: string, mode: number): 'default' | 'finder' {
+  const base = name.split('/').pop() ?? name
+  const dot = base.lastIndexOf('.')
+  const ext = dot <= 0 ? '' : base.slice(dot + 1).toLowerCase()
+  return DOCUMENTS.has(ext) && (mode & 0o111) === 0 ? 'default' : 'finder'
+}
+
 /** Text unless the first bytes hold a NUL. */
 export const kindByBytes = (head: Uint8Array): FileKind => (head.includes(0) ? 'other' : 'text')
 

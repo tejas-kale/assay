@@ -19,6 +19,7 @@ test('a path splits at its last slash', () => {
 test('what opening a file says', () => {
   assert.equal(openedMessage('nvim', 'a'), 'Opened a in Neovim')
   assert.equal(openedMessage('browser', 'a'), 'Opened the chart of a in your browser')
+  assert.equal(openedMessage('finder', 'a'), 'Showed a in Finder: Assay opens only documents in their app')
   assert.equal(openedMessage('default', 'a'), 'Opened a')
 })
 

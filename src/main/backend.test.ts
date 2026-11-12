@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -29,9 +29,19 @@ test('install copies the shipped backend under backend/<version>, leaving no tem
 test('a second launch of the same version and content copies nothing', async () => {
   const { shipped, home } = await scratch()
   const backend = await installBackend({ shipped, home, version: '0.4.3' })
-  await writeFile(join(backend, 'python/marker'), 'kept\n')
+  const before = (await stat(join(backend, 'python/pyproject.toml'))).ino
   await installBackend({ shipped, home, version: '0.4.3' })
-  assert.equal(await readFile(join(backend, 'python/marker'), 'utf8'), 'kept\n')
+  assert.equal((await stat(join(backend, 'python/pyproject.toml'))).ino, before)
+})
+
+test('an installed backend edited since, its stamp left alone, is copied again (audit UP-1)', async () => {
+  const { shipped, home } = await scratch()
+  const backend = await installBackend({ shipped, home, version: '0.4.3' })
+  await writeFile(join(backend, 'python/pyproject.toml'), 'tampered\n')
+  await writeFile(join(backend, 'python/extra.py'), 'import os\n')
+  await installBackend({ shipped, home, version: '0.4.3' })
+  assert.equal(await readFile(join(backend, 'python/pyproject.toml'), 'utf8'), '[project]\nname = "assay"\n')
+  assert.deepEqual(await readdir(join(backend, 'python')), ['pyproject.toml'])
 })
 
 test('a launch whose shipped content changed under the same version replaces the backend', async () => {
@@ -93,14 +103,14 @@ function fakeUv(fail?: string) {
   return { calls, run }
 }
 
-test('the venv is built frozen and non-editable into venvs/<version>, and marked ready', async () => {
+test('the venv is built frozen, non-editable and without the dev group into venvs/<version>, and marked ready', async () => {
   const { home } = await scratch()
   const uv = fakeUv()
   const venv = join(home, 'venvs/0.4.3')
   const states: string[] = []
   const built = await buildReleaseVenv({ project: '/b/python', venv, runUv: uv.run, stamp: 's1', onState: state => states.push(state.state) })
   assert.deepEqual(built, { state: 'ready' })
-  assert.deepEqual(uv.calls, [{ args: ['sync', '--frozen', '--no-editable', '--project', '/b/python'], env: { UV_PROJECT_ENVIRONMENT: venv } }])
+  assert.deepEqual(uv.calls, [{ args: ['sync', '--frozen', '--no-editable', '--no-dev', '--project', '/b/python'], env: { UV_PROJECT_ENVIRONMENT: venv } }])
   assert.deepEqual(states, ['building', 'ready'])
   assert.equal(await readFile(`${venv}.status.json`, 'utf8'), '{"state":"ready"}\n')
 })

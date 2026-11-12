@@ -94,7 +94,7 @@ export type OpenResult =
 
 /** How a file opened: in Neovim in a new Ghostty window, as a chart page in the browser (a Mermaid file), as an image to preview, or in its default app. */
 export type OpenFileResult =
-  | { ok: true; how: 'nvim' | 'browser' | 'default' }
+  | { ok: true; how: 'nvim' | 'browser' | 'default' | 'finder' }
   | { ok: true; how: 'image'; dataUrl: string }
   | { ok: false; message: string }
 

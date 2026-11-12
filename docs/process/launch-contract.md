@@ -51,7 +51,7 @@ declares none. Two constraints hold for every launcher:
 - Provide `node` 22 or later and `databricks` on Claude's PATH, plus `rds-psql` if Postgres runs are wanted. Without
   `rds-psql`, a Postgres run fails with a message that points here.
 - Replace `ASSAY_VENV` with a venv valid where Claude runs, built from `$ASSAY_BACKEND/python` with
-  `uv sync --frozen --no-editable` (the Mac's venv holds macOS binaries). Build it per Assay version: the project
+  `uv sync --frozen --no-editable --no-dev` (the Mac's venv holds macOS binaries). Build it per Assay version: the project
   installs into it non-editable, so each version's venv holds that version's helpers. A launcher's venv needs no
   status file; it counts as built when its `bin/python` exists.
 - Pass `ASSAY_APP`, `ASSAY_ROOT`, `ASSAY_ANALYSIS`, `ASSAY_MCP_CONFIG` and `ASSAY_THEME` through unchanged, and

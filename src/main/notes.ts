@@ -1,7 +1,7 @@
 // Root notes for main: `<root>/notes/<ID>-<slug>.md` and the `notes:` lists of the open analysis's analysis.yaml.
 // The root is two folders above the analysis (`<root>/analyses/<slug>`). Names from the renderer are checked
 // against the note file pattern, so only a file directly in `notes/` can be read or written.
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { ANALYSIS_FILE } from '../core/analyses.ts'
@@ -17,6 +17,10 @@ import { editFile } from './requestFiles.ts'
 import { readRun } from './runFiles.ts'
 
 const MAX_NOTE_BYTES = 2 * 1024 * 1024
+// A note file that is a link may point anywhere on the Mac: Claude could make one from a container to have a file
+// shown, then saved into notes/ where it can read it.
+const LINKED = 'The note is a link: Assay reads and saves only plain files in notes/'
+const isLink = (path: string) => lstat(path).then(info => info.isSymbolicLink(), () => false)
 const ANALYSES = 'analyses'
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err))
@@ -33,7 +37,9 @@ export async function readRootNote(root: string, name: string): Promise<NoteRead
   if (!parseNoteFileName(name)) return { ok: false, message: 'Not a note file' }
   try {
     const path = join(notesDir(root), name)
-    if ((await stat(path)).size > MAX_NOTE_BYTES) return { ok: false, message: 'The note is too large to show' }
+    const info = await lstat(path)
+    if (info.isSymbolicLink()) return { ok: false, message: LINKED }
+    if (info.size > MAX_NOTE_BYTES) return { ok: false, message: 'The note is too large to show' }
     const text = await readFile(path, 'utf8')
     const cited = noteCitations(text)
     const labels: Record<string, CitationLabel> = Object.fromEntries(await citationLabels(labelDeps(root), cited))
@@ -79,6 +85,7 @@ export async function addRootNote(root: string, analysis: AnalysisRef, note: New
 export async function saveRootNote(root: string, name: string, expectedText: string, text: string): Promise<EditResult> {
   if (!parseNoteFileName(name)) return { ok: false, reason: 'invalid', message: 'Not a note file' }
   if (text.length > MAX_NOTE_BYTES) return { ok: false, reason: 'invalid', message: 'The note is too large to save' }
+  if (await isLink(join(notesDir(root), name))) return { ok: false, reason: 'invalid', message: LINKED }
   return editFile(notesDir(root), name, current => {
     if (current !== expectedText) throw new StaleEdit()
     return text

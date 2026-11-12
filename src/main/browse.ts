@@ -8,7 +8,7 @@ import { promisify } from 'node:util'
 
 import { shell } from 'electron'
 
-import { chartPage, ghosttyArgs, ghosttyTabArgs, isMermaidFile, kindByBytes, kindByName, walkFiles } from '../core/files.ts'
+import { chartPage, defaultOpening, ghosttyArgs, ghosttyTabArgs, isMermaidFile, kindByBytes, kindByName, walkFiles } from '../core/files.ts'
 import type { FileEntry, FileKind } from '../core/files.ts'
 import { resolveInside } from '../core/safePath.ts'
 import type { OpenFileResult, PreviewResult } from '../shared/ipc.ts'
@@ -60,14 +60,14 @@ const findNvim = () =>
     .catch(() => 'nvim'))
 
 /** The real path of a file inside `folder`, symlinks resolved, or why it cannot be used. Throws when it cannot be read. */
-async function realFileInside(folder: string, target: string): Promise<{ real: string; size: number } | { message: string }> {
+async function realFileInside(folder: string, target: string): Promise<{ real: string; size: number; mode: number } | { message: string }> {
   const lexical = resolveInside(folder, target)
   if (!lexical) return { message: 'Outside the analysis folder' }
   const [realFolder, real] = await Promise.all([realpath(folder), realpath(lexical)])
   if (!resolveInside(realFolder, real)) return { message: 'Outside the analysis folder' }
   const info = await stat(real)
   if (!info.isFile()) return { message: 'Not a file' }
-  return { real, size: info.size }
+  return { real, size: info.size, mode: info.mode }
 }
 
 const imageDataUrl = async (real: string) =>
@@ -93,6 +93,10 @@ export async function openFile(folder: string, target: string): Promise<OpenFile
         run('open', ghosttyArgs(nvim, folder, real)),
       )
       return { ok: true, how: 'nvim' }
+    }
+    if (defaultOpening(real, found.mode) === 'finder') {
+      shell.showItemInFolder(real)
+      return { ok: true, how: 'finder' }
     }
     const failed = await shell.openPath(real)
     return failed ? { ok: false, message: failed } : { ok: true, how: 'default' }

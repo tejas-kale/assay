@@ -30,7 +30,6 @@ test('the old strip.json side moves in when settings.json has no strip yet', () 
 })
 
 test('normalizeRoot expands ~ and tidies the path', () => {
-  assert.deepEqual(normalizeRoot('~', '/home/me'), { ok: true, path: '/home/me' })
   assert.deepEqual(normalizeRoot(' ~/x/y/ ', '/home/me'), { ok: true, path: '/home/me/x/y' })
   assert.deepEqual(normalizeRoot('/a/./b/', '/home/me'), { ok: true, path: '/a/b' })
 })
@@ -39,6 +38,13 @@ test('normalizeRoot refuses empty and relative paths, and ~user', () => {
   for (const input of ['', '   ', 'a/b', './a', '~other/x']) {
     assert.equal(normalizeRoot(input, '/home/me').ok, false, input)
   }
+})
+
+test('normalizeRoot refuses the home folder and every folder above it (audit UI-5)', () => {
+  for (const input of ['~', '~/', '/', '/home', '/home/me', '/home/me/analyses', '/home/../']) {
+    assert.equal(normalizeRoot(input, '/home/me').ok, false, input)
+  }
+  assert.deepEqual(normalizeRoot('/home/me2', '/home/me'), { ok: true, path: '/home/me2' })
 })
 
 test('picking analyses/ or one analysis inside it means the folder above', () => {

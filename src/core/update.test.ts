@@ -2,7 +2,7 @@ import { test } from 'node:test'
 
 import { expect } from '../testing/expect.ts'
 import type { UpdateEvent } from './update.ts'
-import { checkToken, initialUpdate, isCheckDue, nextCheckAt, updateBanner, updateOn, updateText } from './update.ts'
+import { checkToken, initialUpdate, isCheckDue, nextCheckAt, updateBanner, updateOn, UPDATER_OPTIONS, updateText } from './update.ts'
 
 test('without a token the updater is off, and Settings says how to turn it on', () => {
   const state = initialUpdate({ current: '0.1.0', hasToken: false })
@@ -100,4 +100,8 @@ test('an install that does not quit the app drops the ready update and says so',
   expect(state.status).toBe('error')
   expect(updateBanner(state)).toBe(undefined)
   expect(state.error).toBe('Assay 0.1.1 did not install. The next check downloads it again.')
+})
+
+test('the updater takes only newer, full releases, never a differential download that could carry the token elsewhere (audit UP-5)', () => {
+  expect(UPDATER_OPTIONS).toEqual({ autoDownload: true, allowDowngrade: false, allowPrerelease: false, disableDifferentialDownload: true })
 })
