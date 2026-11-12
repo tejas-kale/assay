@@ -12,3 +12,5 @@ Decide the shape of the native shell:
 - how tabs are registered
 - module and package layout
 - where the shell stops and the web view components begin
+
+Input from the dev-loop research: keep a Foundation-only core package (it builds and tests on Linux, so cloud sessions can work on it) apart from a thin AppKit/SwiftUI app target.
