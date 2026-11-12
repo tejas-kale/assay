@@ -54,10 +54,14 @@ def run(folder: Path, name: str, given: dict[str, Any], analysis: Path) -> dict[
         return run_live_sql(render(folder.parent, name, given), analysis)
     found = describe(folder, name)
     values = convert(found["parameters"], given)
-    engine = analysis_db.engine(start=analysis)
     if found["kind"] == "python":
         function, _, _ = python_function(folder / found["file"])
-        return frame_table(function(engine, **values))
-    with engine.connect() as connection:
-        result = connection.execute(text(expand_template(found["sql"], folder.parent, name)), values)
+        return frame_table(function(analysis_db.engine(start=analysis), **values))
+    return run_table(expand_template(found["sql"], folder.parent, name), values, analysis)
+
+
+def run_table(sql: str, values: dict[str, Any], analysis: Path) -> dict[str, Any]:
+    """Runs expanded template SQL on the analysis's warehouse; its result as ``{columns, rows}``."""
+    with analysis_db.engine(start=analysis).connect() as connection:
+        result = connection.execute(text(sql), values)
         return {"columns": list(result.keys()), "rows": [[cell(v) for v in row] for row in result]}

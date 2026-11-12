@@ -60,6 +60,7 @@ def test_the_skill_holds_one_example_per_kind() -> None:
 def check_without_live(monkeypatch: pytest.MonkeyPatch, check, *args):
     """The check's answer; the live step runs against no warehouse here, so it is stubbed and left out."""
     monkeypatch.setattr(runner, "run", lambda *a, **k: {"columns": [], "rows": []})
+    monkeypatch.setattr(runner, "run_table", lambda *a, **k: {"columns": [], "rows": []})
     monkeypatch.setattr(runner, "run_live_sql", lambda *a, **k: {"columns": [], "rows": []})
     return check(*args)
 

@@ -142,6 +142,7 @@ class _CalculationCheck:
         # ``folder`` is the private copy of the proposal's files: only the check reads it.
         self.folder, self.name, self.analysis, self.step = folder, name, analysis, step
         self.answer: dict[str, Any] = {"name": name, "ok": False, "steps": step.steps}
+        self.found: dict[str, Any] = {}
 
     def run(self) -> None:
         try:
@@ -149,6 +150,7 @@ class _CalculationCheck:
         except Exception as error:
             self.step({"step": "form", "ok": False, "text": str(error)})
             return
+        self.found = found
         self._record_form(found)
         code = self.answer["code"]
         contract = block_contract(split_template(code)[0]) if "block" in found else None
@@ -205,7 +207,12 @@ class _CalculationCheck:
 
     def _live(self, live_args: dict[str, Any]) -> None:
         try:
-            table = analysis_runner.run(self.folder, self.name, live_args, self.analysis)
+            if self.found["kind"] == "python":
+                table = analysis_runner.run(self.folder, self.name, live_args, self.analysis)
+            else:
+                # Already expanded against the analysis root: the private copy has no shared folder beside it.
+                values = convert(self.found["parameters"], live_args)
+                table = analysis_runner.run_table(self.found["sql"], values, self.analysis)
         except Exception as error:
             self.step({"step": "live", "ok": False, "text": _failed(error)})
             return
