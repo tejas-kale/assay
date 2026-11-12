@@ -74,7 +74,8 @@ test("each prompt carries the rules, the trust rules and the kernel's python", a
 test('each prompt names the open analysis: its title, its folder from the root, and what lives there', async () => {
   const { env } = await scratch()
   const rules = (await hook('prompt', { prompt: 'x' }, env))?.additionalContext ?? ''
-  expect(rules).toContain('Open analysis: "Panel sites", in analyses/panel/.')
+  expect(rules).toContain('Open analysis: titled under [analysis title], in analyses/panel/.')
+  expect(rules).toContain('[analysis title]\nPanel sites\n</assay-data>')
   expect(rules).toContain('analyses/panel/lib/, analyses/panel/tests/, analyses/panel/lib/trusted/ and analyses/panel/lib/dictionaries/')
   expect(rules).toContain('You work from the root: give paths from it.')
 })
@@ -82,7 +83,7 @@ test('each prompt names the open analysis: its title, its folder from the root, 
 test('an analysis without a title in analysis.yaml is named by its folder', async () => {
   const { analysis, env } = await scratch()
   await writeFile(join(analysis, 'analysis.yaml'), 'created: 2026-11-02\n')
-  expect((await hook('prompt', { prompt: 'x' }, env))?.additionalContext).toContain('Open analysis: "panel", in analyses/panel/.')
+  expect((await hook('prompt', { prompt: 'x' }, env))?.additionalContext).toContain('[analysis title]\npanel\n</assay-data>')
 })
 
 test("without a kernel the rules name venv-assay's python when it is built, else plain python", async () => {
@@ -100,7 +101,7 @@ test('the rules list the usable trusted calculations the helper lists', async ()
   // A stand-in for venv-assay's python: `-I -B -m analysis_trust list <root>` prints the list.
   await writeFile(join(dir, 'venv/bin/python'), `#!/bin/sh\n[ "$5" = list ] && echo '${JSON.stringify(list)}'\n`, { mode: 0o755 })
   const rules = (await hook('prompt', { prompt: 'x' }, env))?.additionalContext ?? ''
-  expect(rules).toContain('Trusted calculations answer one question whole: run one with mcp__assay__trusted when it is exactly the question')
+  expect(rules).toContain('answer one question whole: run one with mcp__assay__trusted when it is exactly the question')
   expect(rules).toContain('- completes_by_site(start: date): Completes per site.')
   expect(rules).not.toContain('top_sites')
 })
@@ -133,10 +134,10 @@ test('the notice carries the step check lines the server recorded, once', async 
   const { analysis, env } = await scratch()
   await writeFile(join(analysis, '.assay/step-notices.json'), JSON.stringify(['q042 step spend: grain customer_id has 3 duplicate rows.', 7]))
   const said = (await hook('prompt', { prompt: 'go' }, env))?.additionalContext
-  expect(said).toContain('Step checks failed since your last turn:\n- q042 step spend: grain customer_id has 3 duplicate rows.')
+  expect(said).toContain('[step checks failed since your last turn]\n- q042 step spend: grain customer_id has 3 duplicate rows.')
   expect(said).not.toContain('- 7')
   expect(await readFile(join(analysis, '.assay/step-notices.json'), 'utf8').catch(() => undefined)).toBeUndefined()
-  expect((await hook('prompt', { prompt: 'go' }, env))?.additionalContext).not.toContain('Step checks failed')
+  expect((await hook('prompt', { prompt: 'go' }, env))?.additionalContext).not.toContain('step checks failed')
 })
 
 test('a Write or Edit into another analysis is refused, naming the open one; the open one is allowed', async () => {
