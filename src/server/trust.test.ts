@@ -37,7 +37,7 @@ const python = (ws: Fake) => `${ws.venv}/bin/python`
 function scripted(ws: Fake, answers: Answers, git: (readonly string[])[] = [], isUnchanged = false): Run {
   return argv => {
     if (argv[0] === python(ws)) {
-      const command = argv[4] as keyof Answers
+      const command = argv[5] as keyof Answers
       return { stdout: JSON.stringify(answers[command] ?? { tables: [], glossary: {} }) }
     }
     if (argv[0] === 'git') {
@@ -57,7 +57,7 @@ test('trusted runs a calculation by name: arguments checked, the run recorded wi
   ws.setRun(scripted(ws, { list: { calculations: [COMPLETES, TOP], problems: [] }, run: { columns: ['site_id', 'completes'], rows: [['10', '2']] } }))
   const ran = await ws.call('trusted', { name: 'completes_by_site', args: { start: '2026-01-01' } })
   expect(ran).toBe('Query 001 (trusted completes_by_site): 1 row. Columns: site_id, completes\nsite_id  completes\n10       2')
-  expect(ws.runs.find(argv => argv[4] === 'run')).toEqual([python(ws), '-I', '-m', 'analysis_trust', 'run', ws.root, 'completes_by_site', '{"start":"2026-01-01"}', ws.analysis])
+  expect(ws.runs.find(argv => argv[5] === 'run')).toEqual([python(ws), '-I', '-B', '-m', 'analysis_trust', 'run', ws.root, 'completes_by_site', '{"start":"2026-01-01"}', ws.analysis])
   expect(await ws.file('queries/001_completes-by-site.sql')).toBe(`-- trusted: completes_by_site\n-- args: {"start":"2026-01-01"}\n-- commit: abc123def456\n${COMPLETES.sql}\n`)
   expect(await ws.file('queries/001_completes-by-site.csv')).toBe('site_id,completes\n10,2\n')
   expect(await labelOf(ws, 1)).toBe('trusted')
@@ -80,7 +80,7 @@ test('trusted refuses bad arguments, unknown names and a calculation changed sin
   expect(await call('nope')).toBe('No trusted calculation nope. There are: completes_by_site, top_sites.')
   expect(await call('top_sites')).toBe('trusted/top_sites.py differs from its last commit, or was never committed: it is not trusted until the user approves it again in the Trust tab in Assay. Write your own SQL instead, and say why.')
   expect(await call(' ')).toBe('Give the trusted calculation by name.')
-  expect(ws.runs.some(argv => argv[4] === 'run')).toBe(false)
+  expect(ws.runs.some(argv => argv[5] === 'run')).toBe(false)
   expect(await ws.list('queries')).toEqual([])
   await ws.done()
 })
@@ -88,7 +88,7 @@ test('trusted refuses bad arguments, unknown names and a calculation changed sin
 test('trusted without venv-assay built says how to build it, even with a project .venv', async () => {
   const ws = await fake({ 'analysis.yaml': 'title: Feature\n', '.venv/bin/python': '' })
   expect(await ws.call('trusted', { name: 'completes_by_site' })).toBe(`Cannot list the trusted calculations: ${VENV_ASSAY_HINT}`)
-  expect(ws.runs.some(argv => argv[3] === 'analysis_trust')).toBe(false)
+  expect(ws.runs.some(argv => argv[4] === 'analysis_trust')).toBe(false)
   await ws.done()
 })
 
@@ -111,7 +111,7 @@ test('a dictionary definition runs as <table>:<name>: names checked by the helpe
   ws.setRun(scripted(ws, { list: { calculations: [definition], problems: [] }, render: { sql }, run: { columns: ['site_id', 'completes'], rows: [['10', '1']] } }))
   expect(await ws.call('trusted', { name: definition.name, args: { by: 'site_id' } })).toBe('Argument by must be a list of names. main.panel.surveys:completes(by?: list, filters?: list)')
   expect(await ws.call('trusted', { name: definition.name, args: { by: ['site_id'] } })).toMatch(/^Query 001 \(trusted main\.panel\.surveys:completes\): 1 row\./)
-  expect(ws.runs.find(argv => argv[4] === 'render')).toEqual([python(ws), '-I', '-m', 'analysis_trust', 'render', ws.root, definition.name, '{"by":["site_id"]}'])
+  expect(ws.runs.find(argv => argv[5] === 'render')).toEqual([python(ws), '-I', '-B', '-m', 'analysis_trust', 'render', ws.root, definition.name, '{"by":["site_id"]}'])
   expect(await ws.file('queries/001_main-panel-surveys-completes.sql')).toBe(`-- trusted: main.panel.surveys:completes\n-- args: {"by":["site_id"]}\n-- commit: fedcba987654\n${sql}\n`)
   expect(await labelOf(ws, 1)).toBe('trusted')
   ws.setRun(scripted(ws, { list: { calculations: [{ ...definition, dirty: true }], problems: [] } }))
@@ -129,7 +129,7 @@ test('the first query touching a table gets its dictionary entry and glossary te
   const ws = await fake(files())
   ws.setRun(scripted(ws, { dictionary: dictionary([{ name: 'surveys', entry: 'main.panel.surveys', text: SURVEYS, terms: ['complete'] }], { complete: 'A finished survey.' }) }))
   const first = await ws.call('sql', { sql: 'SELECT count(*) AS n FROM surveys', slug: 'count' })
-  expect(ws.runs.at(-1)).toEqual([python(ws), '-I', '-m', 'analysis_trust', 'dictionary', ws.root, `${ws.analysis}/queries/001_count.sql`])
+  expect(ws.runs.at(-1)).toEqual([python(ws), '-I', '-B', '-m', 'analysis_trust', 'dictionary', ws.root, `${ws.analysis}/queries/001_count.sql`])
   expect(first).toBe(['Query 001: 1 row. Columns: n', 'n', '1', '', 'Data dictionary (first use this session):', '## main.panel.surveys', SURVEYS.trimEnd(), 'Glossary:', '- complete: A finished survey.'].join('\n'))
   expect(await ws.call('sql', { sql: 'SELECT 1 AS n FROM surveys', slug: 'again' })).toBe('Query 002: 1 row. Columns: n\nn\n1')
   await ws.done()
@@ -160,7 +160,7 @@ test('the helper always runs under venv-assay, never a project .venv', async () 
   const ws = await fake(files({ '/work/.venv/bin/python': '' }))
   ws.setRun(scripted(ws, { dictionary: dictionary([{ name: 'surveys', entry: 'main.panel.surveys', text: SURVEYS, terms: [] }]) }))
   await ws.call('sql', { sql: 'SELECT count(*) AS n FROM surveys', slug: 'count' })
-  expect(ws.runs.some(argv => argv[0] === python(ws) && argv[3] === 'analysis_trust')).toBe(true)
+  expect(ws.runs.some(argv => argv[0] === python(ws) && argv[4] === 'analysis_trust')).toBe(true)
   expect(ws.runs.some(argv => argv[0] === `${ws.root}/.venv/bin/python`)).toBe(false)
   await ws.done()
 })
@@ -224,7 +224,7 @@ test('trust-list lists the proposals; trust-check starts the streamed checks', a
   expect(await perform(ws, { kind: 'trust-check', name: 'gone' })).toEqual({ error: 'No proposal gone in lib/trusted/ or lib/dictionaries/.' })
   expect(await perform(ws, { kind: 'trust-check', name: 'completes_by_site' })).toEqual({ ok: true })
   const check = await checking(ws)
-  expect(check.argv).toEqual([python(ws), '-I', '-m', 'analysis_trust', 'check', `${ws.analysis}/lib/trusted`, 'completes_by_site', ws.analysis, '--stream'])
+  expect(check.argv).toEqual([python(ws), '-I', '-B', '-m', 'analysis_trust', 'check', `${ws.analysis}/lib/trusted`, 'completes_by_site', ws.analysis, '--stream'])
   expect(check.cwd).toBe(ws.analysis)
   await ws.done()
 })
@@ -380,7 +380,7 @@ test('a drafted dictionary entry is checked with check-entry and approved into d
   await ws.put('.assay/requests/1-a.json', JSON.stringify({ kind: 'trust-check', name: 'Main.Panel.Sites' }))
   await ws.requests.poll()
   const check = await checking(ws)
-  expect(check.argv).toEqual([python(ws), '-I', '-m', 'analysis_trust', 'check-entry', `${ws.analysis}/lib/dictionaries/main.panel.sites.yaml`, ws.analysis, '--stream'])
+  expect(check.argv).toEqual([python(ws), '-I', '-B', '-m', 'analysis_trust', 'check-entry', `${ws.analysis}/lib/dictionaries/main.panel.sites.yaml`, ws.analysis, '--stream'])
   const entry = { name: 'main.panel.sites', ok: true, kind: 'dictionary', file: 'main.panel.sites.yaml', code: 'description: Sites.\n', files: ['main.panel.sites.yaml'], texts: { 'main.panel.sites.yaml': 'description: Sites.\n' }, steps: [{ step: 'form', ok: true, text: '0 columns' }] }
   check.emit({ event: 'start', ...entry, ok: undefined, steps: undefined })
   check.emit({ event: 'step', step: entry.steps[0] })

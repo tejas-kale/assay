@@ -2,6 +2,7 @@
 // the review as it arrives.
 import { splitCheckEvents } from '../core/calculations.ts'
 import type { CheckEvent } from '../core/calculations.ts'
+import { HELPER_PYTHON_FLAGS } from '../core/helperFlags.ts'
 import type { Assay } from './assay.ts'
 import { QUERY_TIMEOUT_MS } from './sqlRun.ts'
 import type { Review } from './trustReview.ts'
@@ -45,7 +46,7 @@ export async function streamChecks(assay: Assay, review: Review, take: Take): Pr
   const python = await assay.toolsPython()
   if (!python) return assay.venvHint()
   const analysis = assay.config.analysis
-  const child = assay.config.proc.spawn([python, '-I', '-m', 'analysis_trust', ...checkArgs(review, analysis)], { cwd: analysis })
+  const child = assay.config.proc.spawn([python, ...HELPER_PYTHON_FLAGS, '-m', 'analysis_trust', ...checkArgs(review, analysis)], { cwd: analysis })
   const stream: Stream = { buffer: '', stderr: '', failure: undefined, isDone: false, isTimedOut: false }
   const timer = setTimeout(() => {
     stream.isTimedOut = true

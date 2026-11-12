@@ -12,6 +12,7 @@ import { stripTrailingSlashes } from '../core/slugText.ts'
 import { promptContext, runNotice, toolName, userRuns } from '../core/rules.ts'
 import type { OpenAnalysis, UserRun } from '../core/rules.ts'
 import { deny, addContext, field, toolInput } from './io.ts'
+import { HELPER_PYTHON_FLAGS } from '../core/helperFlags.ts'
 import type { Proc } from '../server/proc.ts'
 
 type Env = Record<string, string | undefined>
@@ -170,7 +171,7 @@ async function kernelPython(analysis: string): Promise<string | undefined> {
 /** The trusted calculations, listed by the helper with Assay's venv's python; undefined when it cannot. */
 async function calculations(proc: Proc, python: string | undefined, analysis: string, home: string): Promise<CalculationList | undefined> {
   if (!python) return undefined
-  const ran = await proc.run([python, '-I', '-m', 'analysis_trust', 'list', home], { cwd: analysis, timeoutMs: 30_000 }).catch(() => undefined)
+  const ran = await proc.run([python, ...HELPER_PYTHON_FLAGS, '-m', 'analysis_trust', 'list', home], { cwd: analysis, timeoutMs: 30_000 }).catch(() => undefined)
   try {
     const parsed = JSON.parse(ran?.stdout ?? '') as CalculationList | { error: string }
     return typeof parsed === 'object' && 'calculations' in parsed ? parsed : undefined

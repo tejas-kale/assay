@@ -9,8 +9,8 @@ import { answering, fake, READY, RUNNER, until } from './testing.ts'
 import type { Fake } from './testing.ts'
 
 const FILES = { 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay/bin/python': '' }
-const sqlHelper = (argv: readonly string[]) => argv[3] === 'analysis_sql'
-const trustHelper = (argv: readonly string[]) => argv[3] === 'analysis_trust'
+const sqlHelper = (argv: readonly string[]) => argv[4] === 'analysis_sql'
+const trustHelper = (argv: readonly string[]) => argv[4] === 'analysis_trust'
 const kernelState = async (ws: Fake) => (await ws.status())?.kernel
 
 // ---------------------------------------------------------------------------
@@ -60,7 +60,7 @@ test('an expansion that includes nothing adds no built-from or blocks line', asy
   const ws = await fake(FILES)
   const expansion = { sql: "SELECT '{{'", lint_sql: "SELECT '{{'", retype_sql: "SELECT '{{'", built_from: [], blocks: [] }
   ws.setRun(argv => {
-    if (sqlHelper(argv)) return { stdout: JSON.stringify(argv[4] === 'expand' ? expansion : { warnings: [] }) }
+    if (sqlHelper(argv)) return { stdout: JSON.stringify(argv[5] === 'expand' ? expansion : { warnings: [] }) }
     if (trustHelper(argv)) return { stdout: '{"error":"none"}' }
     return answering([['{{']], ['x'])(argv)
   })
@@ -133,7 +133,7 @@ test('a trusted run with blocks reads its lineage as a template with its blocks'
   const ws = await fake({ ...FILES, 'queries/042_t.sql': '-- trusted: t\nSELECT 1\n', 'queries/042.expanded.sql': '-- blocks: s=b\nSELECT 1\n' })
   ws.setRun(argv => (sqlHelper(argv) ? { stdout: '{"nodes":[],"edges":[]}' } : {}))
   await ws.requests.perform({ kind: 'lineage', run: 42 })
-  expect(ws.runs.find(sqlHelper)?.slice(4)).toEqual(['lineage', 'databricks', '--template', '--blocks', 's=b'])
+  expect(ws.runs.find(sqlHelper)?.slice(5)).toEqual(['lineage', 'databricks', '--template', '--blocks', 's=b'])
   await ws.done()
 })
 
@@ -154,11 +154,11 @@ test('a trusted call naming nothing says there are none, or lists them', async (
 
 test("a definition the helper cannot render, or run, says why", async () => {
   const ws = await fake(FILES)
-  ws.setRun(argv => (argv[4] === 'list' ? LIST([CALC]) : { stdout: '{"error":"no such table"}' }))
+  ws.setRun(argv => (argv[5] === 'list' ? LIST([CALC]) : { stdout: '{"error":"no such table"}' }))
   expect(await ws.call('trusted', { name: 'spend', args: {} })).toBe('no such table spend()')
   ws.setRun(argv => {
-    if (argv[4] === 'list') return LIST([CALC])
-    if (argv[4] === 'render') return { stdout: '{"sql":"SELECT 1"}' }
+    if (argv[5] === 'list') return LIST([CALC])
+    if (argv[5] === 'render') return { stdout: '{"sql":"SELECT 1"}' }
     return { stdout: '{"error":"warehouse gone"}' }
   })
   expect(await ws.call('trusted', { name: 'spend', args: {} })).toContain('failed')
@@ -170,9 +170,9 @@ test('the calculations are listed once in 20 s, unless asked fresh', async () =>
   ws.setRun(() => LIST([CALC]))
   await ws.assay.calculations()
   await ws.assay.calculations()
-  expect(ws.runs.filter(argv => argv[4] === 'list').length).toBe(1)
+  expect(ws.runs.filter(argv => argv[5] === 'list').length).toBe(1)
   await ws.assay.calculations(true)
-  expect(ws.runs.filter(argv => argv[4] === 'list').length).toBe(2)
+  expect(ws.runs.filter(argv => argv[5] === 'list').length).toBe(2)
   await ws.done()
 })
 
