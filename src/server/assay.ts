@@ -17,6 +17,7 @@ import { formatThreads, parseThreads } from '../core/threads.ts'
 import type { Threads } from '../core/threads.ts'
 import { parseVenvBuild, venvHint, venvStatusPath } from '../core/venv.ts'
 import { KernelHost } from './kernel.ts'
+import { HELPER_PYTHON_FLAGS } from '../core/helperFlags.ts'
 import type { Proc } from './proc.ts'
 
 export const THREADS = 'threads.md'
@@ -318,7 +319,7 @@ export class Assay {
     const python = await this.toolsPython()
     if (!python) return { error: await this.venvHint() }
     const ran = await this.config.proc
-      .run([python, '-I', '-m', module, ...args], { cwd: this.config.analysis, timeoutMs, ...(input === undefined ? {} : { input }) })
+      .run([python, ...HELPER_PYTHON_FLAGS, '-m', module, ...args], { cwd: this.config.analysis, timeoutMs, ...(input === undefined ? {} : { input }) })
       .catch((error: unknown) => ({ exitCode: 1, stdout: '', stderr: message(error) }))
     try {
       const parsed: unknown = JSON.parse(ran.stdout)

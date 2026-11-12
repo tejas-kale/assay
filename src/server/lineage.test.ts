@@ -9,7 +9,7 @@ import type { Fake } from './testing.ts'
 
 const FILES = { 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay/bin/python': '' }
 const GRAPH = { nodes: [{ id: 't', kind: 'table', name: 't' }, { id: 'final', kind: 'final', name: 'Final SELECT' }], edges: [{ from: 't', to: 'final' }] }
-const lineageRuns = (ws: Fake) => ws.runs.filter(argv => argv[3] === 'analysis_sql')
+const lineageRuns = (ws: Fake) => ws.runs.filter(argv => argv[4] === 'analysis_sql')
 
 /** The helper answers with `answer` and notes the SQL it was given. */
 function scripted(ws: Fake, answer: object, seen: { input?: string } = {}) {
@@ -28,7 +28,7 @@ test('a lineage request writes the helper answer next to the run, and the SQL is
   expect(await ask(ws, 2)).toEqual({ ok: true })
   expect(JSON.parse((await ws.file('queries/002.lineage.json')) ?? 'null')).toEqual(GRAPH)
   expect(seen.input).toBe('SELECT 1 FROM t\n')
-  expect(lineageRuns(ws)[0]).toEqual([`${ws.venv}/bin/python`, '-I', '-m', 'analysis_sql', 'lineage', 'databricks'])
+  expect(lineageRuns(ws)[0]).toEqual([`${ws.venv}/bin/python`, '-I', '-B', '-m', 'analysis_sql', 'lineage', 'databricks'])
   await ws.done()
 })
 
@@ -55,7 +55,7 @@ test('the engine follows the postgres header line', async () => {
   const ws = await fake({ ...FILES, 'queries/001_q.sql': '-- author: user\n-- postgres\nSELECT 1 FROM t\n' })
   scripted(ws, GRAPH)
   await ask(ws, 1)
-  expect(lineageRuns(ws)[0]?.slice(4)).toEqual(['lineage', 'postgres'])
+  expect(lineageRuns(ws)[0]?.slice(5)).toEqual(['lineage', 'postgres'])
   await ws.done()
 })
 
@@ -64,7 +64,7 @@ test('a trusted SQL run passes --template so its placeholders bind', async () =>
   const seen: { input?: string } = {}
   scripted(ws, GRAPH, seen)
   await ask(ws, 1)
-  expect(lineageRuns(ws)[0]?.slice(4)).toEqual(['lineage', 'databricks', '--template'])
+  expect(lineageRuns(ws)[0]?.slice(5)).toEqual(['lineage', 'databricks', '--template'])
   expect(seen.input).toBe('SELECT 1 FROM t WHERE d > :since\n')
   await ws.done()
 })

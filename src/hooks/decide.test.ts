@@ -170,6 +170,34 @@ test('a protected folder that is a symlink protects its name and its destination
   expect(await writeDecision({ tool_input: { file_path: join(dir, 'unrelated/f.sql') } }, env)).toBeUndefined()
 })
 
+test('a ".." after a protected-folder link is taken from the link destination, not the link name (audit PI-6)', async () => {
+  const { dir, root, analysis, env } = await scratch()
+  const links = [
+    [join(root, 'trusted'), 'moved-trusted'],
+    [join(root, 'notes'), 'moved-notes'],
+    [join(analysis, '.assay'), 'moved-assay'],
+    [join(analysis, 'queries'), 'moved-queries'],
+  ] as const
+  await rm(join(analysis, '.assay'), { recursive: true })
+  for (const [link, destination] of links) {
+    await mkdir(join(dir, destination), { recursive: true })
+    await symlink(join(dir, destination), link)
+    // The link, then "..", lands beside the destination, not beside the link: it names the destination's own file.
+    for (const path of [`${link}/../${destination}/x.py`, `${link}/sub/../../${destination}/x.py`]) {
+      const said = await writeDecision({ tool_input: { file_path: path } }, env)
+      expect(`${path}: ${said?.hookSpecificOutput.permissionDecision ?? 'allowed'}`).toBe(`${path}: deny`)
+    }
+  }
+  // A plain ".." that stays outside protection is still allowed, as is one through a protected folder's real directory.
+  await mkdir(join(analysis, 'lib'), { recursive: true })
+  await mkdir(join(root, 'plain'), { recursive: true })
+  for (const path of [`${analysis}/lib/../ok.py`, `${root}/plain/../ok.py`, `${dir}/moved-trusted/../ok.py`, `${root}/trusted/../ok.py`]) {
+    expect(await writeDecision({ tool_input: { file_path: path } }, env)).toBeUndefined()
+  }
+  // A ".." in a part that does not exist cannot cross a link.
+  expect(await writeDecision({ tool_input: { file_path: `${analysis}/lib/gone/../ok.py` } }, env)).toBeUndefined()
+})
+
 test('promptDecision does nothing without an analysis and a root', async () => {
   expect(await promptDecision({}, noProc)).toBeUndefined()
   expect(await promptDecision({ ASSAY_ANALYSIS: '/a' }, noProc)).toBeUndefined()
@@ -217,7 +245,7 @@ test('promptDecision lists the trusted calculations only when the venv python pr
   await mkdir(join(dir, 'venv/bin'), { recursive: true })
   const seen: string[][] = []
   expect(context(await promptDecision(env, procPrinting(JSON.stringify(list), seen)))).toContain('- by_site(): Per site.')
-  expect(seen).toEqual([[`${dir}/venv/bin/python`, '-I', '-m', 'analysis_trust', 'list', root]])
+  expect(seen).toEqual([[`${dir}/venv/bin/python`, '-I', '-B', '-m', 'analysis_trust', 'list', root]])
   for (const out of ['', 'not json', 'null', '5', JSON.stringify({ error: 'broken' })])
     expect([out, context(await promptDecision(env, procPrinting(out))).includes('by_site')]).toEqual([out, false])
   expect(context(await promptDecision(env, noProc))).not.toContain('by_site')

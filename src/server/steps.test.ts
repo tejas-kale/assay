@@ -28,7 +28,7 @@ const notices = async (ws: Fake) => JSON.parse((await ws.file('.assay/step-notic
 /** Plays the helper and the warehouse; notes the steps file as each query starts. */
 function script(ws: Fake, how: Script = {}, seen: string[][] = []) {
   ws.setRun(async argv => {
-    if (argv[3] === 'analysis_sql') return { stdout: JSON.stringify(how.plan ?? PLAN) }
+    if (argv[4] === 'analysis_sql') return { stdout: JSON.stringify(how.plan ?? PLAN) }
     // rds-psql (Postgres) prints CSV and takes the file after -f.
     if (argv[0] === 'rds-psql') return { stdout: 'assay_rows,assay_grain_rows\n5,5\n' }
     const file = fileOf(argv)
@@ -69,8 +69,8 @@ test('the plan comes from the run body with the run engine, and Postgres steps c
   const ws = await fake({ ...FILES, 'queries/042_spend.sql': '-- author: user\n-- postgres\nSELECT 1\n' })
   script(ws)
   await ask(ws)
-  const planned = ws.runs.find(argv => argv[3] === 'analysis_sql')
-  expect(planned?.slice(4)).toEqual(['steps', 'postgres'])
+  const planned = ws.runs.find(argv => argv[4] === 'analysis_sql')
+  expect(planned?.slice(5)).toEqual(['steps', 'postgres'])
   expect(await ws.file('queries/042.1_clean.sql')).toBe('-- postgres\nWITH clean AS (SELECT 1) SELECT * FROM clean LIMIT 50\n')
   expect(ws.runs.filter(argv => argv[0] === 'rds-psql').length).toBe(3)
   await ws.done()
@@ -140,7 +140,7 @@ test('a trusted SQL run gets its lineage and a note, and no step runs', async ()
   const ws = await fake({ 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay/bin/python': '', 'queries/042_weekly.sql': '-- trusted: weekly\n-- commit: abc\n-- args: {}\nSELECT 1 FROM t WHERE d > :since\n' })
   script(ws, { plan: GRAPH })
   expect(await ask(ws)).toEqual({ ok: true })
-  expect(ws.runs.map(argv => argv.slice(4))).toEqual([['lineage', 'databricks', '--template']])
+  expect(ws.runs.map(argv => argv.slice(5))).toEqual([['lineage', 'databricks', '--template']])
   expect(await read(ws)).toEqual({ run: 42, status: 'done', note: "Steps run only SQL written in the run: a trusted calculation's arguments are not replayed.", steps: [] })
   expect(JSON.parse((await ws.file('queries/042.lineage.json')) ?? 'null')).toEqual(GRAPH)
   await ws.done()

@@ -1,7 +1,7 @@
 // The hooks' decisions as plain functions of their input and environment, so tests can call them directly.
-import { lstatSync, readlinkSync, realpathSync } from 'node:fs'
+import { existsSync, lstatSync, readlinkSync } from 'node:fs'
 import { access, readFile, rename, rm } from 'node:fs/promises'
-import { basename, dirname, join, relative } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 
 import { bashRunsPython, BASH_PYTHON_DENY } from '../core/bashGuard.ts'
 import { folderName, openAnalysis } from '../core/analyses.ts'
@@ -12,42 +12,48 @@ import { stripTrailingSlashes } from '../core/slugText.ts'
 import { promptContext, runNotice, toolName, userRuns } from '../core/rules.ts'
 import type { OpenAnalysis, UserRun } from '../core/rules.ts'
 import { deny, addContext, field, toolInput } from './io.ts'
+import { HELPER_PYTHON_FLAGS } from '../core/helperFlags.ts'
 import type { Proc } from '../server/proc.ts'
 
 type Env = Record<string, string | undefined>
 
-/** Where a dangling symlink points, or undefined when `path` is not a symlink. */
+/** Whether `path` is a symlink, and where it points (a dangling one too); undefined when it is not one or does not exist. */
 function linkTarget(path: string): string | undefined {
   try {
-    return lstatSync(path).isSymbolicLink() ? normalPath(readlinkSync(path), dirname(path)) : undefined
+    return lstatSync(path).isSymbolicLink() ? readlinkSync(path) : undefined
   } catch {
     return undefined
   }
 }
 
 /**
- * A path with symlinks resolved as far as it exists: the deepest existing ancestor is resolved, the rest appended. A
- * dangling symlink is followed to where it points, since writing through it creates that file.
+ * A path as the file system resolves it, component by component: a symlink is followed where it stands, so a `..`
+ * after it climbs from the link's destination, not from the link's name. A dangling symlink is followed to where it
+ * points, since writing through it creates that file. Past the first part that does not exist the rest is lexical.
  */
 function realPath(path: string, base: string): string {
-  let at = normalPath(path, base)
-  const rest: string[] = []
-  for (let hops = 0; ; ) {
-    try {
-      return join(realpathSync.native(at), ...rest)
-    } catch {
-      const target = hops < 40 ? linkTarget(at) : undefined
-      if (target !== undefined) {
-        hops++
-        at = target
-        continue
-      }
-      const parent = dirname(at)
-      if (parent === at) return join(at, ...rest)
-      rest.unshift(basename(at))
-      at = parent
+  const pending = (path.startsWith('/') ? path : `${base}/${path}`).split('/').reverse()
+  let at = '/'
+  let exists = true
+  for (let hops = 0; pending.length > 0; ) {
+    const part = pending.pop()
+    if (part === undefined || part === '' || part === '.') continue
+    if (part === '..') {
+      at = dirname(at)
+      continue
     }
+    const next = join(at, part)
+    const target = exists && hops < 40 ? linkTarget(next) : undefined
+    if (target === undefined) {
+      exists = exists && existsSync(next)
+      at = next
+      continue
+    }
+    hops++
+    if (target.startsWith('/')) at = '/'
+    pending.push(...target.split('/').reverse())
   }
+  return at
 }
 
 /** PreToolUse on Bash: Python goes through the python tool, in the kernel the user sees. Only in an Assay session. */
@@ -165,7 +171,7 @@ async function kernelPython(analysis: string): Promise<string | undefined> {
 /** The trusted calculations, listed by the helper with Assay's venv's python; undefined when it cannot. */
 async function calculations(proc: Proc, python: string | undefined, analysis: string, home: string): Promise<CalculationList | undefined> {
   if (!python) return undefined
-  const ran = await proc.run([python, '-I', '-m', 'analysis_trust', 'list', home], { cwd: analysis, timeoutMs: 30_000 }).catch(() => undefined)
+  const ran = await proc.run([python, ...HELPER_PYTHON_FLAGS, '-m', 'analysis_trust', 'list', home], { cwd: analysis, timeoutMs: 30_000 }).catch(() => undefined)
   try {
     const parsed = JSON.parse(ran?.stdout ?? '') as CalculationList | { error: string }
     return typeof parsed === 'object' && 'calculations' in parsed ? parsed : undefined

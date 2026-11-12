@@ -33,3 +33,17 @@ def test_isolated_helper_ignores_a_decoy_in_the_analysis_folder(tmp_path: Path) 
     answer = json.loads(run_helper(analysis, root, "-I").stdout)
     assert "decoy" not in answer
     assert "calculations" in answer or "error" in answer
+
+
+def test_isolated_mode_ignores_the_bytecode_variable_so_helpers_also_pass_b() -> None:
+    """`-I` implies `-E`: PYTHONDONTWRITEBYTECODE has no effect, so Assay's helper flags are `-I -B` (audit UP-1)."""
+    code = "import sys; print(sys.flags.dont_write_bytecode)"
+    env = {"PYTHONDONTWRITEBYTECODE": "1"}
+
+    def flag(*flags: str) -> str:
+        return subprocess.run(
+            [sys.executable, *flags, "-c", code], env=env, capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+    assert flag("-I") == "0"
+    assert flag("-I", "-B") == "1"
