@@ -37,7 +37,7 @@ async function session() {
     cwd: root,
     stderr: 'pipe',
     env: {
-      PATH: `${join(dir, 'bin')}:${process.env.PATH}`,
+      PATH: `${join(dir, 'bin')}:${process.env.PATH ?? ''}`,
       HOME: dir,
       TMPDIR: dir,
       ASSAY_ANALYSIS: analysis,
@@ -50,10 +50,10 @@ async function session() {
   await client.connect(transport)
   const call = async (name: string, args: Record<string, unknown> = {}) => {
     const result = await client.callTool({ name, arguments: args })
-    return ((result.content as { type: string; text: string }[])[0]?.text ?? '') as string
+    return (result.content as { type: string; text: string }[])[0]?.text ?? ''
   }
   const file = (path: string) => readFile(join(analysis, path), 'utf8').catch(() => undefined)
-  const kernel = async () => JSON.parse((await file('.assay/runs.json')) ?? '{}')?.kernel?.state as string | undefined
+  const kernel = async () => (JSON.parse((await file('.assay/runs.json')) ?? '{}') as { kernel?: { state?: string } }).kernel?.state
   return { dir, root, analysis, client, call, file, kernel, close: () => client.close() }
 }
 
@@ -81,9 +81,9 @@ test('the bundled server lists its tools and answers each once', { timeout: 120_
   expect(await s.call('order', { threads: ['2'] })).toBe('Open threads now:\n1. Why is n 1?\n2. Is it per site?')
   expect(await s.call('close', { thread: '1', outcome: 'stub' })).toBe('Closed "Why is n 1?". Next open thread: 1. Is it per site?')
   const wrote = await s.call('note', { title: 'One', text: 'It is 1 [q 1].' })
-  const [, file, id] = /^Wrote notes\/((\d{8}T\d{6})-one\.md)\. Link it with \[\[\d{8}T\d{6}\]\]\.$/.exec(wrote) ?? []
-  expect(file === undefined).toBe(false)
-  expect(await readFile(join(s.root, 'notes', file ?? ''), 'utf8')).toBe('# One\n\nIt is 1 [panel q 1].\n')
+  const [, file = '', id = ''] = /^Wrote notes\/((\d{8}T\d{6})-one\.md)\. Link it with \[\[\d{8}T\d{6}\]\]\.$/.exec(wrote) ?? []
+  expect(file === '').toBe(false)
+  expect(await readFile(join(s.root, 'notes', file), 'utf8')).toBe('# One\n\nIt is 1 [panel q 1].\n')
   expect(await s.call('revise_note', { id, old: '1 [panel', new: '2 [panel' })).toBe(`Revised notes/${file}.`)
   expect(await s.call('link_notes', { ids: [id] })).toMatch(/^Nothing new to link\./)
   expect(await s.call('revise_note', { id, delete: true })).toBe(`Deleted notes/${file}.`)
@@ -113,7 +113,7 @@ test('each request type through the files, including the trust ones and an answe
     const { rename } = await import('node:fs/promises')
     await rename(join(s.analysis, `.assay/requests/.${id}.tmp`), join(s.analysis, `.assay/requests/${id}.json`))
     expect(await until(async () => (await s.file(`.assay/replies/${id}.json`)) !== undefined, 120_000)).toBe(true)
-    return JSON.parse((await s.file(`.assay/replies/${id}.json`)) ?? '{}')
+    return JSON.parse((await s.file(`.assay/replies/${id}.json`)) ?? '{}') as { error?: string }
   }
   expect(await ask({ kind: 'sql', sql: 'SELECT 1 AS n', engine: 'databricks', slug: 'mine' })).toMatchObject({ number: 1 })
   expect(await s.file('queries/001_mine.sql')).toBe('-- author: user\nSELECT 1 AS n\n')
@@ -125,13 +125,13 @@ test('each request type through the files, including the trust ones and an answe
   expect(await ask({ kind: 'trust-answer', name: 'ones', answer: 'trust' })).toMatchObject({ error: 'No review of ones is waiting for an answer.' })
   expect(await ask({ kind: 'trust-check', name: 'ones' })).toMatchObject({ ok: true })
   // Without a venv the helper cannot check it: the review ends in error, written to the trust file.
-  const review = async () => JSON.parse((await s.file('.assay/trust/ones.json')) ?? '{}')
-  expect(await until(async () => ['failed', 'error'].includes((await review()).state), 120_000)).toBe(true)
+  const review = async () => JSON.parse((await s.file('.assay/trust/ones.json')) ?? '{}') as { state?: string }
+  expect(await until(async () => ['failed', 'error'].includes((await review()).state ?? ''), 120_000)).toBe(true)
   expect(await ask({ kind: 'trust-answer', name: 'ones', answer: 'trust' })).toMatchObject({ error: 'No review of ones is waiting for an answer.' })
   // Nothing reached the shared trusted/ folder.
   expect(await readFile(join(s.root, 'trusted/ones.sql'), 'utf8').catch(() => undefined)).toBeUndefined()
   // The user's runs, for the next prompt's notice.
-  expect(JSON.parse((await s.file('.assay/user-runs.json')) ?? '[]')[0]).toEqual({ number: 1, language: 'sql' })
+  expect((JSON.parse((await s.file('.assay/user-runs.json')) ?? '[]') as unknown[])[0]).toEqual({ number: 1, language: 'sql' })
   await s.close()
 })
 

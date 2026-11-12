@@ -67,7 +67,7 @@ export type Runner = {
   hasTables: boolean
   named?: string
   /** A line before the reply, e.g. what the query is built from. */
-  preface?: string | undefined
+  preface?: string
   /** The file the dictionary text is read from, when not the saved run (the expanded SQL of a run with includes). */
   dictionaryFile?: (number: number) => string
 }
@@ -271,7 +271,8 @@ export class Assay {
     const dictionary = runner.hasTables ? await this.dictionaryFor(runner.dictionaryFile?.(number) ?? `${base}.sql`).catch(() => undefined) : undefined
     const named = `${runner.noun ?? 'Query'} ${queryLabel(number)}${runner.named ?? ''}`
     let text: string
-    if ('error' in outcome) text = `${named} failed (saved ${this.shown(`${base}.${ext}`)}):\n${outcome.error}`
+    const savedAs = this.shown(`${base}.${ext}`)
+    if ('error' in outcome) text = `${named} failed (saved ${savedAs}):\n${outcome.error}`
     else if (outcome.columns.length === 0) text = `${named}: ok, no result set.`
     else text = tableReply(named, outcome, this.shown(`${base}.csv`))
     const preface = runner.preface ? `${runner.preface}\n` : ''

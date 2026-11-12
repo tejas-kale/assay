@@ -169,7 +169,10 @@ export const TOOLS = [
 export type ToolName = (typeof TOOLS)[number]['name']
 
 type Args = Record<string, unknown>
-const field = (args: Args, key: string) => (typeof args[key] === 'string' ? (args[key] as string) : '')
+const field = (args: Args, key: string) => {
+  const value = args[key]
+  return typeof value === 'string' ? value : ''
+}
 
 /** One tool call: its reply text. */
 export async function callTool(assay: Assay, name: string, args: Args): Promise<string> {
@@ -180,58 +183,81 @@ export async function callTool(assay: Assay, name: string, args: Args): Promise<
   return hint ? `${reply}\n${hint}` : reply
 }
 
+function sqlTool(assay: Assay, args: Args): Promise<string> {
+  const sql = field(args, 'sql')
+  const engine: Engine = field(args, 'engine') === 'postgres' ? 'postgres' : 'databricks'
+  return sql.trim() ? runClaudeSql(assay, sql, field(args, 'slug'), engine) : Promise.resolve('Give the SQL to run.')
+}
+
+async function pythonTool(assay: Assay, args: Args): Promise<string> {
+  const code = field(args, 'code')
+  if (!code.trim()) return 'Give the Python code to run.'
+  return (await runPython(assay, code, field(args, 'slug'), '')).text
+}
+
+function trustedTool(assay: Assay, args: Args): Promise<string> {
+  const calc = field(args, 'name').trim()
+  if (!calc) return Promise.resolve('Give the trusted calculation by name.')
+  return runTrusted(assay, calc, args.args)
+}
+
+async function parkTool(assay: Assay, args: Args): Promise<string> {
+  const thread = oneLine(field(args, 'thread'))
+  if (!thread) return 'Give the thread as one line.'
+  const open = await assay.editThreads(threads => {
+    const parked = parkThread(threads, thread)
+    return { threads: parked, answer: parked.open.length }
+  })
+  return `Parked. ${String(open)} open ${open === 1 ? 'thread' : 'threads'}.`
+}
+
+function closeTool(assay: Assay, args: Args): Promise<string> {
+  return assay.editThreads(threads => {
+    const closed = closeThread(threads, field(args, 'thread'), field(args, 'outcome'))
+    if (closed.error || !closed.closed) return { threads, answer: closed.error ?? '' }
+    const nextOpen = closed.threads.open[0]
+    const after = nextOpen ? `Next open thread: 1. ${nextOpen}` : 'No open threads left.'
+    return { threads: closed.threads, answer: `Closed "${closed.closed.thread}". ${after}` }
+  })
+}
+
+function focusTool(assay: Assay, args: Args): Promise<string> {
+  return assay.editThreads(threads => {
+    const focused = focusThread(threads, field(args, 'thread'))
+    if (focused.error || !focused.focused) return { threads, answer: focused.error ?? '' }
+    return { threads: focused.threads, answer: `Focused: 1. ${focused.focused}` }
+  })
+}
+
+function orderTool(assay: Assay, args: Args): Promise<string> {
+  const given = args.threads
+  const refs = Array.isArray(given) ? given.filter((ref): ref is string => typeof ref === 'string') : []
+  if (refs.length === 0) return Promise.resolve('Give the threads to move to the top, in order.')
+  return assay.editThreads(threads => {
+    const ordered = orderThreads(threads, refs)
+    if (ordered.error) return { threads, answer: ordered.error }
+    const list = ordered.threads.open.map((thread, i) => `${String(i + 1)}. ${thread}`).join('\n')
+    return { threads: ordered.threads, answer: `Open threads now:\n${list}` }
+  })
+}
+
 async function dispatch(assay: Assay, name: string, args: Args): Promise<string> {
   if (!assay.hasMarker()) return `${assay.shown('')} has no ${ANALYSIS_FILE}. Run "npm run migrate:root" in the Assay repo, then open the analysis again.`
   switch (name) {
-    case 'sql': {
-      const sql = field(args, 'sql')
-      const engine: Engine = field(args, 'engine') === 'postgres' ? 'postgres' : 'databricks'
-      return sql.trim() ? runClaudeSql(assay, sql, field(args, 'slug'), engine) : 'Give the SQL to run.'
-    }
-    case 'python': {
-      const code = field(args, 'code')
-      if (!code.trim()) return 'Give the Python code to run.'
-      return (await runPython(assay, code, field(args, 'slug'), '')).text
-    }
-    case 'trusted': {
-      const calc = field(args, 'name').trim()
-      if (!calc) return 'Give the trusted calculation by name.'
-      return runTrusted(assay, calc, args.args)
-    }
-    case 'park': {
-      const thread = oneLine(field(args, 'thread'))
-      if (!thread) return 'Give the thread as one line.'
-      const open = await assay.editThreads(threads => {
-        const parked = parkThread(threads, thread)
-        return { threads: parked, answer: parked.open.length }
-      })
-      return `Parked. ${open} open ${open === 1 ? 'thread' : 'threads'}.`
-    }
+    case 'sql':
+      return sqlTool(assay, args)
+    case 'python':
+      return pythonTool(assay, args)
+    case 'trusted':
+      return trustedTool(assay, args)
+    case 'park':
+      return parkTool(assay, args)
     case 'close':
-      return assay.editThreads(threads => {
-        const closed = closeThread(threads, field(args, 'thread'), field(args, 'outcome'))
-        if (closed.error || !closed.closed) return { threads, answer: closed.error ?? '' }
-        const nextOpen = closed.threads.open[0]
-        const after = nextOpen ? `Next open thread: 1. ${nextOpen}` : 'No open threads left.'
-        return { threads: closed.threads, answer: `Closed "${closed.closed.thread}". ${after}` }
-      })
+      return closeTool(assay, args)
     case 'focus':
-      return assay.editThreads(threads => {
-        const focused = focusThread(threads, field(args, 'thread'))
-        if (focused.error || !focused.focused) return { threads, answer: focused.error ?? '' }
-        return { threads: focused.threads, answer: `Focused: 1. ${focused.focused}` }
-      })
-    case 'order': {
-      const given = args.threads
-      const refs = Array.isArray(given) ? given.filter((ref): ref is string => typeof ref === 'string') : []
-      if (refs.length === 0) return 'Give the threads to move to the top, in order.'
-      return assay.editThreads(threads => {
-        const ordered = orderThreads(threads, refs)
-        if (ordered.error) return { threads, answer: ordered.error }
-        const list = ordered.threads.open.map((thread, i) => `${i + 1}. ${thread}`).join('\n')
-        return { threads: ordered.threads, answer: `Open threads now:\n${list}` }
-      })
-    }
+      return focusTool(assay, args)
+    case 'order':
+      return orderTool(assay, args)
     case 'note':
       return writeNote(assay, args)
     case 'revise_note':
