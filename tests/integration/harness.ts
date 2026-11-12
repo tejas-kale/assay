@@ -1,7 +1,8 @@
 // The integration tests' world (docs/developer/testing.md): a real venv from the lockfile, the bundled server and hooks, a scratch root
-// that is a git repository with a trusted block committed, and the fake `databricks` first on PATH. Nothing here
+// that is a git repository with a trusted block and calculation committed and approved in a ledger, and the fake `databricks` first on PATH. Nothing here
 // reaches Databricks, Postgres or a real Claude.
 import { execFile, execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -57,7 +58,20 @@ export function testVenv(): Promise<string> {
 
 export type World = { dir: string; root: string; analysis: string; venv: string; env: Record<string, string> }
 
-/** A scratch root holding one analysis, deleted when `t` ends, with a trusted block and calculation committed, as trust requires. */
+/** A ledger, as the app writes it (specs/trust-ledger.md), approving each root-relative path's text as it is now. */
+function ledgerFor(texts: Record<string, string>): string {
+  const sha = (text: string) => createHash('sha256').update(text).digest('hex')
+  const entries = Object.fromEntries(Object.entries(texts).map(([path, text]) => [
+    `calculation:${path.replace(/^trusted\/|\.sql$/g, '')}`,
+    { kind: 'calculation', files: { [path]: sha(text) }, approvedAt: '2026-11-12T10:00:00.000Z', commit: '' },
+  ]))
+  return JSON.stringify({ version: 1, entries, history: [] })
+}
+
+/**
+ * A scratch root holding one analysis, deleted when `t` ends, with a trusted block and calculation committed and
+ * approved in the ledger ASSAY_LEDGER names, as trust requires.
+ */
 export async function world(t: TestContext): Promise<World> {
   const dir = await mkdtemp(join(tmpdir(), 'assay-int-'))
   t.after(() => rm(dir, { recursive: true, force: true, maxRetries: 3 }))
@@ -72,6 +86,9 @@ export async function world(t: TestContext): Promise<World> {
   git('init', '-q')
   git('-c', 'user.email=t@example.com', '-c', 'user.name=T', 'add', 'trusted')
   git('-c', 'user.email=t@example.com', '-c', 'user.name=T', 'commit', '-q', '-m', 'Trust all_sites')
+  const ledger = join(dir, 'trust-ledger/ledger.json')
+  await mkdir(join(dir, 'trust-ledger'))
+  await writeFile(ledger, ledgerFor({ 'trusted/all_sites.sql': SITES_BLOCK, 'trusted/site_total.sql': TOTAL_CALCULATION }))
   const venvDir = await testVenv()
   const env = {
     PATH: `${FAKE_BIN}:${process.env.PATH ?? ''}`,
@@ -80,6 +97,7 @@ export async function world(t: TestContext): Promise<World> {
     ASSAY_ANALYSIS: analysis,
     ASSAY_ROOT: root,
     ASSAY_VENV: venvDir,
+    ASSAY_LEDGER: ledger,
     ASSAY_KERNEL_RUNNER: resolve('python/analysis_kernel.py'),
   }
   return { dir, root, analysis, venv: venvDir, env }
