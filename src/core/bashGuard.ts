@@ -105,6 +105,7 @@ class SegmentReader {
 
   /** `< file` and `<<` feed the program: a redirect; `<(...)` is left alone. */
   private stepRedirect(i: number): number {
+    this.dropDescriptor()
     this.endWord()
     this.hasRedirect = true
     let last = i
@@ -120,15 +121,19 @@ class SegmentReader {
       this.isWord = true
       return i
     }
-    if (/^\d+$/.test(this.word)) {
-      this.word = ''
-      this.isWord = false
-    }
+    this.dropDescriptor()
     this.endWord()
     let last = i
     while (['>', '|', '&'].includes(this.text[last + 1] ?? '')) last++
     this.isTarget = true
     return last
+  }
+
+  /** A file descriptor number right before a redirection (`0<`, `2>`) belongs to it, not to the command. */
+  private dropDescriptor() {
+    if (!/^\d+$/.test(this.word)) return
+    this.word = ''
+    this.isWord = false
   }
 
   private endWord() {
@@ -208,20 +213,25 @@ function pythonRunsCode(args: readonly string[], isFed: boolean): boolean {
 
 const basename = (path: string) => path.split('/').at(-1) ?? ''
 
-/** The string of `--split-string=...` or `-S...`, or undefined. */
-function attachedSplitString(option: string): string | undefined {
-  if (option.startsWith('--split-string=')) return option.slice('--split-string='.length)
-  return /^-S./.test(option) ? option.slice(2) : undefined
+/** `env`'s split-string option: `-S`, `-S...`, a combined group ending in it (`-iS`), `--split-string`, `--split-string=...` or an abbreviation. */
+function splitStringOption(option: string): { value: string } | undefined {
+  if (option.startsWith('--')) {
+    const equals = option.indexOf('=')
+    const name = equals < 0 ? option.slice(2) : option.slice(2, equals)
+    return name.length >= 2 && 'split-string'.startsWith(name) ? { value: equals < 0 ? '' : option.slice(equals + 1) } : undefined
+  }
+  const at = option.indexOf('S')
+  const before = option.slice(1, Math.max(at, 1))
+  return option.startsWith('-') && at > 0 && /^[A-Za-z]*$/.test(before) && !/[uC]/.test(before) ? { value: option.slice(at + 1) } : undefined
 }
 
 /** `env -S 'python x.py'` runs the words of its string: the words to look at then, or undefined for another option. */
 function splitStringAt(words: readonly string[], at: number): readonly string[] | undefined {
-  const option = words[at] ?? ''
-  const separate = option === '-S' || option === '--split-string'
-  const attached = attachedSplitString(option)
-  if (!separate && attached === undefined) return undefined
-  const text = separate ? (words[at + 1] ?? '') : (attached ?? '')
-  return [...(shellSegments(text)[0]?.words ?? []), ...words.slice(separate ? at + 2 : at + 1)]
+  const split = splitStringOption(words[at] ?? '')
+  if (!split) return undefined
+  const isSeparate = split.value === '' && !(words[at] ?? '').includes('=')
+  const text = isSeparate ? (words[at + 1] ?? '') : split.value
+  return [...(shellSegments(text)[0]?.words ?? []), ...words.slice(isSeparate ? at + 2 : at + 1)]
 }
 
 /** How many words an option takes: two when it, or the last of its combined short options (`-iu`), takes a value as the next word. */
@@ -322,19 +332,86 @@ function segmentRunsPython(segment: Segment, depth = 0): boolean {
   return runnerRunsScript(program, args) || (PYTHON_PROGRAM.test(program) && pythonRunsCode(args, isFed))
 }
 
-/** The commands inside `$(...)`, `<(...)`, `>(...)` and backticks, innermost first, as text. */
-function substitutions(command: string): string[] {
-  const found: string[] = []
-  let text = command
-  for (let pass = 0; pass < MAX_DEPTH; pass++) {
-    const inner = [...text.matchAll(/[$<>]\(([^()]*)\)|`([^`]*)`/g)]
-    if (inner.length === 0) break
-    for (const match of inner) found.push(match[1] ?? match[2] ?? '')
-    text = text.replace(/[$<>]\(([^()]*)\)|`([^`]*)`/g, ' x ')
+// What a scanner step returns instead of the next index: the scan failed (the guard fails closed), or stops with nothing wrong.
+const FAILED = -1
+const STOPPED = -2
+
+type Frame = { isNested: boolean; isDouble: boolean; parens: number; closedAt: number }
+
+/** Reads text for `$(...)`, `<(...)`, `>(...)` and backticks, honouring quotes, backslashes and nesting; `found` gets each command's text. */
+class SubstitutionScanner {
+  readonly found: string[] = []
+
+  /** The index of the `)` that ends a nested scan, or the text's length; -1 when it cannot be followed. */
+  scan(text: string, start: number, isNested: boolean, depth: number): number {
+    if (depth > MAX_DEPTH) return this.giveUp()
+    const frame: Frame = { isNested, isDouble: false, parens: 0, closedAt: -1 }
+    let at = start
+    while (at >= 0 && at < text.length && frame.closedAt < 0) at = this.step(text, at, frame, depth)
+    if (at === FAILED) return FAILED
+    if (frame.closedAt >= 0) return frame.closedAt
+    return isNested ? this.giveUp() : text.length
   }
-  // Still nested after the last pass: the guard cannot follow it, so it counts as Python.
-  if (/[$<>]\([^()]*\)|`[^`]*`/.test(text)) found.push(TOO_DEEP)
-  return found
+
+  /** The index to read next. */
+  private step(text: string, i: number, frame: Frame, depth: number): number {
+    const char = text[i] ?? ''
+    if (char === '\\') return i + 2
+    if (char === '"') {
+      frame.isDouble = !frame.isDouble
+      return i + 1
+    }
+    if (char === "'" && !frame.isDouble) return this.afterSingleQuote(text, i, frame.isNested)
+    if (char === '`') return this.afterBacktick(text, i, depth)
+    if (this.opensSubstitution(text, i, frame.isDouble)) return this.afterParenthesised(text, i, depth)
+    if (frame.isNested && !frame.isDouble) this.countParen(char, i, frame)
+    return i + 1
+  }
+
+  private countParen(char: string, i: number, frame: Frame) {
+    if (char === '(') frame.parens++
+    else if (char === ')' && frame.parens === 0) frame.closedAt = i
+    else if (char === ')') frame.parens--
+  }
+
+  /** After the closing quote; an unclosed one ends the top-level text, and a nested scan cannot follow it. */
+  private afterSingleQuote(text: string, i: number, isNested: boolean): number {
+    const close = text.indexOf("'", i + 1)
+    if (close >= 0) return close + 1
+    return isNested ? this.giveUp() : STOPPED
+  }
+
+  private opensSubstitution(text: string, i: number, isDouble: boolean): boolean {
+    return text[i + 1] === '(' && (text[i] === '$' || (!isDouble && (text[i] === '<' || text[i] === '>')))
+  }
+
+  private afterParenthesised(text: string, i: number, depth: number): number {
+    const end = this.scan(text, i + 2, true, depth + 1)
+    if (end < 0) return FAILED
+    this.found.push(text.slice(i + 2, end))
+    return end + 1
+  }
+
+  private afterBacktick(text: string, i: number, depth: number): number {
+    let end = i + 1
+    while (end < text.length && text[end] !== '`') end += text[end] === '\\' ? 2 : 1
+    if (end >= text.length) return this.giveUp()
+    const inner = text.slice(i + 1, end).replaceAll('\\`', '`')
+    this.found.push(inner)
+    return this.scan(inner, 0, false, depth + 1) < 0 ? FAILED : end + 1
+  }
+
+  private giveUp(): number {
+    this.found.push(TOO_DEEP)
+    return FAILED
+  }
+}
+
+/** The commands inside `$(...)`, `<(...)`, `>(...)` and backticks at any depth, as text; one that cannot be followed counts as Python. */
+function substitutions(command: string): string[] {
+  const scanner = new SubstitutionScanner()
+  scanner.scan(command, 0, false, 0)
+  return scanner.found
 }
 
 /** A program named by a variable or a substitution, in a command that mentions Python: `p=python; $p x.py`. */

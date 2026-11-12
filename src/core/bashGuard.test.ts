@@ -291,3 +291,57 @@ test('PI-5: shell wrappers nested beyond the old depth limit are still refused, 
   expectDecisions(false, [wrap('ls', 2)])
   expectDecisions(true, ['echo $(echo $(echo $(echo $(echo $(echo $(echo $(python x.py)))))))'])
 })
+
+test('PI-5: a numbered or here-string redirection does not hide the program', () => {
+  expectDecisions(true, [
+    '0</dev/null python -c 1',
+    '3<in python -c 1',
+    '0< in python x.py',
+    "0<<EOF python -c 1\nEOF",
+    "<<<'x' python -c 1",
+    "0<<<'x' python -c 1",
+    '9>&1 python -c 1',
+    '&>>log python -c 1',
+    'FOO=1 0</dev/null python -c 1',
+  ])
+  expectDecisions(false, ['0</dev/null ls', '3<in cat', "<<<'x' cat", '9>&1 ls', '&>>log ls', '0</dev/null python -m pytest'])
+})
+
+test('PI-5: env split-string options are read in combined groups, attached and long forms', () => {
+  expectDecisions(true, [
+    'env -iS "FOO=1 python -c 1"',
+    'env -iS\'python -c 1\'',
+    "env -S'python -c 1'",
+    'env -Spython\\ -c\\ 1',
+    "env --split-string='python -c 1'",
+    "env --split-string 'python -c 1'",
+    "env --split='python -c 1'",
+    "env -vS 'FOO=1 python x.py'",
+  ])
+  expectDecisions(false, ["env -iS 'FOO=1 ls'", "env -S'ls -l'", "env --split-string='echo hi'", "env -iS 'python -m pytest'", 'env -iuS ls'])
+})
+
+test('PI-5: substitutions are read with their quotes, nesting and backticks', () => {
+  expectDecisions(true, [
+    'echo $(python -c "print(1)")',
+    "echo $(python -c 'print(1)')",
+    'echo "$(python -c "print(1)")"',
+    'echo $(echo ")" ; python -c 1)',
+    'echo $(echo $(python -c "print(1)"))',
+    'echo `python -c "print(1)"`',
+    'echo `echo \\`python -c 1\\``',
+    'cat <(python -c "print(1)")',
+    'echo "a" $(printf ")" | python -c 1)',
+    'echo $(python -c "print(1)"',
+    'echo `python -c 1',
+  ])
+  expectDecisions(false, [
+    'echo $(ls "a)b")',
+    "echo $(ls 'a)b')",
+    'echo "$(ls "a)b")"',
+    "echo '$(python -c 1)'",
+    'echo \\$(python -c 1)',
+    'echo $((1+2))',
+    'diff <(ls "a)b") x',
+  ])
+})
