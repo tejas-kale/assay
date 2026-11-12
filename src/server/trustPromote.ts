@@ -19,13 +19,12 @@ function gitIn(assay: Assay): Git {
   return args => assay.config.proc.run(['git', '-C', home, ...args], { cwd: assay.config.analysis }).catch((error: unknown) => ({ exitCode: 1, stdout: '', stderr: messageOf(error) }))
 }
 
-/** Copies the proposal's files into the shared folder: what was checked for the main file, else the draft as it is now. */
+/** Copies the proposal's files into the shared folder exactly as the check read them, whatever happened to the draft since. */
 async function copyFiles(review: Review, answer: CheckAnswer): Promise<{ failed: string } | { written: Written[] }> {
   const written: Written[] = []
   for (const file of answer.files ?? []) {
-    // The main file is written as it was checked, whatever happened to it since.
-    const text = file === answer.file && answer.code !== undefined ? answer.code : await readFile(`${review.folder}/${file}`, 'utf8').catch(() => undefined)
-    if (text === undefined) return { failed: `Cannot read ${review.folder}/${file}.` }
+    const text = answer.texts?.[file]
+    if (text === undefined) return { failed: `No checked copy of ${file}.` }
     await writeFile(`${review.dest}/${file}`, text, 'utf8')
     written.push({ file, text })
   }

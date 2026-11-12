@@ -12,8 +12,8 @@ import { streamChecks } from './trustStream.ts'
 
 const CODE = 'SELECT 1\n'
 const STEPS = [{ step: 'form', ok: true, text: 'SQL template' }]
-const START = { event: 'start', name: 'calc', kind: 'sql', file: 'calc.sql', description: 'A calculation.', code: CODE, files: ['calc.sql'] }
-const CHECKED = { name: 'calc', ok: true, kind: 'sql', file: 'calc.sql', code: CODE, files: ['calc.sql'], steps: STEPS }
+const START = { event: 'start', name: 'calc', kind: 'sql', file: 'calc.sql', description: 'A calculation.', code: CODE, files: ['calc.sql'], texts: { 'calc.sql': CODE } }
+const CHECKED = { name: 'calc', ok: true, kind: 'sql', file: 'calc.sql', code: CODE, files: ['calc.sql'], texts: { 'calc.sql': CODE }, steps: STEPS }
 const files = (extra: Record<string, string> = {}) => ({ 'analysis.yaml': 'title: Feature\n', '/opt/venv-assay/bin/python': '', 'lib/trusted/calc.sql': CODE, ...extra })
 
 const isCheck = (argv: readonly string[]) => argv.includes('--stream')
@@ -62,24 +62,15 @@ test('a git that cannot start is the same as one that fails', async () => {
   await ws.done()
 })
 
-test('approving says when the trusted folder cannot be made or a proposal file cannot be read', async () => {
+test('approving says when the trusted folder cannot be made or a proposal file has no checked copy', async () => {
   const blocked = await fake(files({ '/work/trusted': 'a file where the folder should be' }))
   expect(await approve(blocked, ok)).toEqual({ error: `Cannot make ${blocked.root}/trusted.` })
   await blocked.done()
   const missing = await fake(files())
   const reply = await approve(missing, ok, { ...CHECKED, files: ['calc.sql', 'calc.test.yaml'] })
-  expect(reply).toEqual({ error: `Cannot read ${missing.analysis}/lib/trusted/calc.test.yaml.` })
-  expect((await stateOf(missing))?.message).toBe(`Cannot read ${missing.analysis}/lib/trusted/calc.test.yaml.`)
+  expect(reply).toEqual({ error: 'No checked copy of calc.test.yaml.' })
+  expect((await stateOf(missing))?.message).toBe('No checked copy of calc.test.yaml.')
   await missing.done()
-})
-
-test('a proposal file other than the main one is copied as it is now, and a main file with no checked code too', async () => {
-  const ws = await fake(files({ 'lib/trusted/calc.test.yaml': 'cases: []\n' }))
-  const withoutCode = { name: 'calc', ok: true, kind: 'sql', file: 'calc.sql', steps: STEPS }
-  expect(await approve(ws, ok, { ...withoutCode, files: ['calc.sql', 'calc.test.yaml'] })).toEqual({ ok: true })
-  expect(await ws.file('/work/trusted/calc.sql')).toBe(CODE)
-  expect(await ws.file('/work/trusted/calc.test.yaml')).toBe('cases: []\n')
-  await ws.done()
 })
 
 test('git add and git commit failures are the review error, with the last line of what git said', async () => {

@@ -35,7 +35,7 @@ from analysis_pytest import result_step, run_tests, tests_passed
 
 SAMPLE_ROWS = 5
 # What the Trust tab's start event carries from the answer.
-START_KEYS = ("name", "kind", "file", "description", "code", "files", "block")
+START_KEYS = ("name", "kind", "file", "description", "code", "files", "texts", "block")
 
 Emit = Callable[[dict[str, Any]], None]
 
@@ -93,6 +93,20 @@ def _sample(columns: list[str], rows: list[list[str]]) -> dict[str, Any]:
     return {"columns": columns, "rows": rows[:SAMPLE_ROWS], "total": len(rows)}
 
 
+def _snapshot(folder: Path, answer: dict[str, Any]) -> None:
+    """Each proposal file's text as the check starts: approving copies exactly these."""
+    answer["texts"] = {file: (folder / file).read_text() for file in answer["files"]}
+
+
+def _settled(folder: Path, answer: dict[str, Any], step: Steps) -> dict[str, Any]:
+    """The answer, failed with a ``changed`` step when a proposal file no longer holds what the check started with."""
+    for file, text in (answer.get("texts") or {}).items():
+        if answer["ok"] and (not (folder / file).is_file() or (folder / file).read_text() != text):
+            step({"step": "changed", "ok": False, "text": f"{file} changed during the check: check again"})
+            answer["ok"] = False
+    return answer
+
+
 # ---------------------------------------------------------------------------
 # A trusted calculation.
 
@@ -104,7 +118,7 @@ def check(folder: Path, name: str, analysis: Path, emit: Emit | None = None) -> 
     """
     review = _CalculationCheck(folder, name, analysis, Steps(emit))
     review.run()
-    return review.answer
+    return _settled(folder, review.answer, review.step)
 
 
 class _CalculationCheck:
@@ -142,6 +156,7 @@ class _CalculationCheck:
         self.answer.update(kind=found["kind"], file=found["file"], description=found["description"], code=code)
         beside = (f"{self.name}.test.yaml", f"test_{self.name}.py", f"{self.name}.rebuild.sql")
         self.answer["files"] = [found["file"], *(f for f in beside if (self.folder / f).is_file())]
+        _snapshot(self.folder, self.answer)
         if "block" in found:
             self.answer["block"] = found["block"]
         self.step.start(self.answer)
@@ -209,7 +224,7 @@ def check_entry(path: Path, analysis: Path, emit: Emit | None = None) -> dict[st
     definitions' cases and live runs."""
     review = _EntryCheck(path, analysis, Steps(emit))
     review.run()
-    return review.answer
+    return _settled(path.parent, review.answer, review.step)
 
 
 class _EntryCheck:
@@ -251,6 +266,7 @@ class _EntryCheck:
         self.answer["description"] = str(data["description"]).strip().splitlines()[0]
         tests = f"{self.name}.test.yaml"
         self.answer["files"] = [self.path.name, *([tests] if (self.path.parent / tests).is_file() else [])]
+        _snapshot(self.path.parent, self.answer)
         self.step.start(self.answer)
         self.step({"step": "form", "ok": True, "text": plural(len(columns), "column")})
 

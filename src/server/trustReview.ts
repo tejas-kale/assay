@@ -68,6 +68,7 @@ function startedAnswer(event: StartEvent): CheckAnswer {
     ...(event.description ? { description: event.description } : {}),
     ...(event.code === undefined ? {} : { code: event.code }),
     ...(event.files ? { files: event.files } : {}),
+    ...(event.texts ? { texts: event.texts } : {}),
   }
 }
 
