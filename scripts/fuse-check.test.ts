@@ -27,11 +27,17 @@ test('a fuse the build left as Electron ships it fails the check', () => {
   assert.deepEqual(fuseProblems(settings, wire), ['runAsNode: expected off, the app has on'])
 })
 
+test('file: pages get no extra privileges now that the renderer is served from app:// (audit UI-3)', () => {
+  assert.equal(settings['grantFileProtocolExtraPrivileges'], false)
+  const wire = { ...wireFor(settings), 7: ON }
+  assert.deepEqual(fuseProblems(settings, wire), ['grantFileProtocolExtraPrivileges: expected off, the app has on'])
+})
+
 test('a fuse missing from the binary, or in another state, fails', () => {
   const wire: Record<number, number | undefined> = { ...wireFor(settings), 7: undefined, 6: 114 }
   assert.deepEqual(fuseProblems(settings, wire), [
     'loadBrowserProcessSpecificV8Snapshot: expected off, the app has state 114',
-    'grantFileProtocolExtraPrivileges: expected on, the app has no such fuse',
+    'grantFileProtocolExtraPrivileges: expected off, the app has no such fuse',
   ])
 })
 

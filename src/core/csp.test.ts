@@ -23,3 +23,12 @@ test('index.html takes its policy from the build', () => {
   const html = readFileSync(new URL('../renderer/index.html', import.meta.url), 'utf8')
   expect(html).toMatch(`content="${CSP_PLACEHOLDER}"`)
 })
+
+test('the built app trusts its app:// origin alone: no file: or other scheme source, no inline script (audit UI-3)', () => {
+  const csp = rendererCsp(false)
+  expect(csp).not.toMatch('file:')
+  expect(csp).not.toMatch('http')
+  expect(directives(csp).get('default-src')).toEqual(["'self'"])
+  expect(directives(csp).get('script-src')).not.toContain("'unsafe-inline'")
+  expect(directives(csp).get('script-src')).not.toContain("'unsafe-eval'")
+})

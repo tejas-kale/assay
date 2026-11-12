@@ -4,6 +4,7 @@ import type { WebContents } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { APP_ENTRY } from '../core/appProtocol.ts'
 import { THEMES } from '../core/theme.ts'
 import { windowState } from './windowState.ts'
 
@@ -30,7 +31,7 @@ export function loadPage(wc: WebContents, hash?: string) {
   // Only a dev build loads the dev server: a packaged app would show any page this names with the preload's API.
   const devUrl = app.isPackaged ? undefined : process.env['ELECTRON_RENDERER_URL']
   if (devUrl) void wc.loadURL(hash ? `${devUrl}#${hash}` : devUrl)
-  else void wc.loadFile(join(here, '../renderer/index.html'), hash ? { hash } : {})
+  else void wc.loadURL(hash ? `${APP_ENTRY}#${hash}` : APP_ENTRY)
 }
 
 /** The rules every page here follows: no new windows, no navigation away, no webviews. */
