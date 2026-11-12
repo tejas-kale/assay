@@ -22,6 +22,8 @@ A build-ready plan for the **hybrid** Assay: a native Swift Mac app, with CodeMi
 
 <!-- one line per resolved ticket: [title](issues/NN-slug.md): gist -->
 
+- [What the TypeScript server, hooks and shared core do, and what moves to Python](issues/04-server-inventory.md): mostly orchestration over Python that already exists; the parsing rules shared with the app would be written twice unless Python serves parsed views; the launch contract and the Podman wrapper must change together.
+
 ## Not yet specified
 
 - **Mermaid in the hybrid:** a web view (faithful to mermaid.js) or MermaidKit (native, ignores `classDef`, `style`, `click` and `init`). This turns on how the web-view bridge works out, and on how much the user's notes rely on styling.

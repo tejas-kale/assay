@@ -11,3 +11,5 @@ The contract currently says the server command is exactly node with one argument
 - what the Podman wrapper must change
 - whether the contract carries a version
 - how both apps' sessions coexist during the switch
+
+Inputs from the server inventory: measure Python start-up for the hook that fires on every tool call, check the MCP Python SDK's shutdown behaviour, and decide what the server and hooks do while the venv is still building.
