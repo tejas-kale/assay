@@ -1,10 +1,12 @@
 // The backend end to end, as the app and Claude use it: the bundled server over MCP with a real kernel in a real venv,
 // requests through .assay/requests/, and the bundled hooks on real files. Run with `npm run test:integration`.
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+import { writeFile } from 'node:fs/promises'
 import { test } from 'node:test'
 
 import { bundle, runNode } from '../../src/testing/bundle.ts'
 import { expect } from '../../src/testing/expect.ts'
+import { until } from '../../src/server/testing.ts'
 import { server, world } from './harness.ts'
 
 test('a SQL run claims a number, writes its files and leaves runs.json with nothing running', { timeout: 180_000 }, async (t) => {
@@ -82,4 +84,25 @@ test('the hooks on real files: Python through Bash and writes into trusted/ are 
   const prompt = await hook('prompt', { hook_event_name: 'UserPromptSubmit', prompt: 'how many sites?' }, w.env)
   expect(prompt?.additionalContext).toContain('mcp__assay__python')
   expect(prompt?.additionalContext).toContain('site_total')
+})
+
+test("rich-row edits and re-runs are new user runs naming their saved source", { timeout: 180_000 }, async t => {
+  const w = await world(t)
+  const s = await server(t, w)
+  await s.call('sql', { sql: 'SELECT site, n FROM sites', slug: 'sites' })
+  await s.call('python', { code: 'print(7)', slug: 'total' })
+  const editor = join(w.dir, 'editor.sh')
+  await writeFile(editor, '#!/bin/sh\nprintf "print(8)\\n" > "$1"\n')
+  for (const [action, file] of [['rerun', '001_sites.sql'], ['edit', '002_total.py']]) {
+    const ran = await runNode(resolve('src/cli/runAction.ts'), JSON.stringify({ action, file }), { ...w.env, EDITOR: `/bin/sh '${editor}'` })
+    const sent = JSON.parse(ran.stdout) as { ok: boolean; id: string }
+    expect(sent.ok).toBe(true)
+    const reply = `.assay/replies/${sent.id}.json`
+    expect(await until(async () => (await s.file(reply)) !== undefined, 120_000)).toBe(true)
+    expect(JSON.parse((await s.file(reply)) ?? '{}')).toMatchObject({ number: action === 'rerun' ? 3 : 4 })
+  }
+  expect(await s.file('queries/003_query.sql')).toBe('-- author: user\n-- from: 001\nSELECT site, n FROM sites\n')
+  expect(await s.file('queries/004_query.py')).toBe('# author: user\n# from: 002\nprint(8)\n')
+  expect(await s.file('queries/001_sites.sql')).toBe('SELECT site, n FROM sites\n')
+  expect(await s.file('queries/002_total.py')).toBe('print(7)\n')
 })
