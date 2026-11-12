@@ -23,6 +23,12 @@ export type Proc = {
 /** The most stdout a run keeps (as the mod's host did): past it the result is cut and flagged. */
 const MAX_STDOUT = 4 * 1024 * 1024
 
+/**
+ * Python started from here writes no bytecode: the backend's copy holds none, and its integrity check at launch
+ * (main/backend.ts) refuses any, so none may appear beside the hooks, server helpers and kernel runner (audit UP-1).
+ */
+const env = { ...process.env, PYTHONDONTWRITEBYTECODE: '1' }
+
 export const realProc: Proc = {
   run(argv, { cwd, timeoutMs, input }) {
     return new Promise(resolve => {
@@ -31,7 +37,7 @@ export const realProc: Proc = {
       let stderr = ''
       let isStdoutTruncated = false
       let settled = false
-      const child = spawn(file, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] })
+      const child = spawn(file, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
       // A program that exits without reading all of it closes the pipe: that is its answer, not a crash.
       child.stdin.on('error', () => undefined)
       child.stdin.end(input ?? '')
@@ -67,7 +73,7 @@ export const realProc: Proc = {
 
   spawn(argv, { cwd }) {
     const [file = '', ...args] = argv
-    const child = spawn(file, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(file, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })
     const listeners: ((stream: 'stdout' | 'stderr', text: string) => void)[] = []
     const report = (stream: 'stdout' | 'stderr', text: string) => {
       for (const listener of listeners) listener(stream, text)

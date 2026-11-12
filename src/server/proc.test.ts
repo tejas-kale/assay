@@ -80,3 +80,15 @@ test('kill ends a running child with a signal (null), and does nothing once it h
   expect(await done.exited).toBe(0)
   done.kill()
 })
+
+test('every Python Assay starts runs without writing bytecode, for run and spawn alike (audit UP-1)', async () => {
+  const code = 'process.stdout.write(process.env.PYTHONDONTWRITEBYTECODE ?? "unset")'
+  expect((await realProc.run(node(code), { cwd })).stdout).toBe('1')
+  const child = realProc.spawn(node(code), { cwd })
+  let seen = ''
+  child.onOutput((_stream, text) => {
+    seen += text
+  })
+  await child.exited
+  expect(seen).toBe('1')
+})
