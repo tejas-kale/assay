@@ -1,5 +1,5 @@
-// The smell gate (docs/process/coding-standards.md). `npm run lint` fails on any warning; today's violations are
-// suppressed in eslint-suppressions.json, which may only shrink.
+// The smell gate (docs/process/coding-standards.md). `npm run lint` fails on any warning or error; nothing is
+// suppressed (scripts/coverage-bar.ts refuses an eslint-suppressions.json).
 import js from '@eslint/js'
 import reactHooks from 'eslint-plugin-react-hooks'
 import sonarjs from 'eslint-plugin-sonarjs'
@@ -30,8 +30,7 @@ export default tseslint.config(
   {
     files: ['src/renderer/**/*.{ts,tsx}'],
     ...reactHooks.configs.flat.recommended,
-    // An error, not the plugin's warning: only errors can go in the baseline, and any warning fails the check.
-    rules: { ...reactHooks.configs.flat.recommended.rules, 'react-hooks/exhaustive-deps': 'error' },
+        rules: { ...reactHooks.configs.flat.recommended.rules, 'react-hooks/exhaustive-deps': 'error' },
   },
   {
     // Build scripts and tests run git and the CLIs from PATH by design: the integration tests put their fakes first on

@@ -10,16 +10,15 @@ one kernel the app shows. Protect this in every change.
 
 - Commit on the session branch. The user pushes.
 - Run `npm run check` before every commit, and fix what it reports until it passes.
-- The baselines (`eslint-suppressions.json`, `python/ruff-baseline.json`, `coverage-baseline.json`) only shrink: fix
-  a new violation in the code. After an improvement, `npm run ratchet -- --update` and `npm run lint:prune`
-  write the smaller baseline, and that goes in the commit.
+- Every file meets the lint rules and the 90% coverage bar; there are no baselines. Fix a violation in the code,
+  never by disabling a rule.
 - Write each commit subject as a release note: what changed for the user.
 - Add a `Release: minor` or `Release: major` trailer when the change warrants more than a patch release.
 
 ## Process docs
 
 - `docs/process/coding-standards.md`: the code standard and the limits the linters enforce. Read it before writing code.
-- `docs/process/testing.md`: where tests live, the fakes, the coverage bar, the baselines, and how to run them.
+- `docs/process/testing.md`: where tests live, the fakes, and the coverage bar, and how to run them.
 - `docs/process/ci-release.md`: the CI pipeline, the release filter, versions and `Release:` trailers, signing.
 - `docs/process/launch-contract.md`: how the app starts Claude, and what a launcher (the Podman wrapper) must provide.
 - `docs/process/adding-a-tab.md`: the tab registry, and the three places a new tab touches.

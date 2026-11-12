@@ -23,7 +23,7 @@ The code is the source of truth. `docs/slice-*.md` are the specs each slice was 
   checkout as the backend.
 - `npm run dev`: the backend is this checkout, and the venv is `venvs/dev/` in the app's data folder, built editable
   from `python/` at each launch, so edits to the helpers apply at once.
-- `npm run check`: typecheck, lint, every test with coverage, and the ratchet; `git push` runs it first. `npm test`
+- `npm run check`: typecheck, lint, every test with coverage, and the coverage bar; `git push` runs it first. `npm test`
   runs only the tests. Python runs from `python/`'s locked project, synced by uv into the root `.venv`. Details in
   `docs/process/testing.md`.
 - `npm run install-app` builds `Assay.app`, ad-hoc signed, into `/Applications`; run it again after pulling changes.

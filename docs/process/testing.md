@@ -1,7 +1,7 @@
 # Testing
 
 `npm run check` is the gate: typecheck, ESLint, the node tests with coverage, ruff, pytest with coverage, then the
-ratchet. `git push` runs it through `.githooks/pre-push` (`scripts/postinstall.mjs` sets `core.hooksPath`; `.githooks/post-commit` and `post-rewrite` still run the clone's own hooks in `.git/hooks`); CI runs
+coverage bar. `git push` runs it through `.githooks/pre-push` (`scripts/postinstall.mjs` sets `core.hooksPath`; `.githooks/post-commit` and `post-rewrite` still run the clone's own hooks in `.git/hooks`); CI runs
 the same checks, so `--no-verify` only delays a failure.
 
 ## Unit tests
@@ -11,7 +11,7 @@ the same checks, so `--no-verify` only delays a failure.
 | Pure logic | `src/core/*.test.ts` | `npm run test:node` |
 | MCP server | `src/server/*.test.ts` | `npm run test:node` |
 | Hooks, as bundled scripts on stdin | `src/hooks/hooks.test.ts` | `npm run test:node` |
-| Scripts (the ratchet) | `scripts/*.test.ts` | `npm run test:node` |
+| Scripts (the coverage bar, versions, release paths) | `scripts/*.test.ts` | `npm run test:node` |
 | Python helpers and the kernel | `python/tests/test_*.py` | `npm run test:py` |
 
 - Node tests use `node:test`; `src/testing/expect.ts` gives them a jest-style `expect`.
@@ -47,20 +47,10 @@ The bar is 90% of lines and of branches, per file, in `src/core`, `src/server`, 
 excluded). A file no test loads counts as 0%, in a folder without `__init__.py` too. Python coverage follows subprocesses, so the kernel's `serve` counts.
 Reports land in `coverage/` (ignored by git).
 
-## The baselines
+## No baselines
 
-Today's code is below the bar in places. Three committed files record where, and each may only shrink:
+Every file meets the bar, with no exceptions recorded anywhere (slice 11f emptied and deleted the old baselines):
 
-- `eslint-suppressions.json`: ESLint's bulk suppressions. A new violation fails. When a count falls, ESLint fails
-  until `npm run lint:prune` writes the smaller file. ESLint only checks the files it lints, so the ratchet flags the
-  suppressions of a deleted file.
-- `python/ruff-baseline.json`: ruff's counts per file and rule, kept by `scripts/ratchet.ts`. A count that grows, or
-  a new file or rule, fails.
-- `coverage-baseline.json`: line and branch percentages of the files below the bar, kept by `scripts/ratchet.ts`. A
-  file in it may not fall more than half a point below its figures (a test that races can miss a branch in one run of
-  many; the figures themselves never move down); a file not in it must reach 90% on both; a file reaching 90% on its
-  own figures leaves it.
-
-A baseline the code has beaten fails the check too, until `npm run ratchet -- --update` (or `npm run lint:prune`)
-writes the better figures, so no file can slide back to an old low. Commit the smaller baseline with the change.
-Nothing is ever added to a baseline: `npm run ratchet -- --init` only writes a missing one.
+- ESLint and ruff fail on any violation. Fix the code; never add `eslint-disable`, `# noqa` or a per-file ignore.
+- `npm run coverage-bar` (`scripts/coverage-bar.ts`) fails on any file in scope below 90% on lines or branches, and
+  on an `eslint-suppressions.json`, which would let ESLint skip the violations it lists.
