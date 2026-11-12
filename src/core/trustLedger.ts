@@ -1,6 +1,13 @@
 // The trust ledger: which files of a root's trusted/ and dictionaries/ the user approved, by hash (specs/trust-ledger.md).
 // Pure: main reads and writes the file (main/trustLedger.ts); this module only decides what a ledger's text means.
 
+import { createHash } from 'node:crypto'
+import { join } from 'node:path'
+
+/** The root-specific ledger path shared by the app and terminal launcher. */
+export const ledgerPath = (userData: string, realRoot: string): string =>
+  join(userData, 'trust-ledger', `${createHash('sha256').update(realRoot).digest('hex')}.json`)
+
 export type LedgerEntry = {
   kind: 'calculation' | 'dictionary'
   /** Root-relative path (trusted/calc.sql) to the sha256 hex of the approved bytes. */

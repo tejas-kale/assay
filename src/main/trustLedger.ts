@@ -1,15 +1,13 @@
 // The trust ledger's file (specs/trust-ledger.md): one per root, in the app's data folder, written by main only.
 // No Electron here, so the tests run it on a temp folder.
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 
 import { emptyLedger, parseLedger, serializeLedger } from '../core/trustLedger.ts'
 import type { Ledger, ParsedLedger } from '../core/trustLedger.ts'
 
-/** `<userData>/trust-ledger/<sha256 hex of the root's real path>.json`. Pass the real path, as resolveRoot returns it. */
-export const ledgerPath = (userData: string, realRoot: string): string =>
-  join(userData, 'trust-ledger', `${createHash('sha256').update(realRoot).digest('hex')}.json`)
+export { ledgerPath } from '../core/trustLedger.ts'
 
 const isLink = async (path: string): Promise<boolean | undefined> => {
   try {

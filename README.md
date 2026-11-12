@@ -27,6 +27,12 @@ The code is the source of truth. `specs/slices/slice-*.md` are the specs each sl
   runs only the tests. Python runs from `python/`'s locked project, synced by uv into the root `.venv`. Details in
   `docs/developer/testing.md`.
 - `npm run install-app` builds `Assay.app`, ad-hoc signed, into `/Applications`; run it again after pulling changes.
+  It also installs `assay` into a writable PATH folder (`~/.local/bin`, `~/bin` or `/usr/local/bin`).
+  With Node 22.15 or later on PATH, `assay open` lists analyses; `assay open <slug>` starts Claude in your terminal.
+  Open the app once first to choose a root and prepare its backend. `ASSAY_CLAUDE_BIN` selects your usual launcher.
+  Set `ASSAY_THEME=light-ansi` for a light terminal. Close its app session before starting the same analysis here;
+  Trust review still requires closing the terminal session and opening the app. Crash recovery is documented in
+  [the launch contract](docs/developer/launch-contract.md#starting-from-a-terminal).
   `npm run package` only builds it, into `dist/mac-arm64/`.
 - A release (from its DMG, `docs/developer/ci-release.md`) updates itself: paste a fine-grained GitHub token for
   `tejas-kale/assay` (Contents read-only) into Settings > Updates. It checks at launch and hourly, downloads in the
