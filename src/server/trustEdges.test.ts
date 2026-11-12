@@ -180,7 +180,7 @@ test('streaming without a python says how to build the venv; a dictionary entry 
   const ws = await fake(files())
   const streamed = streamChecks(ws.assay, review(ws, { kind: 'dictionary', name: 'a.b.c', folder: `${ws.analysis}/lib/dictionaries` }), () => undefined)
   const serve = await helper(ws)
-  expect(serve.argv.slice(3)).toEqual(['check-entry', `${ws.analysis}/lib/dictionaries/a.b.c.yaml`, ws.analysis, '--stream'])
+  expect(serve.argv.slice(4)).toEqual(['check-entry', `${ws.analysis}/lib/dictionaries/a.b.c.yaml`, ws.analysis, '--stream'])
   serve.end(0)
   expect(await streamed).toBe('analysis_trust exited with 0')
   await ws.done()

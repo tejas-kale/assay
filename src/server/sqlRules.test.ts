@@ -17,8 +17,8 @@ const CTE_SQL = 'WITH ow AS (SELECT 1 AS x) SELECT x FROM ow'
 function scripted(ws: Fake, lint: Partial<RunResult> | SqlLint, seen: { input?: string; argv?: readonly string[] } = {}) {
   ws.setRun((argv, options?: RunOptions) => {
     // The retype check (docs/slice-10.md) finds nothing here; include.test.ts and retype.test.ts cover it.
-    if (argv[2] === 'analysis_sql' && argv[3] === 'retype') return { stdout: '{"warnings": []}' }
-    if (argv[2] === 'analysis_sql') {
+    if (argv[3] === 'analysis_sql' && argv[4] === 'retype') return { stdout: '{"warnings": []}' }
+    if (argv[3] === 'analysis_sql') {
       seen.argv = argv
       if (options?.input !== undefined) seen.input = options.input
       return 'errors' in lint ? { stdout: JSON.stringify(lint) } : lint
@@ -27,7 +27,7 @@ function scripted(ws: Fake, lint: Partial<RunResult> | SqlLint, seen: { input?: 
   })
 }
 
-const lintRuns = (ws: Fake) => ws.runs.filter(argv => argv[2] === 'analysis_sql' && argv[3] === 'lint')
+const lintRuns = (ws: Fake) => ws.runs.filter(argv => argv[3] === 'analysis_sql' && argv[4] === 'lint')
 
 test('a statement that breaks the rules is not run: no number claimed, no file, the reply lists each problem', async () => {
   const ws = await fake(FILES)
@@ -35,7 +35,7 @@ test('a statement that breaks the rules is not run: no number claimed, no file, 
   scripted(ws, { errors: ['CTE ow: no "-- grain:" line above it.', 'CTE ow: name too short; say what it holds.'], warnings: [] }, seen)
   const reply = await ws.call('sql', { sql: CTE_SQL, slug: 'ow', engine: 'postgres' })
   expect(reply).toBe('Not run: the query breaks the SQL rules. Fix and send again:\n- CTE ow: no "-- grain:" line above it.\n- CTE ow: name too short; say what it holds.')
-  expect(seen.argv).toEqual([`${ws.venv}/bin/python`, '-m', 'analysis_sql', 'lint', 'postgres'])
+  expect(seen.argv).toEqual([`${ws.venv}/bin/python`, '-I', '-m', 'analysis_sql', 'lint', 'postgres'])
   expect(seen.input).toBe(CTE_SQL)
   expect(await ws.list('queries')).toEqual([])
   expect(ws.assay.runsClaimed).toBe(0)

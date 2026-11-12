@@ -1,6 +1,6 @@
 // The hooks' decisions and helpers called in-process (hooks.test.ts runs the bundled scripts, which coverage does not
 // follow): each branch of bashDecision, writeDecision and promptDecision, and the shared io helpers.
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -143,6 +143,33 @@ test('a dangling symlink is followed to where writing through it would create th
   expect(await writeDecision({ tool_input: { file_path: `${analysis}/lib/a` } }, env)).toBeUndefined()
 })
 
+test('a protected folder that is a symlink protects its name and its destination, existing or dangling (audit PI-6)', async () => {
+  const { dir, root, analysis, env } = await scratch()
+  const links = [
+    [join(root, 'trusted'), 'relocated-trusted'],
+    [join(root, 'notes'), 'relocated-notes'],
+    [join(analysis, '.assay'), 'relocated-assay'],
+    [join(analysis, 'queries'), 'relocated-queries'],
+  ] as const
+  await rm(join(analysis, '.assay'), { recursive: true })
+  for (const [link, destination] of links) {
+    const target = join(dir, destination)
+    await mkdir(target, { recursive: true })
+    await symlink(target, link)
+    for (const path of [join(link, 'f.sql'), join(target, 'f.sql')]) {
+      const said = await writeDecision({ tool_input: { file_path: path } }, env)
+      expect(`${path}: ${said?.hookSpecificOutput.permissionDecision ?? 'allowed'}`).toBe(`${path}: deny`)
+    }
+  }
+  // A link to a folder that does not exist yet: the name and the destination are both refused.
+  await rm(join(root, 'dictionaries'), { recursive: true, force: true })
+  await symlink(join(dir, 'later'), join(root, 'dictionaries'))
+  for (const path of [join(root, 'dictionaries/f.yaml'), join(dir, 'later/f.yaml')]) {
+    expect((await writeDecision({ tool_input: { file_path: path } }, env))?.hookSpecificOutput.permissionDecision).toBe('deny')
+  }
+  expect(await writeDecision({ tool_input: { file_path: join(dir, 'unrelated/f.sql') } }, env)).toBeUndefined()
+})
+
 test('promptDecision does nothing without an analysis and a root', async () => {
   expect(await promptDecision({}, noProc)).toBeUndefined()
   expect(await promptDecision({ ASSAY_ANALYSIS: '/a' }, noProc)).toBeUndefined()
@@ -190,7 +217,7 @@ test('promptDecision lists the trusted calculations only when the venv python pr
   await mkdir(join(dir, 'venv/bin'), { recursive: true })
   const seen: string[][] = []
   expect(context(await promptDecision(env, procPrinting(JSON.stringify(list), seen)))).toContain('- by_site(): Per site.')
-  expect(seen).toEqual([[`${dir}/venv/bin/python`, '-m', 'analysis_trust', 'list', root]])
+  expect(seen).toEqual([[`${dir}/venv/bin/python`, '-I', '-m', 'analysis_trust', 'list', root]])
   for (const out of ['', 'not json', 'null', '5', JSON.stringify({ error: 'broken' })])
     expect([out, context(await promptDecision(env, procPrinting(out))).includes('by_site')]).toEqual([out, false])
   expect(context(await promptDecision(env, noProc))).not.toContain('by_site')

@@ -45,7 +45,7 @@ export async function streamChecks(assay: Assay, review: Review, take: Take): Pr
   const python = await assay.toolsPython()
   if (!python) return assay.venvHint()
   const analysis = assay.config.analysis
-  const child = assay.config.proc.spawn([python, '-m', 'analysis_trust', ...checkArgs(review, analysis)], { cwd: analysis })
+  const child = assay.config.proc.spawn([python, '-I', '-m', 'analysis_trust', ...checkArgs(review, analysis)], { cwd: analysis })
   const stream: Stream = { buffer: '', stderr: '', failure: undefined, isDone: false, isTimedOut: false }
   const timer = setTimeout(() => {
     stream.isTimedOut = true

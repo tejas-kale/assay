@@ -97,8 +97,8 @@ test('the rules list the usable trusted calculations the helper lists', async ()
   const { dir, env } = await scratch()
   await mkdir(join(dir, 'venv/bin'), { recursive: true })
   const list = { calculations: [{ name: 'completes_by_site', kind: 'sql', file: 'c.sql', description: 'Completes per site.', parameters: [{ name: 'start', type: 'date', required: true }], commit: 'abc', dirty: false }, { name: 'top_sites', kind: 'python', file: 't.py', description: 'Top.', parameters: [], commit: '', dirty: true }], problems: [] }
-  // A stand-in for venv-assay's python: `-m analysis_trust list <root>` prints the list.
-  await writeFile(join(dir, 'venv/bin/python'), `#!/bin/sh\n[ "$3" = list ] && echo '${JSON.stringify(list)}'\n`, { mode: 0o755 })
+  // A stand-in for venv-assay's python: `-I -m analysis_trust list <root>` prints the list.
+  await writeFile(join(dir, 'venv/bin/python'), `#!/bin/sh\n[ "$4" = list ] && echo '${JSON.stringify(list)}'\n`, { mode: 0o755 })
   const rules = (await hook('prompt', { prompt: 'x' }, env))?.additionalContext ?? ''
   expect(rules).toContain('Trusted calculations answer one question whole: run one with mcp__assay__trusted when it is exactly the question')
   expect(rules).toContain('- completes_by_site(start: date): Completes per site.')
