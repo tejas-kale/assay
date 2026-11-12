@@ -8,6 +8,7 @@ import { parseRequestFile, isUrgent } from '../core/requests.ts'
 import type { Proposal, ServerRequest } from '../core/requests.ts'
 import { pythonBody, pythonHeader } from '../core/pythonRuns.ts'
 import { Assay } from './assay.ts'
+import { byCodeUnit } from './codeUnitOrder.ts'
 import { runPython, runPythonNow } from './pythonRun.ts'
 import { runSql } from './sqlRun.ts'
 import { lineage, runSteps } from './stepsRun.ts'
@@ -18,6 +19,9 @@ const REPLIES = '.assay/replies'
 export const POLL_MS = 500
 
 export type ReplyBody = { number: number } | { ok: true } | { error: string } | { proposals: Proposal[] }
+
+const okOrError = (failed: string | undefined): ReplyBody => (failed ? { error: failed } : { ok: true })
+const fromOf = (request: { from?: number }) => (request.from ? { from: request.from } : {})
 
 export class Requests {
   private readonly assay: Assay
@@ -34,7 +38,7 @@ export class Requests {
   start() {
     this.stop()
     this.timer = setInterval(() => void this.poll().catch(() => undefined), POLL_MS)
-    this.timer.unref?.()
+    this.timer.unref()
   }
 
   stop() {
@@ -48,7 +52,7 @@ export class Requests {
 
   /** The names of the waiting request files, oldest first. A name starting with `.` is a file being written. */
   private async waiting(): Promise<string[]> {
-    return (await this.assay.names(REQUESTS)).filter(name => !name.startsWith('.') && name.endsWith('.json')).sort()
+    return (await this.assay.names(REQUESTS)).filter(name => !name.startsWith('.') && name.endsWith('.json')).toSorted(byCodeUnit)
   }
 
   private async handle(name: string) {
@@ -88,53 +92,50 @@ export class Requests {
   async perform(request: ServerRequest): Promise<ReplyBody> {
     const assay = this.assay
     switch (request.kind) {
-      case 'sql': {
-        let number: number | undefined
-        const header = `-- author: user\n${request.from ? `-- from: ${queryLabel(request.from)}\n` : ''}`
-        const onClaim = (claimed: number) => {
-          number = claimed
-        }
-        const said = await runSql(assay, { sql: request.sql, slug: request.slug, engine: request.engine, header, onClaim }).catch(() => undefined)
-        if (number === undefined) return { error: said?.startsWith('Not run:') ? said : 'The run could not start.' }
-        await assay.recordUserRun({ number, language: 'sql', ...(request.from ? { from: request.from } : {}) })
-        return { number }
-      }
-      case 'python': {
-        const header = pythonHeader({ author: 'user', ...(request.from ? { from: request.from } : {}) })
-        const ran = await runPython(assay, request.code, request.slug, header).catch(() => undefined)
-        if (ran?.number === undefined) return { error: ran?.text ?? 'The run could not start.' }
-        await assay.recordUserRun({ number: ran.number, language: 'python', ...(request.from ? { from: request.from } : {}) })
-        return { number: ran.number }
-      }
-      case 'interrupt': {
-        const failed = await assay.kernels.interrupt()
-        return failed ? { error: failed } : { ok: true }
-      }
-      case 'restart': {
-        const failed = await assay.kernels.restart()
-        return failed ? { error: failed } : { ok: true }
-      }
+      case 'sql':
+        return this.performSql(request)
+      case 'python':
+        return this.performPython(request)
+      case 'interrupt':
+        return okOrError(await assay.kernels.interrupt())
+      case 'restart':
+        return okOrError(await assay.kernels.restart())
       case 'replay':
         return this.replay(request.runs)
-      case 'lineage': {
-        const failed = await lineage(assay, request.run)
-        return failed ? { error: failed } : { ok: true }
-      }
-      case 'steps': {
-        const failed = await runSteps(assay, request.run)
-        return failed ? { error: failed } : { ok: true }
-      }
+      case 'lineage':
+        return okOrError(await lineage(assay, request.run))
+      case 'steps':
+        return okOrError(await runSteps(assay, request.run))
       case 'trust-list':
         return { proposals: (await this.trust.proposals()).map(({ name, kind, folder }) => ({ name, kind, folder })) }
-      case 'trust-check': {
-        const failed = await this.trust.check(request.name)
-        return failed ? { error: failed } : { ok: true }
-      }
-      case 'trust-answer': {
-        const failed = await this.trust.answer(request.name, request.answer)
-        return failed ? { error: failed } : { ok: true }
-      }
+      case 'trust-check':
+        return okOrError(await this.trust.check(request.name))
+      case 'trust-answer':
+        return okOrError(await this.trust.answer(request.name, request.answer))
     }
+  }
+
+  /** A SQL run the user made: its number once claimed, or why it did not start. */
+  private async performSql(request: Extract<ServerRequest, { kind: 'sql' }>): Promise<ReplyBody> {
+    let number: number | undefined
+    const fromLine = request.from ? `-- from: ${queryLabel(request.from)}\n` : ''
+    const header = `-- author: user\n${fromLine}`
+    const onClaim = (claimed: number) => {
+      number = claimed
+    }
+    const said = await runSql(this.assay, { sql: request.sql, slug: request.slug, engine: request.engine, header, onClaim }).catch(() => undefined)
+    if (number === undefined) return { error: said?.startsWith('Not run:') ? said : 'The run could not start.' }
+    await this.assay.recordUserRun({ number, language: 'sql', ...fromOf(request) })
+    return { number }
+  }
+
+  /** A Python run the user made: its number, or why it did not start. */
+  private async performPython(request: Extract<ServerRequest, { kind: 'python' }>): Promise<ReplyBody> {
+    const header = pythonHeader({ author: 'user', ...fromOf(request) })
+    const ran = await runPython(this.assay, request.code, request.slug, header).catch(() => undefined)
+    if (ran?.number === undefined) return { error: ran?.text ?? 'The run could not start.' }
+    await this.assay.recordUserRun({ number: ran.number, language: 'python', ...fromOf(request) })
+    return { number: ran.number }
   }
 
   /**

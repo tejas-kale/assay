@@ -5,7 +5,6 @@ import { test } from 'node:test'
 import { expect } from '../testing/expect.ts'
 import { parseSteps } from '../core/steps.ts'
 import type { StepsFile } from '../core/steps.ts'
-import type { RunOptions } from './proc.ts'
 import { fake } from './testing.ts'
 import type { Fake } from './testing.ts'
 
@@ -23,10 +22,12 @@ const HEADERS = ['assay_rows', 'assay_grain_rows']
 const output = (columns: string[], rows: string[][]) => ({ stdout: JSON.stringify([{ state: 'SUCCEEDED', columns, rows }, { state: 'SUCCEEDED', columns: ['1'], rows: [['1']] }]) })
 const fileOf = (argv: readonly string[]) => argv[argv.indexOf('--file') + 1] ?? ''
 
-type Script = { plan?: object | undefined; counts?: Record<string, string[]>; failOn?: string; onQuery?: (file: string) => Promise<void> }
+type Script = { plan?: object; counts?: Record<string, string[]>; failOn?: string; onQuery?: (file: string) => Promise<void> }
+const notices = async (ws: Fake) => JSON.parse((await ws.file('.assay/step-notices.json')) ?? '[]') as string[]
+
 /** Plays the helper and the warehouse; notes the steps file as each query starts. */
 function script(ws: Fake, how: Script = {}, seen: string[][] = []) {
-  ws.setRun(async (argv, _options?: RunOptions) => {
+  ws.setRun(async argv => {
     if (argv[2] === 'analysis_sql') return { stdout: JSON.stringify(how.plan ?? PLAN) }
     // rds-psql (Postgres) prints CSV and takes the file after -f.
     if (argv[0] === 'rds-psql') return { stdout: 'assay_rows,assay_grain_rows\n5,5\n' }
@@ -101,12 +102,12 @@ test('a failed check is appended to step-notices.json as one line, kept across r
   const ws = await fake(FILES)
   script(ws, { counts: { 1: ['5', '3'], 2: ['1', '1'] } })
   await ask(ws)
-  const lines = JSON.parse((await ws.file('.assay/step-notices.json')) ?? '[]')
+  const lines = await notices(ws)
   expect(lines).toEqual(['q042 step clean: grain id has 2 duplicate rows.'])
   const done = await read(ws)
   expect(done?.steps[0]?.checks).toEqual([{ kind: 'grain', ok: false, text: 'grain id has 2 duplicate rows' }])
   await ask(ws)
-  expect(JSON.parse((await ws.file('.assay/step-notices.json')) ?? '[]').length).toBe(2)
+  expect((await notices(ws)).length).toBe(2)
   await ws.done()
 })
 
@@ -116,7 +117,7 @@ test('a failed check is in step-notices.json before the next step runs, so a sto
   script(ws, {
     counts: { 1: ['5', '3'], 2: ['1', '1'] },
     onQuery: async file => {
-      if (file.includes('2_final')) atSecond = JSON.parse((await ws.file('.assay/step-notices.json')) ?? '[]')
+      if (file.includes('2_final')) atSecond = await notices(ws)
     },
   })
   await ask(ws)

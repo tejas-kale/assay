@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 
 import { expect } from '../testing/expect.ts'
+import { byCodeUnit } from './codeUnitOrder.ts'
 import { answering, fake } from './testing.ts'
 
 test('a session in an analysis sets up the files, leaving what exists', async () => {
@@ -216,13 +217,13 @@ test('order rearranges the open threads and returns the new list', async () => {
 
 const NOTES_AT = '/work/notes'
 const yamlLists = (written: string[], found: string[]) => `title: Feature\nnotes:\n  written: [${written.join(', ')}]\n  found: [${found.join(', ')}]\n`
-const noteFiles = async (ws: Awaited<ReturnType<typeof fake>>) => (await readdir(join(ws.root, 'notes')).catch(() => [])).sort()
+const noteFiles = async (ws: Awaited<ReturnType<typeof fake>>) => (await readdir(join(ws.root, 'notes')).catch(() => [])).toSorted(byCodeUnit)
 
 test('note writes a root note, qualifies bare citations and lists it under written', async () => {
   const ws = await fake({ 'analysis.yaml': 'title: Feature\n', 'queries/001_a.sql': 'SELECT 1\n', 'queries/001_a.csv': 'x\n1\n' })
   const reply = await ws.call('note', { title: 'Beta is per panel', text: 'It is 1 [q 1] and [q 001].' })
-  const [file] = await noteFiles(ws)
-  const id = /^(\d{8}T\d{6})-beta-is-per-panel\.md$/.exec(file ?? '')?.[1] ?? ''
+  const file = (await noteFiles(ws))[0] ?? ''
+  const id = /^(\d{8}T\d{6})-beta-is-per-panel\.md$/.exec(file)?.[1] ?? ''
   expect(id === '').toBe(false)
   expect(reply).toBe(`Wrote notes/${file}. Link it with [[${id}]].`)
   expect(await ws.file(`${NOTES_AT}/${file}`)).toBe('# Beta is per panel\n\nIt is 1 [feature q 1] and [feature q 1].\n')
@@ -310,7 +311,7 @@ const putNotes = async (ws: Awaited<ReturnType<typeof fake>>) => {
 }
 
 test('note_labels lists each citation of the written notes with its label, weak notes and weak labels first', async () => {
-  const ws = await fake(labelFiles(), { currentCommit: async () => 'abc123' })
+  const ws = await fake(labelFiles(), { currentCommit: () => Promise.resolve('abc123') })
   await putNotes(ws)
   expect(await ws.call('note_labels')).toBe(
     ['20260102T000000 Shaky', '[feature q 2] unverified', '[feature q 9] missing', '[other q 1] missing', '', '20260101T000000 Solid', '[feature q 1] queried', '[feature q 3] trusted', '[feature q 4] computed'].join('\n'),
@@ -319,7 +320,7 @@ test('note_labels lists each citation of the written notes with its label, weak 
 })
 
 test('note_labels with weak: true lists only notes with a weak citation, and one id may be any root note', async () => {
-  const ws = await fake(labelFiles(['20260101T000000']), { currentCommit: async () => 'abc123' })
+  const ws = await fake(labelFiles(['20260101T000000']), { currentCommit: () => Promise.resolve('abc123') })
   await putNotes(ws)
   expect(await ws.call('note_labels', { weak: true })).toBe('No weak citations in the notes this analysis wrote.')
   expect(await ws.call('note_labels', { id: '20260102T000000', weak: true })).toBe(['20260102T000000 Shaky', '[feature q 2] unverified', '[feature q 9] missing', '[other q 1] missing'].join('\n'))
@@ -332,7 +333,7 @@ test('note_labels with weak: true lists only notes with a weak citation, and one
 })
 
 test('note_labels flags a written ID with no note file instead of failing the whole reply', async () => {
-  const ws = await fake(labelFiles(['20260101T000000', '20260103T000000']), { currentCommit: async () => 'abc123' })
+  const ws = await fake(labelFiles(['20260101T000000', '20260103T000000']), { currentCommit: () => Promise.resolve('abc123') })
   await putNotes(ws)
   expect(await ws.call('note_labels')).toBe(
     ['20260103T000000 no file in notes/', '', '20260101T000000 Solid', '[feature q 1] queried', '[feature q 3] trusted', '[feature q 4] computed'].join('\n'),
@@ -349,12 +350,12 @@ test('note_labels does not call stale unchecked for a dictionary definition run'
 })
 
 test('note_labels shows stale when the calculation moved, and says when stale was not checked', async () => {
-  const moved = await fake(labelFiles(), { currentCommit: async () => 'def456' })
+  const moved = await fake(labelFiles(), { currentCommit: () => Promise.resolve('def456') })
   await putNotes(moved)
   expect(await moved.call('note_labels', { weak: true })).toMatch(/^20260101T000000 Solid\n\[feature q 3\] stale\n/)
   expect(await moved.call('note_labels')).not.toContain('Stale was not checked')
   await moved.done()
-  for (const options of [{}, { currentCommit: async () => undefined }]) {
+  for (const options of [{}, { currentCommit: () => Promise.resolve(undefined) }]) {
     const ws = await fake(labelFiles(), options)
     await putNotes(ws)
     const reply = await ws.call('note_labels')

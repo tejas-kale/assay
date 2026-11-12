@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 
 import { Assay } from './assay.ts'
+import { byCodeUnit } from './codeUnitOrder.ts'
 import type { Child, Proc, RunOptions, RunResult } from './proc.ts'
 import { Requests } from './requests.ts'
 
@@ -64,11 +65,89 @@ export type Fake = {
   done: () => Promise<void>
 }
 
-export async function fake(files: Record<string, string> = { 'analysis.yaml': 'title: Feature\n' }, options: { currentCommit?: (name: string) => Promise<string | undefined> } = {}): Promise<Fake> {
+type Script = { run: Run; autoReady: boolean }
+
+/** A spawned process the test drives, added to `serves`. */
+function spawnServe(script: Script, serves: Serve[], argv: readonly string[], cwd: string): Child {
+  const listeners: ((stream: 'stdout' | 'stderr', text: string) => void)[] = []
+  const { promise: exited, resolve: finish } = Promise.withResolvers<number | null>()
+  const serve: Serve = {
+    argv,
+    cwd,
+    emit: event => {
+      serve.print(`${JSON.stringify(event)}\n`)
+    },
+    print: (text, stream = 'stdout') => {
+      if (!serve.isStopped) for (const cb of listeners) cb(stream, text)
+    },
+    end: (code = 0) => {
+      if (serve.isStopped) return
+      serve.isStopped = true
+      finish(code)
+    },
+    isStopped: false,
+  }
+  serves.push(serve)
+  // The trust checks are driven by the test; only the kernel's serve process starts by itself.
+  if (script.autoReady && !argv.includes('--stream')) {
+    setTimeout(() => {
+      serve.emit(READY)
+    }, 0)
+  }
+  return {
+    pid: 1000 + serves.length,
+    onOutput: cb => {
+      listeners.push(cb)
+    },
+    exited,
+    kill: () => {
+      serve.end(null)
+    },
+  }
+}
+
+/** The scripted `Proc`: what ran, and the processes it spawned for the test to drive. */
+function scriptedProc() {
+  const script: Script = { run: answering([], []), autoReady: true }
+  const runs: (readonly string[])[] = []
+  const serves: Serve[] = []
+  const proc: Proc = {
+    async run(argv, options) {
+      runs.push(argv)
+      if (argv[0] === 'kill') return { exitCode: 0, stdout: '', stderr: '' }
+      const ran = await script.run(argv, options)
+      return { exitCode: 0, stdout: '', stderr: '', ...ran }
+    },
+    spawn: (argv, { cwd }) => spawnServe(script, serves, argv, cwd),
+  }
+  return { script, runs, serves, proc }
+}
+
+/** The analysis's files (not .assay/), sorted, under `under`. */
+async function listFiles(analysis: string, under: string): Promise<string[]> {
+  const found: string[] = []
+  const walk = async (at: string) => {
+    for (const entry of await readdir(join(analysis, at), { withFileTypes: true }).catch(() => [])) {
+      const path = at ? `${at}/${entry.name}` : entry.name
+      if (path === '.assay') continue
+      if (entry.isDirectory()) await walk(path)
+      else found.push(path)
+    }
+  }
+  await walk(under)
+  return found.toSorted(byCodeUnit)
+}
+
+/** The app's status file (runs.json), or null before there is one. */
+async function readStatus(analysis: string): Promise<Awaited<ReturnType<Fake['status']>>> {
+  const text = await readFile(join(analysis, '.assay/runs.json'), 'utf8').catch(() => undefined)
+  return text === undefined ? null : (JSON.parse(text) as Awaited<ReturnType<Fake['status']>>)
+}
+
+/** The scratch folder with the analysis's files written into it. */
+async function scratch(files: Record<string, string>) {
   const dir = await mkdtemp(join(tmpdir(), 'assay-test-'))
   const analysis = join(dir, 'work/analyses/feature')
-  const root = join(dir, 'work')
-  const venv = join(dir, 'opt/venv-assay')
   await mkdir(analysis, { recursive: true })
   const pathOf = (path: string) => (path.startsWith('/') ? join(dir, path) : join(analysis, path))
   const put = async (path: string, text: string) => {
@@ -76,47 +155,17 @@ export async function fake(files: Record<string, string> = { 'analysis.yaml': 't
     await writeFile(pathOf(path), text, 'utf8')
   }
   for (const [path, text] of Object.entries(files)) await put(path, text)
+  return { dir, analysis, root: join(dir, 'work'), venv: join(dir, 'opt/venv-assay'), pathOf, put }
+}
 
-  let run: Run = answering([], [])
-  const runs: (readonly string[])[] = []
-  const serves: Serve[] = []
-  const state = { autoReady: true }
-  const proc: Proc = {
-    async run(argv, options) {
-      runs.push(argv)
-      if (argv[0] === 'kill') return { exitCode: 0, stdout: '', stderr: '' }
-      const ran = await run(argv, options)
-      return { exitCode: 0, stdout: '', stderr: '', ...ran }
-    },
-    spawn(argv, { cwd }): Child {
-      const listeners: ((stream: 'stdout' | 'stderr', text: string) => void)[] = []
-      let finish: (code: number | null) => void = () => undefined
-      const exited = new Promise<number | null>(resolve => (finish = resolve))
-      const serve: Serve = {
-        argv,
-        cwd,
-        emit: event => serve.print(`${JSON.stringify(event)}\n`),
-        print: (text, stream = 'stdout') => {
-          if (!serve.isStopped) for (const cb of listeners) cb(stream, text)
-        },
-        end: (code = 0) => {
-          if (serve.isStopped) return
-          serve.isStopped = true
-          finish(code)
-        },
-        isStopped: false,
-      }
-      serves.push(serve)
-      // The trust checks are driven by the test; only the kernel's serve process starts by itself.
-      if (state.autoReady && !argv.includes('--stream')) setTimeout(() => serve.emit(READY), 0)
-      return { pid: 1000 + serves.length, onOutput: cb => void listeners.push(cb), exited, kill: () => serve.end(null) }
-    },
-  }
+export async function fake(files: Record<string, string> = { 'analysis.yaml': 'title: Feature\n' }, options: { currentCommit?: (name: string) => Promise<string | undefined> } = {}): Promise<Fake> {
+  const { dir, analysis, root, venv, pathOf, put } = await scratch(files)
+  const { script, runs, serves, proc } = scriptedProc()
   const assay = new Assay({ analysis, root, venv, runner: RUNNER, tmp: join(dir, 'tmp'), proc, ...options })
   // The search line on a first run is tested on its own: set `assay.searchHinted = false` to get it.
   assay.searchHinted = true
   const requests = new Requests(assay)
-  const fakeState: Fake = {
+  return {
     dir,
     analysis,
     root,
@@ -126,33 +175,18 @@ export async function fake(files: Record<string, string> = { 'analysis.yaml': 't
     runs,
     serves,
     get autoReady() {
-      return state.autoReady
+      return script.autoReady
     },
     set autoReady(value: boolean) {
-      state.autoReady = value
+      script.autoReady = value
     },
     setRun: next => {
-      run = next
+      script.run = next
     },
     file: path => readFile(pathOf(path), 'utf8').catch(() => undefined),
     put,
-    list: async (under = '') => {
-      const found: string[] = []
-      const walk = async (at: string) => {
-        for (const entry of await readdir(join(analysis, at), { withFileTypes: true }).catch(() => [])) {
-          const path = at ? `${at}/${entry.name}` : entry.name
-          if (path === '.assay') continue
-          if (entry.isDirectory()) await walk(path)
-          else found.push(path)
-        }
-      }
-      await walk(under)
-      return found.sort()
-    },
-    status: async () => {
-      const text = await readFile(join(analysis, '.assay/runs.json'), 'utf8').catch(() => undefined)
-      return text === undefined ? null : JSON.parse(text)
-    },
+    list: (under = '') => listFiles(analysis, under),
+    status: () => readStatus(analysis),
     call: async (tool, args = {}) => {
       const { callTool } = await import('./tools.ts')
       return callTool(assay, tool, args)
@@ -164,7 +198,6 @@ export async function fake(files: Record<string, string> = { 'analysis.yaml': 't
       await rm(dir, { recursive: true, force: true })
     },
   }
-  return fakeState
 }
 
 /** A path inside the scratch folder as the test wrote it (`/opt/...`), for comparing argv. */

@@ -61,7 +61,7 @@ test('trusted runs a calculation by name: arguments checked, the run recorded wi
   expect(await ws.file('queries/001_completes-by-site.sql')).toBe(`-- trusted: completes_by_site\n-- args: {"start":"2026-01-01"}\n-- commit: abc123def456\n${COMPLETES.sql}\n`)
   expect(await ws.file('queries/001_completes-by-site.csv')).toBe('site_id,completes\n10,2\n')
   expect(await labelOf(ws, 1)).toBe('trusted')
-  expect(await labelOf(ws, 1, async () => 'ffffffffffff')).toBe('stale')
+  expect(await labelOf(ws, 1, () => Promise.resolve('ffffffffffff'))).toBe('stale')
   await ws.call('sql', { sql: 'SELECT 1 AS n', slug: 'own' })
   expect(await labelOf(ws, 2)).toBe('queried')
   expect(await ws.call('trusted', { name: 'top_sites' })).toMatch(/^Query 003 \(trusted top_sites\)/)
@@ -198,7 +198,9 @@ const checks = (ws: Fake) => ws.serves.filter(serve => isCheck(serve.argv))
 /** The helper process of the review, once the server started it. */
 async function checking(ws: Fake): Promise<Serve> {
   expect(await until(() => checks(ws).length > 0)).toBe(true)
-  return checks(ws).at(-1)!
+  const check = checks(ws).at(-1)
+  if (!check) throw new Error('The review started no helper.')
+  return check
 }
 const stored = async (ws: Fake, name = 'completes_by_site') => JSON.parse((await ws.file(`.assay/trust/${name}.json`)) ?? 'null') as Record<string, unknown> | null
 const stateOf = async (ws: Fake, name?: string) => (await stored(ws, name))?.state

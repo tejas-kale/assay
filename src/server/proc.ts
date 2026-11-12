@@ -44,7 +44,7 @@ export const realProc: Proc = {
       const timer = timeoutMs
         ? setTimeout(() => {
             child.kill('SIGKILL')
-            finish({ exitCode: 124, stdout, stderr: `${stderr}\nTimed out after ${Math.round(timeoutMs / 1000)} s.`.trim(), isStdoutTruncated })
+            finish({ exitCode: 124, stdout, stderr: `${stderr}\nTimed out after ${String(Math.round(timeoutMs / 1000))} s.`.trim(), isStdoutTruncated })
           }, timeoutMs)
         : undefined
       child.stdout.setEncoding('utf8').on('data', (text: string) => {
@@ -56,8 +56,12 @@ export const realProc: Proc = {
       child.stderr.setEncoding('utf8').on('data', (text: string) => {
         stderr = (stderr + text).slice(-64_000)
       })
-      child.on('error', error => finish({ exitCode: 127, stdout, stderr: error.message, isStdoutTruncated }))
-      child.on('close', code => finish({ exitCode: code ?? 1, stdout, stderr, isStdoutTruncated }))
+      child.on('error', error => {
+        finish({ exitCode: 127, stdout, stderr: error.message, isStdoutTruncated })
+      })
+      child.on('close', code => {
+        finish({ exitCode: code ?? 1, stdout, stderr, isStdoutTruncated })
+      })
     })
   },
 
@@ -65,18 +69,29 @@ export const realProc: Proc = {
     const [file = '', ...args] = argv
     const child = spawn(file, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
     const listeners: ((stream: 'stdout' | 'stderr', text: string) => void)[] = []
-    child.stdout.setEncoding('utf8').on('data', (text: string) => listeners.forEach(cb => cb('stdout', text)))
-    child.stderr.setEncoding('utf8').on('data', (text: string) => listeners.forEach(cb => cb('stderr', text)))
+    const report = (stream: 'stdout' | 'stderr', text: string) => {
+      for (const listener of listeners) listener(stream, text)
+    }
+    child.stdout.setEncoding('utf8').on('data', (text: string) => {
+      report('stdout', text)
+    })
+    child.stderr.setEncoding('utf8').on('data', (text: string) => {
+      report('stderr', text)
+    })
     const exited = new Promise<number | null>(resolve => {
       child.on('error', error => {
-        listeners.forEach(cb => cb('stderr', error.message))
+        report('stderr', error.message)
         resolve(127)
       })
-      child.on('close', code => resolve(code))
+      child.on('close', code => {
+        resolve(code)
+      })
     })
     return {
       pid: child.pid,
-      onOutput: cb => void listeners.push(cb),
+      onOutput: cb => {
+        listeners.push(cb)
+      },
       exited,
       kill: () => {
         if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM')

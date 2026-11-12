@@ -10,12 +10,13 @@ import type { Fake } from './testing.ts'
 const ID = '1760000000000-abc123'
 const SECOND = '1760000000001-bbbbbb'
 const requestPath = (id = ID) => `.assay/requests/${id}.json`
-const reply = async (ws: Fake, id = ID) => JSON.parse((await ws.file(`.assay/replies/${id}.json`)) ?? 'null')
+type Reply = { id?: string; error?: string; number?: number; ok?: boolean; proposals?: unknown[] }
+const reply = async (ws: Fake, id = ID) => JSON.parse((await ws.file(`.assay/replies/${id}.json`)) ?? 'null') as Reply
 const hasReply = async (ws: Fake, id = ID) => (await ws.file(`.assay/replies/${id}.json`)) !== undefined
 const isRun = (argv: readonly string[]) => argv[2] === 'run'
 const printed = (status = 'ok') => ({ stdout: `${JSON.stringify({ status, stdout: '', tables: [], plots: [], reads: [] })}\n` })
 const codeFile = (argv: readonly string[]) => argv[argv.indexOf('--code-file') + 1]
-const userRuns = async (ws: Fake) => JSON.parse((await ws.file('.assay/user-runs.json')) ?? '[]')
+const userRuns = async (ws: Fake) => JSON.parse((await ws.file('.assay/user-runs.json')) ?? '[]') as { number: number; language: string; from?: number; replay?: number }[]
 
 async function sqlSession(files: Record<string, string> = {}) {
   const ws = await fake({ 'analysis.yaml': 'title: Feature\n', 'queries/002_old.sql': 'SELECT 2\n', ...files })
@@ -235,7 +236,8 @@ test("replay restarts the kernel and runs each run again as the user's, in order
 
 test('replay stops at the first run that is not ok', async () => {
   const ws = await pythonSession({ 'queries/001_a.py': '1\n', 'queries/002_b.py': 'boom\n', 'queries/003_c.py': '3\n' })
-  ws.setRun(argv => (isRun(argv) ? printed(codeFile(argv) === 'queries/005_b.py' ? 'error' : 'ok') : {}))
+  const statusOf = (argv: readonly string[]) => (codeFile(argv) === 'queries/005_b.py' ? 'error' : 'ok')
+  ws.setRun(argv => (isRun(argv) ? printed(statusOf(argv)) : {}))
   await send(ws, { id: ID, kind: 'replay', runs: [1, 2, 3] })
   await until(() => hasReply(ws))
   expect(await reply(ws)).toEqual({ id: ID, error: 'Replay stopped at run 005 (replay of 002): error' })

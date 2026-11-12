@@ -17,3 +17,13 @@ test('without ASSAY_VENV, Assay did not start the session: there is no config', 
 test('a relative ASSAY_VENV is not one Assay set', () => {
   expect(configFromEnv({ ...ENV, ASSAY_VENV: 'venvs/0.4.3' })).toBeUndefined()
 })
+
+test('the temporary folder is TMPDIR without its trailing slashes, or /tmp when that leaves nothing', () => {
+  expect(configFromEnv({ ...ENV, TMPDIR: '/var/folders/x//' })?.tmp).toBe('/var/folders/x')
+  expect(configFromEnv({ ...ENV, TMPDIR: '///' })?.tmp).toBe('/tmp')
+})
+
+test("the kernel runner is ASSAY_KERNEL_RUNNER when set, else the backend's python folder", () => {
+  expect(configFromEnv({ ...ENV, ASSAY_KERNEL_RUNNER: '/opt/run.py' })?.runner).toBe('/opt/run.py')
+  expect(configFromEnv(ENV)?.runner).toMatch(/python\/analysis_kernel\.py$/)
+})

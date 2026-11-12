@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { Server } from '@modelcontextprotocol/sdk/server/index.js'
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 
 import { NOT_ASSAY } from '../core/rules.ts'
@@ -17,6 +17,12 @@ import { Requests } from './requests.ts'
 import { callTool, TOOLS } from './tools.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
+
+function withoutTrailingSlashes(path: string): string {
+  let end = path.length
+  while (end > 0 && path[end - 1] === '/') end--
+  return path.slice(0, end)
+}
 
 /**
  * The session's config from the environment Assay set (docs/process/launch-contract.md), or undefined when Assay did
@@ -31,25 +37,30 @@ export function configFromEnv(env: NodeJS.ProcessEnv, proc: Proc = realProc): Co
     root: resolve(root),
     venv: resolve(venv),
     runner: env.ASSAY_KERNEL_RUNNER || resolve(here, '../../python/analysis_kernel.py'),
-    tmp: (env.TMPDIR || tmpdir()).replace(/\/+$/, '') || '/tmp',
+    tmp: withoutTrailingSlashes(env.TMPDIR || tmpdir()) || '/tmp',
     proc,
     currentCommit: name => currentCommit(resolve(root), name),
   }
 }
 
-export type Session = { server: Server; assay?: Assay; requests?: Requests; close: () => void }
+export type Session = { server: McpServer; assay?: Assay; requests?: Requests; close: () => void }
+
+/** The tool's answer; a tool that throws answers with what went wrong, so Claude can read it. */
+function callToolSafely(assay: Assay, name: string, args: Record<string, unknown>): Promise<string> {
+  return callTool(assay, name, args).catch((error: unknown) => `The ${name} tool failed: ${error instanceof Error ? error.message : String(error)}`)
+}
 
 /** The MCP server for this config; without one every tool answers that Assay did not start the session. */
 export function createSession(config: Config | undefined): Session {
-  const server = new Server({ name: 'assay', version: '0.1.0' }, { capabilities: { tools: {} } })
+  const server = new McpServer({ name: 'assay', version: '0.1.0' }, { capabilities: { tools: {} } })
   const assay = config ? new Assay(config) : undefined
   const requests = assay ? new Requests(assay) : undefined
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  server.server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
   }))
-  server.setRequestHandler(CallToolRequestSchema, async request => {
+  server.server.setRequestHandler(CallToolRequestSchema, async request => {
     const { name, arguments: args = {} } = request.params
-    const text = assay ? await callTool(assay, name, args as Record<string, unknown>).catch((error: unknown) => `The ${name} tool failed: ${error instanceof Error ? error.message : String(error)}`) : NOT_ASSAY
+    const text = assay ? await callToolSafely(assay, name, args) : NOT_ASSAY
     return { content: [{ type: 'text', text }] }
   })
   return {
