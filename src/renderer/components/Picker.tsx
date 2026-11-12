@@ -6,18 +6,18 @@ import { pickerKey, pickerSubmit, pickerView } from '../../core/picker.ts'
 import type { PickerView } from '../../core/picker.ts'
 import type { Analysis, OpenResult } from '../../shared/ipc.ts'
 import { useDoctor } from './Doctor.tsx'
+import { AGE_REFRESH_MS, useNow } from './useNow.ts'
 
 type Props = Readonly<{ focusToken: number; onOpened: () => void }>
-type Listing = { analyses: Analysis[]; loadedAt: number }
 
-/** The analyses to pick from, with when they were read (the ages are shown as of then). */
+/** The analyses to pick from. */
 function useAnalysisList() {
-  const [listing, setListing] = useState<Listing>()
+  const [listing, setListing] = useState<{ analyses: Analysis[] }>()
   const [loadError, setLoadError] = useState<string>()
   useEffect(() => {
     window.app.analyses.list().then(
       analyses => {
-        setListing({ analyses, loadedAt: Date.now() })
+        setListing({ analyses })
       },
       (err: unknown) => {
         setLoadError(String(err))
@@ -56,8 +56,8 @@ function useOpen(onOpened: () => void) {
   }
 }
 
-function PickerRows(props: Readonly<{ view: PickerView<Analysis>; index: number; loadedAt: number; query: string; loaded: boolean }>) {
-  const { view, index, loadedAt, query, loaded } = props
+function PickerRows(props: Readonly<{ view: PickerView<Analysis>; index: number; now: number; query: string; loaded: boolean }>) {
+  const { view, index, now, query, loaded } = props
   const listRef = useRef<HTMLUListElement>(null)
   useEffect(() => {
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
@@ -69,7 +69,7 @@ function PickerRows(props: Readonly<{ view: PickerView<Analysis>; index: number;
         <li key={a.path} role="option" aria-selected={i === index} className={i === index ? 'row sel' : 'row'}>
           <span className="grow">{a.title}</span>
           <span className="dim">{a.name}</span>
-          <span className="dim">{formatAge(a.modifiedMs, loadedAt)}</span>
+          <span className="dim">{formatAge(a.modifiedMs, now)}</span>
         </li>
       ))}
       {view.canCreate && (
@@ -129,6 +129,7 @@ function usePickerKeys({ view, index, query, setQuery, setSelected, open, create
 /** The fuzzy picker a window starts on. `focusToken` changes when something else (the palette) gives focus back. */
 export function Picker({ focusToken, onOpened }: Props) {
   const { listing, loadError } = useAnalysisList()
+  const now = useNow(AGE_REFRESH_MS)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
   const { message, setMessage, open, create } = useOpen(onOpened)
@@ -162,7 +163,7 @@ export function Picker({ focusToken, onOpened }: Props) {
       />
       {loadError && <div className="status warn">Could not list analyses: {loadError}</div>}
       {listing === undefined && !loadError && <div className="empty">Loading</div>}
-      <PickerRows view={view} index={index} loadedAt={listing?.loadedAt ?? 0} query={query} loaded={listing !== undefined} />
+      <PickerRows view={view} index={index} now={now} query={query} loaded={listing !== undefined} />
       {view.canForceCreate && <div className="hint">Shift+Enter creates "{view.title}" as a new analysis</div>}
       {message && <div className="status warn">{message}</div>}
       {doctor?.preparing && <div className="hint">{doctor.preparing}</div>}

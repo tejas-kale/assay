@@ -2,12 +2,6 @@
 import { isMermaidFile } from './files.ts'
 import type { FileEntry } from './files.ts'
 
-export function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${String(bytes)} B`
-  if (bytes < 1024 ** 2) return `${String(Math.round(bytes / 1024))} KB`
-  return `${(bytes / 1024 ** 2).toFixed(1)} MB`
-}
-
 const KIND_LABEL = { text: 'nvim', image: 'preview', other: 'open' } as const
 
 /** What Enter does to the file, as the chip on its row says. */

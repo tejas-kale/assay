@@ -1,6 +1,6 @@
 // The app window's own state: which tabs are shown, where the focus is asked to go, which overlay is open, the toast.
 // Commands change it through `apply(effects)` (core/appCommands.ts decides the effects, appEffects.ts carries them out).
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 import type { Effect, Overlay } from '../../../core/appCommands.ts'
 import type { TabIdIn, TabPrefs } from '../../../core/tabs.ts'
@@ -41,13 +41,14 @@ function useOverlays() {
 function useToast() {
   const [toast, setToast] = useState<string>()
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const showToast = (text: string) => {
+  // Stable: the request hooks depend on it, and a new one each render would clear their pending pickup warnings.
+  const showToast = useCallback((text: string) => {
     setToast(text)
     clearTimeout(timer.current)
     timer.current = setTimeout(() => {
       setToast(undefined)
     }, TOAST_MS)
-  }
+  }, [])
   return { toast, showToast }
 }
 

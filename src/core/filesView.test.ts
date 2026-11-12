@@ -1,15 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { chipLabel, formatSize, openedMessage, previewKey, splitPath, stepImage } from './filesView.ts'
-
-test('sizes read in B, KB or MB', () => {
-  assert.equal(formatSize(0), '0 B')
-  assert.equal(formatSize(1023), '1023 B')
-  assert.equal(formatSize(1024), '1 KB')
-  assert.equal(formatSize(1024 ** 2 - 1), '1024 KB')
-  assert.equal(formatSize(1024 ** 2 * 1.5), '1.5 MB')
-})
+import { chipLabel, openedMessage, previewKey, splitPath, stepImage } from './filesView.ts'
 
 test('the chip says what Enter does', () => {
   const file = (path: string, kind: 'text' | 'image' | 'other') => ({ path, kind, size: 1, mtimeMs: 1 })

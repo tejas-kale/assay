@@ -11,7 +11,7 @@ import { NoteEditor } from './notes/NoteEditor.tsx'
 import { NoteReader } from './notes/NoteReader.tsx'
 import { SearchLine, isPaneKey, useListPane } from './common.tsx'
 import type { ListPane, Reveal } from './common.tsx'
-import { useNow } from './useNow.ts'
+import { AGE_REFRESH_MS, useNow } from './useNow.ts'
 
 type Item = { group: 'written' | 'found'; note: RootNote }
 
@@ -26,7 +26,6 @@ type Mode =
 type Pane = Omit<ListPane<Item, Mode>, 'rootRef'>
 type OpenEditor = (name: string, trail: string[], from: 'read' | 'list') => void
 
-const AGE_REFRESH_MS = 30_000
 
 /** Written then Found, each newest first: the Notes tab's rows. */
 export function useNoteItems(rootNotes: RootNote[], lists: NoteLists): Item[] {

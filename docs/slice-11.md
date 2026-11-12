@@ -456,9 +456,10 @@ until it is green).
     `savedSet`, `windowClose`, `trustAnnouncement`, `nameOrder`). `git` runs through `execFile`.
   - `src/renderer`: each component's decisions in `src/core` (`appCommands`, `noteReader`, `previewView`,
     `codeLanguage`, `terminalGrid`, `dialogKeys`, `picker`, `searchKey`, `overviewView`, `threadsView`, `filesView`,
-    `trustTab`, `stepsTab`), hooks in `components/{app,notes,codemirror,trust,steps}/`. Ages in the Notes tab
-    refresh every 30 s, and in the picker and Files tab from when the list loaded, since `Date.now()` in render
-    breaks React's purity rule.
+    `trustTab`, `stepsTab`), hooks in `components/{app,notes,codemirror,trust,steps}/`. Ages in the Notes tab,
+    the picker and the Files tab refresh every 30 s (`useNow`), since `Date.now()` in render breaks React's purity
+    rule. A GPT review found four renderer regressions (pickup warnings cancelled by an unstable `showToast`, the
+    Steps selection surviving a run change, the Overview flash coming back, frozen ages); all fixed.
   - `src/server`: `serve.ts` behind a three-line `index.ts`; the trust review in `trustReview`, `trustProposals`,
     `trustStream`, `trustPromote`; `McpServer` in place of the deprecated `Server`.
   - `src/hooks`: tested in process (`scripts.test.ts`, `decide.test.ts`), `state.ts` over `recordState.ts`.

@@ -127,9 +127,10 @@ function StepsBody({ view, shown, silent, diagram }: BodyProps) {
   return null
 }
 
-/** The step selected in each run; a run not yet visited starts on its first step. */
+/** The step selected in the shown run; showing another run starts it on its first step. */
 function useSelectedStep(runNumber: number) {
   const [chosen, setChosen] = useState({ number: runNumber, k: 1 })
+  if (chosen.number !== runNumber) setChosen({ number: runNumber, k: 1 })
   const selected = chosen.number === runNumber ? chosen.k : 1
   return [selected, (k: number) => { setChosen({ number: runNumber, k }) }] as const
 }

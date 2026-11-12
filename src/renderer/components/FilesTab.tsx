@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, KeyboardEvent, SetStateAction } from 'react'
 
 import { formatAge } from '../../core/age.ts'
-import { openedMessage, previewKey, splitPath, stepImage, formatSize, chipLabel } from '../../core/filesView.ts'
+import { openedMessage, previewKey, splitPath, stepImage, chipLabel } from '../../core/filesView.ts'
+import { fileSize } from '../../core/previewView.ts'
 import { isMermaidFile } from '../../core/files.ts'
 import { INITIAL, filterItems, listNav } from '../../core/listNav.ts'
 import type { ListNavState } from '../../core/listNav.ts'
@@ -14,6 +15,7 @@ import { NAV_KEYS, SearchLine, isPaneKey, useReveal } from './common.tsx'
 import type { Reveal } from './common.tsx'
 import { renderMermaid } from './Mermaid.tsx'
 import { PreviewPopup } from './Preview.tsx'
+import { AGE_REFRESH_MS, useNow } from './useNow.ts'
 
 type Props = Readonly<{ refreshKey: unknown; reveal?: Reveal; onRevealed: () => void }>
 type ImageShown = { path: string; dataUrl: string }
@@ -21,11 +23,11 @@ type Say = (text: string | undefined) => void
 
 /** The file list, read again on every state push (a new query, a note) so new files show without a refresh. */
 function useFileList(refreshKey: unknown, say: Say) {
-  const [listing, setListing] = useState<{ files: FileEntry[]; loadedAt: number }>()
+  const [listing, setListing] = useState<FileEntry[]>()
   const load = useCallback(() => {
     void window.app.files.list().then(
       files => {
-        setListing({ files, loadedAt: Date.now() })
+        setListing(files)
       },
       (err: unknown) => {
         say(String(err))
@@ -33,7 +35,7 @@ function useFileList(refreshKey: unknown, say: Say) {
     )
   }, [say])
   useEffect(load, [load, refreshKey])
-  return { files: listing?.files, loadedAt: listing?.loadedAt ?? 0, load }
+  return { files: listing, load }
 }
 
 /** A Mermaid file: read it, draw it here, and open the chart as a page in the browser. */
@@ -68,7 +70,7 @@ function openFile(file: FileEntry, say: Say, showImage: (image: ImageShown) => v
   })
 }
 
-function FileRow(props: Readonly<{ file: FileEntry; selected: boolean; loadedAt: number; onSelect: () => void; onOpen: () => void }>) {
+function FileRow(props: Readonly<{ file: FileEntry; selected: boolean; now: number; onSelect: () => void; onOpen: () => void }>) {
   const { file, selected } = props
   const { folder, name } = splitPath(file.path)
   return (
@@ -84,8 +86,8 @@ function FileRow(props: Readonly<{ file: FileEntry; selected: boolean; loadedAt:
         {folder !== '' && <span className="dim">{folder}</span>}
         {name}
       </span>
-      <span className="dim">{formatSize(file.size)}</span>
-      <span className="dim file-age">{formatAge(file.mtimeMs, props.loadedAt)}</span>
+      <span className="dim">{fileSize(file.size)}</span>
+      <span className="dim file-age">{formatAge(file.mtimeMs, props.now)}</span>
       <span className={`chip chip-${file.kind}`}>{chipLabel(file)}</span>
     </li>
   )
@@ -94,16 +96,14 @@ function FileRow(props: Readonly<{ file: FileEntry; selected: boolean; loadedAt:
 /** A search hit on a file selects it, and closes an image preview. */
 function useRevealedFile(args: { reveal: Reveal | undefined; files: FileEntry[] | undefined; setPreview: (shown: undefined) => void; setNav: Dispatch<SetStateAction<ListNavState>>; onRevealed: () => void }) {
   const { setPreview, setNav } = args
-  useReveal(
-    args.reveal,
-    args.files,
-    (file, target) => target.kind === 'file' && target.path === file.path,
-    index => {
+  useReveal(args.reveal, args.files, {
+    matches: (file, target) => target.kind === 'file' && target.path === file.path,
+    apply: index => {
       setPreview(undefined)
       setNav({ selected: index, search: undefined })
     },
-    args.onRevealed,
-  )
+    onDone: args.onRevealed,
+  })
 }
 
 type Nav = { nav: ListNavState; setNav: Dispatch<SetStateAction<ListNavState>> }
@@ -159,7 +159,7 @@ function useFilesKeys(args: KeyArgs) {
   }
 }
 
-function FileList(props: Readonly<{ files: FileEntry[] | undefined; visible: FileEntry[]; search: ListNavState['search']; selectedIndex: number; loadedAt: number; onSelect: (i: number) => void; onOpen: (file: FileEntry) => void }>) {
+function FileList(props: Readonly<{ files: FileEntry[] | undefined; visible: FileEntry[]; search: ListNavState['search']; selectedIndex: number; now: number; onSelect: (i: number) => void; onOpen: (file: FileEntry) => void }>) {
   const { files } = props
   return (
     <>
@@ -172,7 +172,7 @@ function FileList(props: Readonly<{ files: FileEntry[] | undefined; visible: Fil
             key={file.path}
             file={file}
             selected={i === props.selectedIndex}
-            loadedAt={props.loadedAt}
+            now={props.now}
             onSelect={() => { props.onSelect(i) }}
             onOpen={() => { props.onOpen(file) }}
           />
@@ -204,7 +204,8 @@ export function FilesTab({ refreshKey, reveal, onRevealed }: Props) {
   const [preview, setPreview] = useState<ImageShown>()
   const [popup, setPopup] = useState<PreviewSource>()
   const rootRef = useRef<HTMLDivElement>(null)
-  const { files, loadedAt, load } = useFileList(refreshKey, setMessage)
+  const { files, load } = useFileList(refreshKey, setMessage)
+  const now = useNow(AGE_REFRESH_MS)
 
   const visible = filterItems(files ?? [], nav, f => f.path)
   const selectedIndex = Math.max(0, Math.min(nav.selected, visible.length - 1))
@@ -225,7 +226,7 @@ export function FilesTab({ refreshKey, reveal, onRevealed }: Props) {
       {preview ? (
         <ImagePreview preview={preview} />
       ) : (
-        <FileList files={files} visible={visible} search={nav.search} selectedIndex={selectedIndex} loadedAt={loadedAt} onSelect={select} onOpen={open} />
+        <FileList files={files} visible={visible} search={nav.search} selectedIndex={selectedIndex} now={now} onSelect={select} onOpen={open} />
       )}
       {popup && (
         <PreviewPopup

@@ -50,10 +50,11 @@ function DocBody(props: Readonly<{ doc: OverviewDoc; isDiff: boolean; diff: Diff
   )
 }
 
-/** The note after "Mark read", kept for the document and side it was made for. */
+/** The note after "Mark read", gone for good once the side or the document's text changes. */
 function useFlash(which: OverviewWhich, text: string | undefined) {
   const [flash, setFlash] = useState<{ which: OverviewWhich; text: string | undefined; message: string }>()
   const current = flash?.which === which && flash.text === text ? flash.message : undefined
+  if (flash && current === undefined) setFlash(undefined)
   return [current, (message: string) => { setFlash({ which, text, message }) }] as const
 }
 

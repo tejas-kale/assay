@@ -37,17 +37,15 @@ function useThreadsPane(items: ThreadItem[], reveal: Reveal | undefined, onRevea
     confirmDelete: m => removeThread(m.item),
   })
   const { setMode, setNav } = pane
-  useReveal(
-    reveal,
-    items,
-    (item, target) => target.kind === 'thread' && target.closed === (item.kind === 'closed') && target.index === item.index,
-    (index, item) => {
+  useReveal(reveal, items, {
+    matches: (item, target) => target.kind === 'thread' && target.closed === (item.kind === 'closed') && target.index === item.index,
+    apply: (index, item) => {
       if (item.kind === 'closed') unfold()
       setMode({ type: 'list' })
       setNav({ selected: index, search: undefined })
     },
-    onRevealed,
-  )
+    onDone: onRevealed,
+  })
   return pane
 }
 

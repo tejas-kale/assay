@@ -14,18 +14,17 @@ export type Reveal = { target: SearchTarget; n: number }
 /**
  * Carries out a reveal once `items` are there: finds the item `matches` picks and hands it to `apply`
  * (which selects it), then calls `onDone` so a later remount of the tab does not select it again.
- * `handlers` is `matches`, `apply` and `onDone`, in that order.
  */
 export function useReveal<T>(
   reveal: Reveal | undefined,
   items: readonly T[] | undefined,
-  ...handlers: [
-    matches: (item: T, target: SearchTarget) => boolean,
-    apply: (index: number, item: T) => void,
-    onDone: () => void,
-  ]
+  handlers: Readonly<{
+    matches: (item: T, target: SearchTarget) => boolean
+    apply: (index: number, item: T) => void
+    onDone: () => void
+  }>,
 ) {
-  const [matches, apply, onDone] = handlers
+  const { matches, apply, onDone } = handlers
   const carryOut = useEffectEvent(() => {
     if (!reveal || !items) return
     const index = items.findIndex(item => matches(item, reveal.target))
