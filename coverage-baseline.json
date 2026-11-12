@@ -1,20 +1,4 @@
 {
-  "src/core/overview.ts": {
-    "lines": 100,
-    "branches": 83.56
-  },
-  "src/core/rootNotes.ts": {
-    "lines": 95.85,
-    "branches": 85.44
-  },
-  "src/core/search.ts": {
-    "lines": 100,
-    "branches": 80.76
-  },
-  "src/core/watch.ts": {
-    "lines": 100,
-    "branches": 88.88
-  },
   "src/server/main.ts": {
     "lines": 67.18,
     "branches": 87.5

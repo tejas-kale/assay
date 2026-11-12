@@ -38,6 +38,11 @@ export const analysisRules = (python: string | undefined, folder: string) =>
 
 export type UserRun = { number: number; language: 'sql' | 'python'; from?: number; replay?: number }
 
+function runOrigin(run: UserRun): string {
+  if (run.replay) return ` (replay of ${queryLabel(run.replay)})`
+  return run.from ? ` (from ${queryLabel(run.from)})` : ''
+}
+
 /**
  * The notice added to the rules: the user's runs since the last prompt, and the step checks (docs/slice-9.md) that failed
  * since then, one line each. Undefined when there is neither.
@@ -46,8 +51,7 @@ export function runNotice(runs: readonly UserRun[], folder: string, stepLines: r
   const lines: string[] = []
   if (runs.length > 0) {
     const items = runs.map(run => {
-      const origin = run.replay ? ` (replay of ${queryLabel(run.replay)})` : run.from ? ` (from ${queryLabel(run.from)})` : ''
-      return `${queryLabel(run.number)} ${run.language}${origin}`
+      return `${queryLabel(run.number)} ${run.language}${runOrigin(run)}`
     })
     const kernel = runs.some(run => run.language === 'python') ? ' Their Python ran in your kernel, so its variables may have changed;' : ''
     lines.push(`Since your last turn the user ran: ${items.join(', ')}.${kernel} read ${folder}/queries/<file> when it matters.`.replace(/\. read/, '. Read'))

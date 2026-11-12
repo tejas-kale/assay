@@ -8,6 +8,15 @@ import {
   freeId,
   idTime,
   inRootNotes,
+  isNoteId,
+  noteCitations,
+  noteLines,
+  noteTargets,
+  noteTitle,
+  replaceOnce,
+  slugify,
+  targetIndices,
+  writeRootNote,
   noteBlocks,
   noteBody,
   noteFileName,
@@ -23,6 +32,7 @@ import {
   reviseBody,
   setNoteLists,
 } from './rootNotes.ts'
+import type { NoteWriterIo } from './rootNotes.ts'
 
 test('noteId is the local time as YYYYMMDDTHHMMSS and idTime reads it back', () => {
   const at = new Date(2026, 10, 2, 18, 15, 0)
@@ -70,7 +80,7 @@ test('a link may carry a label after a bar, which the reader shows instead of th
     { type: 'link', id: '20261006T090131' },
     { type: 'text', text: '.' },
   ])
-  assert.deepEqual(parseRootNote('20261102T181500-x.md', '# X\n\n[[20261006T090118|vw_panel]]\n', { mtimeMs: 0, size: 0 })?.links, ['20261006T090118'])
+  assert.deepEqual(parseRootNote('20261102T181500-x.md', '# X\n\n[[20261006T090118|vw_panel]]\n', { mtimeMs: 0, size: 0 }).links, ['20261006T090118'])
 })
 
 test('parseRootNote reads ID, title, links and citations once each', () => {
@@ -134,4 +144,207 @@ test('inRootNotes is the notes folder and what is in it, ignoring case', () => {
   assert.equal(inRootNotes('/R/Notes', '/r/'), true)
   assert.equal(inRootNotes('/r/notes-old/x.md', '/r'), false)
   assert.equal(inRootNotes('/r/analyses/a/notes/x.md', '/r'), false)
+})
+
+test('slugify lowercases, joins runs of other characters with one dash, trims dashes and keeps 60 characters', () => {
+  assert.equal(slugify('Churn by Region!'), 'churn-by-region')
+  assert.equal(slugify('--a__b--'), 'a-b')
+  assert.equal(slugify('---'), 'note')
+  assert.equal(slugify(''), 'note')
+  assert.equal(slugify('Été 2026'), 't-2026')
+  assert.equal(slugify('x'.repeat(59) + ' y'), 'x'.repeat(59))
+  assert.equal(slugify('x'.repeat(70)), 'x'.repeat(60))
+  assert.equal(slugify('a'.repeat(58) + '--b'), 'a'.repeat(58) + '-b')
+  assert.equal(slugify('a'.repeat(59) + '-bcd'), 'a'.repeat(59))
+})
+
+test('inRootNotes ignores any number of trailing slashes on the path and the root', () => {
+  assert.equal(inRootNotes('/r/notes///', '/r///'), true)
+  assert.equal(inRootNotes('/r/notes/sub/', '/r/'), true)
+  assert.equal(inRootNotes('/r/notes/', '/r/notes'), false)
+  assert.equal(inRootNotes('/r', '/r'), false)
+  assert.equal(inRootNotes('/', '/'), false)
+})
+
+test('an ID is eight digits, a T, six digits and nothing else', () => {
+  assert.equal(isNoteId('20261102T181500'), true)
+  for (const bad of ['20261102T18150', '20261102T1815000', ' 20261102T181500', '20261102T181500\n', '']) assert.equal(isNoteId(bad), false, bad)
+})
+
+test('noteTitle is the first line when it is a one-hash heading with text', () => {
+  assert.equal(noteTitle('# Churn  \n\nbody'), 'Churn')
+  for (const text of ['', '#', '# ', '#  ', '#x', '## Two', 'body\n# Late', '\n# Late']) assert.equal(noteTitle(text), undefined, text)
+  assert.equal(noteBody('no title\nline'), 'no title\nline')
+  assert.equal(noteBody('# T'), '# T', 'a title with no newline after it is left whole')
+})
+
+test('noteBlocks reads headings by their hashes and spaces, fences by their info word, and paragraphs by blank lines', () => {
+  const text = [
+    '# One',
+    '#   Spaced   out  ',
+    '###### Six',
+    '####### Seven',
+    '#NoSpace',
+    '# ',
+    '#',
+    '# a\rb',
+    'para one',
+    'still one',
+    '',
+    '~~~Python extra words',
+    'x = 1',
+    '```',
+    '~~~',
+    '```',
+    'unclosed',
+  ].join('\n')
+  assert.deepEqual(noteBlocks(text), [
+    { type: 'heading', level: 1, segments: [{ type: 'text', text: 'One' }] },
+    { type: 'heading', level: 1, segments: [{ type: 'text', text: 'Spaced   out  ' }] },
+    { type: 'heading', level: 6, segments: [{ type: 'text', text: 'Six' }] },
+    { type: 'paragraph', segments: [{ type: 'text', text: '####### Seven\n#NoSpace' }] },
+    { type: 'heading', level: 1, segments: [] },
+    { type: 'paragraph', segments: [{ type: 'text', text: '#\n# a\rb\npara one\nstill one' }] },
+    { type: 'code', text: 'x = 1\n```', lang: 'python' },
+    { type: 'code', text: 'unclosed' },
+  ])
+})
+
+test('noteLines marks the fence lines and what is inside them, and keeps the line endings', () => {
+  assert.deepEqual(noteLines('a\n```\nb\n```\nc'), [
+    { line: 'a', eol: '\n', fenced: false },
+    { line: '```', eol: '\n', fenced: true },
+    { line: 'b', eol: '\n', fenced: true },
+    { line: '```', eol: '\n', fenced: true },
+    { line: 'c', eol: '', fenced: false },
+  ])
+})
+
+test('replaceOnce refuses an old text that is missing, empty or repeated, and replaces a unique one', () => {
+  assert.equal(replaceOnce('abc', 'b', 'XX'), 'aXXc')
+  assert.throws(() => replaceOnce('aa', 'a', 'b'), /more than once/)
+  assert.throws(() => replaceOnce('abc', 'z', 'b'), /not in the note/)
+})
+
+test('the targets are the links and citations outside code, in reading order, each with its index', () => {
+  const blocks = noteBlocks('# H [[20261001T090000]]\n\n[a q 1] text [[20261002T090000|x]]\n\n```\n[[20261003T090000]]\n```\n')
+  assert.deepEqual(noteTargets(blocks), [
+    { type: 'link', id: '20261001T090000' },
+    { type: 'citation', analysis: 'a', number: 1 },
+    { type: 'link', id: '20261002T090000' },
+  ])
+  const indices = [...targetIndices(blocks).values()]
+  assert.deepEqual(indices, [0, 1, 2])
+  assert.deepEqual(noteCitations('x [a q 2] [[20261001T090000]] [b q 3]').map(c => c.number), [2, 3])
+})
+
+test('the notes lists read keys in any case, with quotes, comments and CRLF, and drop what is not an ID', () => {
+  const yaml = [
+    'title: x',
+    'NOTES : # the lists',
+    "  Written: ['20261102T181500', \"20261102T183012\", nope, ]  # mine",
+    '  found:[20261001T090000]\r',
+    '  other: [20261001T090001]',
+    '  found: [20261001T090002]\r',
+    'next: 1',
+    '  found: [20261001T090003]',
+  ].join('\n')
+  assert.deepEqual(parseNoteLists(yaml), { written: ['20261102T181500', '20261102T183012'], found: ['20261001T090002'] })
+  assert.deepEqual(parseNoteLists('notes:\n'), { written: [], found: [] })
+  assert.deepEqual(parseNoteLists('notesx:\n  written: [20261102T181500]'), { written: [], found: [] })
+})
+
+test('setNoteLists appends a block when there is none, with the file\'s line endings, and dedupes', () => {
+  const lists = { written: ['20261102T181500', '20261102T181500'], found: ['20261102T181500', '20261001T090000', '20261001T090000'] }
+  const block = 'notes:\n  written: [20261102T181500]\n  found: [20261001T090000]\n'
+  assert.equal(setNoteLists('', lists), block)
+  assert.equal(setNoteLists('a: 1\n', lists), 'a: 1\n' + block)
+  assert.equal(setNoteLists('a: 1', lists), 'a: 1\n' + block)
+  assert.equal(setNoteLists('a: 1\r\n', lists), 'a: 1\r\n' + block.replaceAll('\n', '\r\n'))
+  assert.equal(setNoteLists('a: 1', { written: [], found: [] }), 'a: 1\nnotes:\n  written: []\n  found: []\n')
+})
+
+function fakeNoteIo(overrides: Partial<NoteWriterIo> = {}) {
+  const created: { path: string; text: string }[] = []
+  const calls: string[] = []
+  let yaml = 'title: x\n'
+  const io: NoteWriterIo = {
+    readdir: () => Promise.resolve(['20261102T181500-old.md']),
+    mkdir: path => {
+      calls.push(`mkdir ${path}`)
+      return Promise.resolve()
+    },
+    createFile: (path, text) => {
+      created.push({ path, text })
+      return Promise.resolve()
+    },
+    editYaml: change => {
+      yaml = change(yaml)
+      return Promise.resolve()
+    },
+    ...overrides,
+  }
+  return { io, created, calls, yaml: () => yaml }
+}
+
+const NOW = new Date(2026, 10, 2, 18, 15, 0)
+
+/** A rejection reason that is not an Error (a port may reject with anything), though it reads like one to the type checker. */
+const plainReason = (text: string) => Object.setPrototypeOf(new Error(text), { toString: () => text }) as Error
+
+test('writeRootNote writes the note under a free ID, qualifies bare citations and lists the ID', async () => {
+  const fake = fakeNoteIo()
+  const result = await writeRootNote(fake.io, { dir: '/r/notes', slug: 'churn', title: ' A  note ', body: 'Rate [q 3]', now: NOW })
+  assert.deepEqual(result, {
+    ok: true,
+    id: '20261102T181501',
+    file: '20261102T181501-a-note.md',
+    text: '# A note\n\nRate [churn q 3]\n',
+    listed: true,
+  })
+  assert.deepEqual(fake.calls, ['mkdir /r/notes'])
+  assert.deepEqual(fake.created, [{ path: '/r/notes/20261102T181501-a-note.md', text: '# A note\n\nRate [churn q 3]\n' }])
+  assert.match(fake.yaml(), /written: \[20261102T181501\]/)
+})
+
+test('writeRootNote refuses an empty title or a text over maxLength before touching the disk', async () => {
+  const fake = fakeNoteIo()
+  assert.deepEqual(await writeRootNote(fake.io, { dir: '/d', slug: 's', title: '  ', body: 'b' }), { ok: false, reason: 'title' })
+  assert.deepEqual(await writeRootNote(fake.io, { dir: '/d', slug: 's', title: 't', body: 'x'.repeat(20), maxLength: 10 }), { ok: false, reason: 'size' })
+  assert.deepEqual(fake.calls, [])
+  const fits = await writeRootNote(fake.io, { dir: '/d', slug: 's', title: 't', body: '', maxLength: 4, now: NOW })
+  assert.equal(fits.ok, true)
+})
+
+test('writeRootNote treats a missing notes folder as empty and looks again when another writer took the ID', async () => {
+  let attempts = 0
+  const fake = fakeNoteIo({
+    readdir: () => Promise.reject(new Error('ENOENT')),
+    createFile: () => {
+      attempts++
+      return attempts < 3 ? Promise.reject(Object.assign(new Error('exists'), { code: 'EEXIST' })) : Promise.resolve()
+    },
+  })
+  const result = await writeRootNote(fake.io, { dir: '/d', slug: 's', title: 't', body: 'b', now: NOW })
+  assert.equal(result.ok && result.id, '20261102T181500')
+  assert.equal(attempts, 3)
+})
+
+test('writeRootNote gives up after 20 taken IDs and rethrows any other write error', async () => {
+  const taken = fakeNoteIo({ createFile: () => Promise.reject(Object.assign(new Error('exists'), { code: 'EEXIST' })) })
+  assert.deepEqual(await writeRootNote(taken.io, { dir: '/d', slug: 's', title: 't', body: 'b', now: NOW }), { ok: false, reason: 'id' })
+  for (const failure of [new Error('disk full'), plainReason('plain')]) {
+    const broken = fakeNoteIo({ createFile: () => Promise.reject(failure) })
+    await assert.rejects(writeRootNote(broken.io, { dir: '/d', slug: 's', title: 't', body: 'b', now: NOW }), (error: unknown) => error === failure)
+  }
+})
+
+test('writeRootNote still writes the note when analysis.yaml cannot take the ID, and says why', async () => {
+  const withError = fakeNoteIo({ editYaml: () => Promise.reject(new Error('read-only')) })
+  const first = await writeRootNote(withError.io, { dir: '/d', slug: 's', title: 't', body: 'b', now: NOW })
+  assert.equal(first.ok && first.listed, 'read-only')
+  const withText = fakeNoteIo({ editYaml: () => Promise.reject(plainReason('locked')) })
+  const second = await writeRootNote(withText.io, { dir: '/d', slug: 's', title: 't', body: 'b', now: NOW })
+  assert.equal(second.ok && second.listed, 'locked')
+  assert.equal(withText.created.length, 1)
 })

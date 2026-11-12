@@ -25,7 +25,7 @@ export const chosenRuns = (state: ReplayState): number[] => state.runs.filter(r 
 
 export function confirmText(state: ReplayState): string {
   const n = chosenRuns(state).length
-  return `Replay ${n} ${n === 1 ? 'run' : 'runs'} in a new kernel? y / n`
+  return `Replay ${String(n)} ${n === 1 ? 'run' : 'runs'} in a new kernel? y / n`
 }
 
 export function replayKey(state: ReplayState, key: string): { state: ReplayState; effect?: ReplayEffect } {

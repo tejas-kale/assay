@@ -2,6 +2,7 @@
 // local timestamp (`20261102T181500`); notes link each other as `[[ID]]` (or `[[ID|label]]`) and cite runs as `[<analysis-slug> q N]`.
 // Used by the server, the app and the migration.
 import { StaleEdit } from './errors.ts'
+import { kebabCase, trimEndChar } from './slugText.ts'
 
 export const NOTES_DIR = 'notes'
 
@@ -34,23 +35,19 @@ const FILE_NAME = /^(\d{8}T\d{6})-([a-z0-9][a-z0-9-]*)\.md$/
 const INLINE = /\[\[(\d{8}T\d{6})(?:\|([^\]\n]*))?\]\]|\[([a-z0-9][a-z0-9-]*) q (\d+)\]/g
 const BARE = /\[q (\d+)\]/g
 const FENCE = /^\s*(```|~~~)/
+// The space run is matched whole, so the text group starts at its first non-space.
+const HEADING = /^(#{1,6}) +(?! )(.*)$/
 
 export const isNoteId = (id: string) => ID.test(id)
 
 export function slugify(title: string): string {
-  const slug = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60)
-    .replace(/-+$/, '')
-  return slug === '' ? 'note' : slug
+  return kebabCase(title, 60) || 'note'
 }
 
 /** Whether `path` is `<root>/notes` or inside it. Both are real, absolute paths; compared ignoring case (macOS). */
 export function inRootNotes(path: string, root: string): boolean {
-  const full = path.replace(/\/+$/, '').toLowerCase()
-  const notes = `${root.replace(/\/+$/, '')}/${NOTES_DIR}`.toLowerCase()
+  const full = trimEndChar(path, '/').toLowerCase()
+  const notes = `${trimEndChar(root, '/')}/${NOTES_DIR}`.toLowerCase()
   return full === notes || full.startsWith(`${notes}/`)
 }
 
@@ -58,7 +55,7 @@ const pad = (n: number) => String(n).padStart(2, '0')
 
 /** The ID of a local time: `YYYYMMDDTHHMMSS`. */
 export const noteId = (date: Date) =>
-  `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}T${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
+  `${String(date.getFullYear())}${pad(date.getMonth() + 1)}${pad(date.getDate())}T${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
 
 /** The local time an ID names. */
 export function idTime(id: string): Date {
@@ -135,6 +132,21 @@ export function noteLines(text: string): { line: string; eol: string; fenced: bo
   })
 }
 
+/** One line (not in fenced code) split at links and citations, its line ending kept in the trailing text. */
+function lineSegments(line: string, eol: string): Segment[] {
+  const out: Segment[] = []
+  let from = 0
+  for (const match of line.matchAll(INLINE)) {
+    if (match.index > from) out.push({ type: 'text', text: line.slice(from, match.index) })
+    const label = match[2]?.trim()
+    if (match[1] !== undefined) out.push({ type: 'link', id: match[1], ...(label ? { label } : {}) })
+    else out.push({ type: 'citation', analysis: match[3] ?? '', number: Number(match[4]) })
+    from = match.index + match[0].length
+  }
+  if (from < line.length || eol) out.push({ type: 'text', text: line.slice(from) + eol })
+  return out
+}
+
 /** The text split at links and citations. Fenced code blocks stay plain text. */
 export function noteSegments(text: string): Segment[] {
   const out: Segment[] = []
@@ -148,15 +160,7 @@ export function noteSegments(text: string): Segment[] {
       push({ type: 'text', text: line + eol })
       continue
     }
-    let from = 0
-    for (const match of line.matchAll(INLINE)) {
-      if (match.index > from) push({ type: 'text', text: line.slice(from, match.index) })
-      const label = match[2]?.trim()
-      if (match[1] !== undefined) push({ type: 'link', id: match[1], ...(label ? { label } : {}) })
-      else push({ type: 'citation', analysis: match[3] ?? '', number: Number(match[4]) })
-      from = match.index + match[0].length
-    }
-    if (from < line.length || eol) push({ type: 'text', text: line.slice(from) + eol })
+    for (const segment of lineSegments(line, eol)) push(segment)
   }
   return out.filter(s => s.type !== 'text' || s.text !== '')
 }
@@ -167,7 +171,7 @@ export const noteCitations = (text: string) => noteSegments(text).filter((segmen
 /** Every bare `[q N]` outside fenced code written as `[<slug> q N]`. */
 export function qualifyCitations(text: string, slug: string): string {
   return noteLines(text)
-    .map(({ line, eol, fenced }) => (fenced ? line : line.replace(BARE, (_, n: string) => `[${slug} q ${Number(n)}]`)) + eol)
+    .map(({ line, eol, fenced }) => (fenced ? line : line.replace(BARE, (_, n: string) => `[${slug} q ${String(Number(n))}]`)) + eol)
     .join('')
 }
 
@@ -190,6 +194,19 @@ export function reviseBody(text: string, old: string, replacement: string): stri
 /** A note's text with a new title. The file name stays. */
 export const retitle = (text: string, title: string) => noteText(title, noteBody(text))
 
+/** The code block opened by the fence line at `start`, and the index of the line it ends on (its closing fence, or the last line). */
+function fencedCode(all: readonly string[], start: number, fence: string): { block: Block; end: number } {
+  const opening = all[start] ?? ''
+  const lang = opening.trimStart().slice(fence.length).trim().split(/\s+/)[0]?.toLowerCase()
+  const code: string[] = []
+  let end = start + 1
+  while (end < all.length && !(all[end] ?? '').trimStart().startsWith(fence)) {
+    code.push(all[end] ?? '')
+    end++
+  }
+  return { block: { type: 'code', text: code.join('\n'), ...(lang ? { lang } : {}) }, end }
+}
+
 /** The body as headings, paragraphs and fenced code, for the reader. */
 export function noteBlocks(body: string): Block[] {
   const blocks: Block[] = []
@@ -199,23 +216,22 @@ export function noteBlocks(body: string): Block[] {
     paragraph = []
   }
   const all = body.replace(/\n$/, '').split('\n')
-  for (let i = 0; i < all.length; i++) {
+  let i = 0
+  while (i < all.length) {
     const line = all[i] ?? ''
-    if (FENCE.test(line)) {
+    const fence = FENCE.exec(line)?.[1]
+    const heading = HEADING.exec(line)
+    if (fence) {
       flush()
-      const fence = FENCE.exec(line)?.[1] ?? '```'
-      const lang = line.trimStart().slice(fence.length).trim().split(/\s+/)[0]?.toLowerCase()
-      const code: string[] = []
-      for (i++; i < all.length && !(all[i] ?? '').trimStart().startsWith(fence); i++) code.push(all[i] ?? '')
-      blocks.push({ type: 'code', text: code.join('\n'), ...(lang ? { lang } : {}) })
-      continue
-    }
-    const heading = /^(#{1,6}) +(.*)$/.exec(line)
-    if (heading) {
+      const { block, end } = fencedCode(all, i, fence)
+      blocks.push(block)
+      i = end
+    } else if (heading) {
       flush()
       blocks.push({ type: 'heading', level: heading[1]?.length ?? 1, segments: noteSegments(heading[2] ?? '') })
     } else if (line.trim() === '') flush()
     else paragraph.push(line)
+    i++
   }
   flush()
   return blocks

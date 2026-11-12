@@ -143,7 +143,7 @@ const num = (counts: Readonly<Record<string, string>>, key: string): number | un
   const n = Number(value)
   return Number.isFinite(n) ? n : undefined
 }
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+const plural = (n: number, one: string, many = `${one}s`) => `${String(n)} ${n === 1 ? one : many}`
 
 function grainCheck(step: Pick<Step, 'grain'>, counts: Readonly<Record<string, string>>): StepCheck[] {
   const rows = num(counts, 'assay_rows')
@@ -154,20 +154,21 @@ function grainCheck(step: Pick<Step, 'grain'>, counts: Readonly<Record<string, s
   const distinct = num(counts, 'assay_grain_rows')
   if (distinct === undefined) return []
   const grain = step.grain.join(', ')
-  return [rows === distinct ? { kind: 'grain', ok: true, text: `grain ${grain}: ${plural(rows, 'row')}, ${distinct} distinct` } : { kind: 'grain', ok: false, text: `grain ${grain} has ${plural(rows - distinct, 'duplicate row')}` }]
+  return [rows === distinct ? { kind: 'grain', ok: true, text: `grain ${grain}: ${plural(rows, 'row')}, ${String(distinct)} distinct` } : { kind: 'grain', ok: false, text: `grain ${grain} has ${plural(rows - distinct, 'duplicate row')}` }]
 }
 
 function joinChecks(join: PlannedJoin, counts: Readonly<Record<string, string>>): StepCheck[] {
-  if (join.checked === false || join.declared === undefined) return []
+  const { declared } = join
+  if (join.checked === false || declared === undefined) return []
   const read = (side: 'left' | 'right') => {
-    const rows = num(counts, `assay_j${join.j}_${side}_rows`)
-    const keys = num(counts, `assay_j${join.j}_${side}_keys`)
+    const rows = num(counts, `assay_j${String(join.j)}_${side}_rows`)
+    const keys = num(counts, `assay_j${String(join.j)}_${side}_keys`)
     return rows === undefined || keys === undefined ? undefined : { rows, keys }
   }
   const left = read('left')
   const right = read('right')
   if (!left || !right) return []
-  const [declaredLeft, declaredRight] = join.declared.split(':')
+  const [declaredLeft, declaredRight] = declared.split(':')
   const keyNames = (join.keys ?? []).join(', ')
   const sides = [
     { name: 'left', declared: declaredLeft, seen: left },
@@ -178,12 +179,12 @@ function joinChecks(join: PlannedJoin, counts: Readonly<Record<string, string>>)
     return wrong.map(side => ({
       kind: 'join',
       ok: false,
-      text: `join ${join.source} declared ${join.declared} but the ${side.name} side repeats ${keyNames} (${side.seen.rows} rows, ${side.seen.keys} keys)`,
+      text: `join ${join.source} declared ${declared} but the ${side.name} side repeats ${keyNames} (${String(side.seen.rows)} rows, ${String(side.seen.keys)} keys)`,
     }))
   }
   const observed = sides.map(side => (side.seen.rows === side.seen.keys ? '1' : 'many')).join(':')
-  const note = observed === join.declared ? '' : ` (observed ${observed})`
-  return [{ kind: 'join', ok: true, text: `join ${join.source} ${join.declared} on ${keyNames}: left ${left.rows} rows, ${left.keys} keys; right ${right.rows} rows, ${right.keys} keys${note}` }]
+  const note = observed === declared ? '' : ` (observed ${observed})`
+  return [{ kind: 'join', ok: true, text: `join ${join.source} ${declared} on ${keyNames}: left ${String(left.rows)} rows, ${String(left.keys)} keys; right ${String(right.rows)} rows, ${String(right.keys)} keys${note}` }]
 }
 
 /** The grain and join checks of a step, from the one row its counts query returned. Joins not counted give none. */
@@ -229,7 +230,7 @@ export function moveStep(k: number, delta: 1 | -1, count: number): number {
 /** `running step 2 of 4` while a step runs; undefined otherwise. */
 export function runningLabel(file: StepsFile | undefined): string | undefined {
   const running = file?.steps.find(step => step.status === 'running')
-  return running ? `running step ${running.k} of ${file?.steps.length ?? 0}` : undefined
+  return running ? `running step ${String(running.k)} of ${String(file?.steps.length ?? 0)}` : undefined
 }
 
 /** One line for a ✗ check, as `.assay/step-notices.json` carries it: `q042 step spend_per_customer: grain ... has 3 duplicate rows.` */

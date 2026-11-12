@@ -79,15 +79,25 @@ function fakeFlow() {
   let exit: () => void = () => {}
   const states: CloseState[] = []
   const flow = closeFlow({
-    write: data => void writes.push(data),
-    kill: signal => void kills.push(signal),
+    write: data => {
+      writes.push(data)
+    },
+    kill: signal => {
+      kills.push(signal)
+    },
     onExit: cb => {
       exit = cb
     },
-    setTimer: (cb, ms) => void timers.push({ cb, ms }),
+    setTimer: (cb, ms) => {
+      timers.push({ cb, ms })
+    },
   })
-  flow.onChange(state => states.push(state))
-  return { flow, writes, kills, timers, states, exit: () => exit() }
+  flow.onChange(state => {
+    states.push(state)
+  })
+  return { flow, writes, kills, timers, states, exit: () => {
+      exit()
+    } }
 }
 
 test('closeFlow starts running; start writes Esc, then Ctrl-C twice, 300 ms apart, then nothing', () => {

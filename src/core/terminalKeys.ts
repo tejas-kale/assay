@@ -48,7 +48,7 @@ export function wheelLines(deltaY: number, carried: number): [number, number] {
 export function wheelReport(lines: number, col: number, row: number, sgr: boolean): string {
   const button = lines < 0 ? 64 : 65
   const one = sgr
-    ? `\x1b[<${button};${col};${row}M`
+    ? `\x1b[<${String(button)};${String(col)};${String(row)}M`
     : `\x1b[M${String.fromCharCode(32 + button, 32 + Math.min(col, 223), 32 + Math.min(row, 223))}`
   return one.repeat(Math.abs(lines))
 }

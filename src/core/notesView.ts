@@ -6,7 +6,10 @@ import type { Citation, NoteLists, RootNote } from './rootNotes.ts'
 export type NoteGroups = { written: RootNote[]; found: RootNote[] }
 
 /** Newest first: IDs are timestamps. */
-const newestFirst = (a: RootNote, b: RootNote) => (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
+export const newestFirst = (a: RootNote, b: RootNote) => {
+  if (a.id < b.id) return 1
+  return a.id > b.id ? -1 : 0
+}
 
 /** The notes an analysis wrote and found, each newest first. A listed ID with no file is left out. */
 export function noteGroups(all: readonly RootNote[], lists: NoteLists): NoteGroups {
@@ -18,7 +21,7 @@ export function noteGroups(all: readonly RootNote[], lists: NoteLists): NoteGrou
 /** The tab label: `Notes` with the number of notes the analysis wrote or found. */
 export function notesTabLabel(groups: NoteGroups): string {
   const count = groups.written.length + groups.found.length
-  return count > 0 ? `Notes (${count})` : 'Notes'
+  return count > 0 ? `Notes (${String(count)})` : 'Notes'
 }
 
 /** The title a `[[ID]]` link shows; undefined when no note has that ID. */
@@ -27,7 +30,10 @@ export const linkTitle = (id: string, all: readonly RootNote[]) => all.find(note
 const pad = (n: number) => String(n).padStart(3, '0')
 
 /** How a citation reads: `q 012` in the open analysis, `churn-q3 q 012` elsewhere. */
-export const citationText = (citation: Citation, openSlug: string) => `${citation.analysis === openSlug ? '' : `${citation.analysis} `}q ${pad(citation.number)}`
+export const citationText = (citation: Citation, openSlug: string) => {
+  const prefix = citation.analysis === openSlug ? '' : citation.analysis + ' '
+  return `${prefix}q ${pad(citation.number)}`
+}
 
 export type CitationAction = { type: 'focus'; number: number } | { type: 'preview'; analysis: string; number: number } | { type: 'missing' }
 

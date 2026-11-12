@@ -2,6 +2,7 @@
 // name with fuzzyRank and by body (note text, run code) as written.
 import type { FileEntry } from './files.ts'
 import { fuzzyRank } from './fuzzy.ts'
+import { newestFirst } from './notesView.ts'
 import type { RootNote } from './rootNotes.ts'
 import { parseRuns } from './runs.ts'
 import type { Run } from './runs.ts'
@@ -72,7 +73,7 @@ export function searchEntries(sources: SearchSources): SearchEntry[] {
     const title = outcome ? `${thread} → ${outcome}` : thread
     return { target: { kind: 'thread', closed: true, index }, title, preview: text(title) }
   })
-  const notes = [...sources.notes].sort((a, b) => (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)).map((note): SearchEntry => {
+  const notes = [...sources.notes].sort(newestFirst).map((note): SearchEntry => {
     const body = noteText.get(note.name)
     return {
       target: { kind: 'note', name: note.name },
@@ -112,6 +113,12 @@ export function snippetOf(body: string, query: string): string | undefined {
   return `${from > 0 ? '…' : ''}${line.slice(from, from + SNIPPET).trim()}${from + SNIPPET < line.length ? '…' : ''}`
 }
 
+function bodyHit(entry: SearchEntry, wanted: string, named: ReadonlySet<SearchEntry>): SearchHit[] {
+  if (named.has(entry) || entry.body === undefined) return []
+  const snippet = snippetOf(entry.body, wanted)
+  return snippet === undefined ? [] : [{ entry, snippet }]
+}
+
 /**
  * Name hits first (fuzzy, best first), then body hits: entries whose body holds the query as typed.
  * An empty query gives the entries in their own order. At most `limit` hits.
@@ -121,11 +128,8 @@ export function search(entries: readonly SearchEntry[], query: string, limit = 1
   if (wanted === '') return entries.slice(0, limit).map(entry => ({ entry }))
   const byName = fuzzyRank(entries, wanted, e => e.title)
   const named = new Set(byName)
-  const byBody = wanted.length < 2 ? [] : entries.filter(e => !named.has(e) && e.body !== undefined && snippetOf(e.body, wanted) !== undefined)
-  return [
-    ...byName.map(entry => ({ entry })),
-    ...byBody.map(entry => ({ entry, snippet: snippetOf(entry.body ?? '', wanted) ?? '' })),
-  ].slice(0, limit)
+  const byBody = wanted.length < 2 ? [] : entries.flatMap(entry => bodyHit(entry, wanted, named))
+  return [...byName.map(entry => ({ entry })), ...byBody].slice(0, limit)
 }
 
 /** Equal targets: the same thread, note, file or run. */

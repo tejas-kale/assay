@@ -212,7 +212,8 @@ export function contrastRatio(a: readonly [number, number, number], b: readonly 
 /** Below this, text is unreadable (white on Light's background is 1.05); Claude's dim grey is about 3, and stays. */
 export const MIN_CONTRAST = 2
 
-const rgb = (hex: string): [number, number, number] => {
+type Rgb = [number, number, number]
+const rgb = (hex: string): Rgb => {
   const n = hexToInt(hex)
   return [n >> 16, (n >> 8) & 255, n & 255]
 }
@@ -223,13 +224,13 @@ const rgb = (hex: string): [number, number, number] => {
  * with whichever of the theme's text and background colours reads better there. Input is not changed.
  */
 export function minimumContrast(theme: TerminalColors) {
-  const choices = [rgb(theme.foreground), rgb(theme.background)]
+  const choices: [Rgb, Rgb] = [rgb(theme.foreground), rgb(theme.background)]
   // Every line is checked on every draw, so each fg/bg pair is worked out once: undefined means it reads.
-  const memo = new Map<string, [number, number, number] | undefined>()
-  const fixFor = (fg: [number, number, number], bg: [number, number, number]) => {
+  const memo = new Map<string, Rgb | undefined>()
+  const fixFor = (fg: Rgb, bg: Rgb) => {
     const key = `${fg.join()},${bg.join()}`
     if (memo.has(key)) return memo.get(key)
-    const fix = contrastRatio(fg, bg) >= MIN_CONTRAST ? undefined : choices.reduce((a, b) => (contrastRatio(b, bg) > contrastRatio(a, bg) ? b : a))
+    const fix = contrastRatio(fg, bg) >= MIN_CONTRAST ? undefined : choices.reduce((a, b) => (contrastRatio(b, bg) > contrastRatio(a, bg) ? b : a), choices[0])
     if (memo.size > 4096) memo.clear()
     memo.set(key, fix)
     return fix

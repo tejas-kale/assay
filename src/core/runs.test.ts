@@ -90,8 +90,9 @@ test('parseRuns reads Python runs with their result, tables and plots in K order
 test('a table file is never a SQL result, even when it comes first', () => {
   const [run, ...rest] = parseRuns(['012_x.t1.csv', '012_x.csv', '012_x.sql'])
   assert.equal(rest.length, 0)
-  assert.equal(run?.data, '012_x.csv')
-  assert.deepEqual(run?.tables, ['012_x.t1.csv'])
+  assert.ok(run)
+  assert.equal(run.data, '012_x.csv')
+  assert.deepEqual(run.tables, ['012_x.t1.csv'])
   assert.equal(parseRuns(['012_x.t1.csv'])[0]?.data, undefined)
 })
 
@@ -157,11 +158,11 @@ test('runLabel for Python: ok is computed, anything else unverified, running sti
 })
 
 test('citedLabel: what a note citing a run gets', () => {
-  const runs = [
-    ...parseRuns(['001_a.sql', '001_a.csv', '002_b.sql', '003_c.py', '004_d.py']).map(r =>
-      r.number === 3 ? { ...r, status: 'ok' as const } : r.number === 4 ? { ...r, status: 'error' as const } : r,
-    ),
-  ]
+  const statusOf = (number: number) => {
+    if (number === 3) return { status: 'ok' as const }
+    return number === 4 ? { status: 'error' as const } : {}
+  }
+  const runs = parseRuns(['001_a.sql', '001_a.csv', '002_b.sql', '003_c.py', '004_d.py']).map(r => ({ ...r, ...statusOf(r.number) }))
   const of = citedLabel(runs)
   assert.deepEqual([of(1), of(2), of(3), of(4), of(99)], ['queried', 'unverified', 'computed', 'unverified', 'unverified'])
 })
@@ -184,4 +185,53 @@ test('a run with includes names what it is built from, and a re-run drops the li
   const text = '-- author: user\n-- built from: client_entry_sessions@1a2b3c4d5e6f, a:b@ffff\n-- grain: x\nSELECT 1\n'
   assert.deepEqual(parseRunHeader(text).builtFrom, ['client_entry_sessions@1a2b3c4d5e6f', 'a:b@ffff'])
   assert.equal(codeBody(text, 'sql'), '-- grain: x\nSELECT 1\n')
+})
+
+test('parseCsv: lone carriage returns end records, blank lines vanish, and a quote starts a quoted run anywhere in a field', () => {
+  assert.deepEqual(parseCsv('a,b\r1,2\r\r\n\n3,4', 10), { columns: ['a', 'b'], rows: [['1', '2'], ['3', '4']], truncated: false })
+  assert.deepEqual(parseCsv('x"a,b"y,z\n', 10), { columns: ['xa,by', 'z'], rows: [], truncated: false })
+  assert.deepEqual(parseCsv('a,"b\n1', 10), { columns: ['a', 'b\n1'], rows: [], truncated: false })
+  assert.deepEqual(parseCsv('a,b\n1,', 10), { columns: ['a', 'b'], rows: [['1', '']], truncated: false })
+  assert.deepEqual(parseCsv('a\n"",\n', 10), { columns: ['a'], rows: [['', '']], truncated: false })
+  assert.deepEqual(parseCsv('"a""\n', 10), { columns: ['a"\n'], rows: [], truncated: false })
+})
+
+test('parseCsv: only a row left unread counts as truncated, at any row limit', () => {
+  assert.deepEqual(parseCsv('a\n1\n2', 1), { columns: ['a'], rows: [['1']], truncated: true })
+  assert.deepEqual(parseCsv('a\n1\r\n', 1), { columns: ['a'], rows: [['1']], truncated: false })
+  assert.deepEqual(parseCsv('a\n1\n\n', 1), { columns: ['a'], rows: [['1']], truncated: true }, 'any text after the last row counts, even a blank line')
+  assert.deepEqual(parseCsv('a\n1\n2\n', 0), { columns: ['a'], rows: [], truncated: true })
+  assert.deepEqual(parseCsv('a', 0), { columns: ['a'], rows: [], truncated: false })
+  assert.deepEqual(parseCsv('a\nb\n', -1), { columns: [], rows: [], truncated: true })
+})
+
+test('parseRunHeader: SQL comments, in any order, until the first line that is not a comment', () => {
+  const text = '-- trusted:  weekly extra\n-- why\n-- built from: a@1,, b@2 ,\n-- postgres  \n-- from: x\n-- from: 007\n--author: user\nselect 1\n-- from: 9'
+  assert.deepEqual(parseRunHeader(text), { author: 'claude', trusted: 'weekly', builtFrom: ['a@1', 'b@2'], engine: 'postgres', from: 7 })
+  assert.deepEqual(parseRunHeader('-- trusted: \n-- built from: \n-- postgres x'), { author: 'claude', engine: 'databricks' })
+  assert.deepEqual(parseRunHeader('# author: user\n-- postgres', 'sql'), { author: 'claude', engine: 'databricks' })
+  assert.deepEqual(parseRunHeader('# from: 1\n# replay: x\n# replay: 2\n-- postgres', 'python'), { author: 'claude', from: 1, replay: 2, engine: 'databricks' })
+  assert.deepEqual(parseRunHeader('', 'python'), { author: 'claude', engine: 'databricks' })
+})
+
+test('parseRunStatus: a running entry needs both numbers, failures need a digit key, a kernel message must not be empty', () => {
+  assert.deepEqual(parseRunStatus('{"running":{"number":1},"failed":{"01":"a","1x":"b"}}'), { failed: { 1: 'a' } })
+  assert.deepEqual(parseRunStatus('{"running":{"startedAt":1},"failed":[]}'), { failed: {} })
+  assert.deepEqual(parseRunStatus('{"kernel":{"state":"dead","message":""}}'), { failed: {}, kernel: { state: 'dead' } })
+  assert.deepEqual(parseRunStatus('{"kernel":{"state":"busy","message":5}}'), { failed: {}, kernel: { state: 'busy' } })
+  assert.deepEqual(parseRunStatus('{"kernel":null,"running":3,"failed":"x"}'), { failed: {} })
+})
+
+test('parseRunResult: a table needs a file name, a plot an object with one, and every text field falls back to empty', () => {
+  const text = JSON.stringify({
+    status: 'error', stdout: 5, kernel: 1, startedAt: '1', endedAt: null, stdoutTruncated: false, error: {},
+    tables: [{ file: 't.csv' }, { file: 3 }, 'x', null, { file: 'u.csv', columns: ['a', 2], rowCount: '3', truncated: 'yes' }],
+    plots: ['p.png', { file: 3 }, { file: 'q.png' }, null], reads: 'x',
+  })
+  assert.deepEqual(parseRunResult(text), {
+    status: 'error', stdout: '', error: { name: '', message: '', traceback: '' },
+    tables: [{ file: 't.csv', columns: [], rowCount: 0, truncated: false }, { file: 'u.csv', columns: ['a'], rowCount: 0, truncated: false }],
+    plots: ['q.png'], reads: [],
+  })
+  assert.deepEqual(parseRunResult('{"status":"ok","error":"x","tables":{},"plots":{}}'), { status: 'ok', stdout: '', tables: [], plots: [], reads: [] })
 })
