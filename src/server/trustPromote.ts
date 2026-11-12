@@ -1,6 +1,7 @@
 // Approving a proposal: the files as checked are copied into the shared folder and committed there alone; the draft
 // files that still hold what was approved are then removed.
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { resolve, sep } from 'node:path'
 
 import type { CheckAnswer } from '../core/calculations.ts'
 import type { Assay } from './assay.ts'
@@ -19,8 +20,24 @@ function gitIn(assay: Assay): Git {
   return args => assay.config.proc.run(['git', '-C', home, ...args], { cwd: assay.config.analysis }).catch((error: unknown) => ({ exitCode: 1, stdout: '', stderr: messageOf(error) }))
 }
 
+/** The only file names a proposal of this review's kind may have. */
+function allowedNames(review: Review): string[] {
+  const { name } = review
+  return review.kind === 'calculation' ? [`${name}.sql`, `${name}.py`, `test_${name}.py`, `${name}.test.yaml`, `${name}.rebuild.sql`] : [`${name}.yaml`, `${name}.test.yaml`]
+}
+
+/** The first file name that approving must not write: not one of the proposal's own names, or not inside the target folder. */
+function refusedName(review: Review, answer: CheckAnswer): string | undefined {
+  const allowed = allowedNames(review)
+  const dest = resolve(review.dest)
+  const isInside = (file: string) => resolve(dest, file).startsWith(`${dest}${sep}`)
+  return [...(answer.files ?? []), ...Object.keys(answer.texts ?? {})].find(file => !allowed.includes(file) || !isInside(file))
+}
+
 /** Copies the proposal's files into the shared folder exactly as the check read them, whatever happened to the draft since. */
 async function copyFiles(review: Review, answer: CheckAnswer): Promise<{ failed: string } | { written: Written[] }> {
+  const refused = refusedName(review, answer)
+  if (refused !== undefined) return { failed: `${JSON.stringify(refused)} is not a file this proposal may have.` }
   const written: Written[] = []
   for (const file of answer.files ?? []) {
     const text = answer.texts?.[file]
