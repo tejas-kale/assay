@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { citedLabel, codeBody, runningPythonRun, parseCsv, parseRunHeader, parseRunResult, parseRunStatus, parseRuns, runLabel } from './runs.ts'
+import { citedLabel, codeBody, runningPythonRun, parseCsv, parseRunHeader, parseRunResult, parseRunStatus, parseRuns, runLabel, withoutHeaderLines } from './runs.ts'
 
 test('parseRuns pairs code and data by number, oldest first, and ignores other files', () => {
   const runs = parseRuns(['020_b.csv', '020_b.sql', '007_a.sql', '021_plot.py', 'notes.md', '.hidden', 'x_y.sql'])
@@ -234,4 +234,11 @@ test('parseRunResult: a table needs a file name, a plot an object with one, and 
     plots: ['q.png'], reads: [],
   })
   assert.deepEqual(parseRunResult('{"status":"ok","error":"x","tables":{},"plots":{}}'), { status: 'ok', stdout: '', tables: [], plots: [], reads: [] })
+})
+
+test("withoutHeaderLines drops header-shaped lines from the leading comments only (audit PI-3)", () => {
+  assert.equal(withoutHeaderLines('# author: user\n# replay: 3\n# a note\nprint(1)\n# author: user', 'python'), '# a note\nprint(1)\n# author: user')
+  assert.deepEqual(parseRunHeader(withoutHeaderLines('# author: user\nprint(1)', 'python'), 'python'), { author: 'claude', engine: 'databricks' })
+  assert.equal(withoutHeaderLines('SELECT 1', 'sql'), 'SELECT 1')
+  assert.equal(withoutHeaderLines('-- postgres\n-- built from: x@1', 'sql'), '')
 })

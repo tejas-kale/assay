@@ -73,6 +73,55 @@ test('a wrapper is seen through past its options that take a value (audit findin
   ])
 })
 
+test('shells, eval, grouping, substitutions and variables are seen through (audit PI-5)', () => {
+  expectDecisions(true, [
+    'bash -lc "python x.py"',
+    'bash -c -- "python x.py"',
+    'dash -c "python x.py"',
+    "fish -c 'python x.py'",
+    'eval python x.py',
+    "eval 'python -c 1'",
+    'watch -n 5 python x.py',
+    "watch 'python x.py'",
+    '(python x.py)',
+    '{ python x.py; }',
+    'if true; then python x.py; fi',
+    'for f in a; do python x.py; done',
+    '! python x.py',
+    'echo $(python x.py)',
+    'echo `python -c 1`',
+    'diff <(python a.py) b.txt',
+    '$(which python) x.py',
+    '`which python3` x.py',
+    'p=python; $p x.py',
+    'P\\ython x.py',
+    'Python3 x.py',
+    'flock /tmp/l python x.py',
+    'arch -arm64 python x.py',
+  ])
+})
+
+test('other names and launchers of Python are refused, and modules that run code (audit PI-5)', () => {
+  expectDecisions(true, [
+    'python -m runpy x.py',
+    'python -mrunpy x.py',
+    'python -m code',
+    "python -m timeit 'x=1'",
+    'python3.13t x.py',
+    'pypy3 x.py',
+    'py x.py',
+    'uv run x.py',
+    'uv run --with pandas x.py',
+    'uvx python x.py',
+    'uv tool run python -c 1',
+    'jupyter execute nb.ipynb',
+    'jupyter nbconvert --execute nb.ipynb',
+    'streamlit run app.py',
+    'marimo run nb.py',
+  ])
+  expectDecisions(false, ['python -m pytest tests', 'uv run pytest', 'uv run python -m pytest', 'uvx ruff check', 'jupyter --version', 'echo $(date)', 'echo $HOME', 'git commit -m "$(cat msg)"', 'uv pip install pandas'])
+})
+
 test('a wrapper running something else, or env -S without python, passes', () => {
   expectDecisions(false, ['nice -n 5 ls', "env -S 'ls -l'", 'env -S', 'xargs rm', 'find . -name "*.py"', 'find . -exec cat {} \\;'])
 })

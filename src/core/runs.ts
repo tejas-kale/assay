@@ -303,6 +303,19 @@ export function codeBody(text: string, language: 'sql' | 'python'): string {
   return lines.slice(i).join('\n')
 }
 
+/**
+ * Claude's code with every header-shaped line taken out of its leading comment lines, where the header is read: only
+ * the server writes a run's header, so Claude's code cannot claim to be the user's or a trusted calculation's.
+ */
+export function withoutHeaderLines(code: string, language: 'sql' | 'python'): string {
+  const comment = language === 'python' ? '#' : '--'
+  const pattern = language === 'python' ? PYTHON_HEADER_LINE : SQL_HEADER_LINE
+  const lines = code.split('\n')
+  let end = 0
+  while (end < lines.length && (lines[end] ?? '').startsWith(comment)) end++
+  return [...lines.slice(0, end).filter(line => !pattern.test(line)), ...lines.slice(end)].join('\n')
+}
+
 export type RunLabel = 'trusted' | 'queried' | 'computed' | 'unverified' | 'running'
 
 /** The trust label, as the mod's `deriveLabel`: no result is unverified, a trusted header is trusted, an ok Python run is computed. */

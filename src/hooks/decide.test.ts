@@ -1,6 +1,6 @@
 // The hooks' decisions and helpers called in-process (hooks.test.ts runs the bundled scripts, which coverage does not
 // follow): each branch of bashDecision, writeDecision and promptDecision, and the shared io helpers.
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -94,6 +94,53 @@ test('a path under a missing folder is resolved from its deepest existing ancest
   const said = await writeDecision({ tool_input: { file_path: `${root}/trusted/deep/er/x.sql` } }, env)
   expect(said?.hookSpecificOutput.permissionDecision).toBe('deny')
   expect(await writeDecision({ tool_input: { file_path: `${root}/elsewhere/deep/x.sql` } }, env)).toBeUndefined()
+})
+
+test("the analysis's .assay/ and queries/ and the root's git are Assay's alone, in any case (audit PI-1, PI-2, PI-3)", async () => {
+  const { root, analysis, env } = await scratch()
+  for (const path of [
+    `${analysis}/.assay/requests/0001.json`,
+    `${analysis}/.ASSAY/trust/x.json`,
+    `${analysis}/queries/001_x.sql`,
+    `${analysis}/Queries/001_x.csv`,
+    `${analysis}/.git/hooks/pre-commit`,
+    `${root}/.git/hooks/pre-commit`,
+    `${root}/.git`,
+    '.assay/user-runs.json',
+  ]) {
+    const said = await writeDecision({ tool_input: { file_path: path } }, env)
+    expect(`${path}: ${said?.hookSpecificOutput.permissionDecisionReason ?? 'allowed'}`).toMatch('which only Assay writes')
+  }
+  for (const path of [`${analysis}/lib/queries.py`, `${analysis}/assay.md`, `${analysis}/.assayrc`]) {
+    expect(await writeDecision({ tool_input: { file_path: path } }, env)).toBeUndefined()
+  }
+})
+
+test("Assay's own backend and venv are not Claude's to write (audit UP-1)", async () => {
+  const { dir, env } = await scratch()
+  const backend = join(dir, 'backend/0.1.0')
+  const withInstall = { ...env, ASSAY_BACKEND: `${backend}/`, ASSAY_VENV: join(dir, 'venv') }
+  for (const path of [`${backend}/out/hooks/write.mjs`, join(dir, 'venv/lib/python3.12/site-packages/analysis_sql.py')]) {
+    const said = await writeDecision({ tool_input: { file_path: path } }, withInstall)
+    expect(said?.hookSpecificOutput.permissionDecisionReason).toMatch('which only Assay writes')
+  }
+  expect(await writeDecision({ tool_input: { file_path: join(dir, 'backend-notes.md') } }, withInstall)).toBeUndefined()
+})
+
+test('a dangling symlink is followed to where writing through it would create the file (audit PI-6)', async () => {
+  const { root, analysis, env } = await scratch()
+  await mkdir(join(analysis, 'lib'), { recursive: true })
+  await mkdir(join(root, 'trusted'), { recursive: true })
+  await symlink(join(root, 'trusted/new.sql'), join(analysis, 'lib/x.sql'))
+  await symlink(join(analysis, 'lib/x.sql'), join(analysis, 'lib/y.sql'))
+  for (const name of ['x.sql', 'y.sql']) {
+    const said = await writeDecision({ tool_input: { file_path: `${analysis}/lib/${name}` } }, env)
+    expect(said?.hookSpecificOutput.permissionDecision).toBe('deny')
+  }
+  // A loop of links resolves to nothing guarded and does not hang.
+  await symlink(join(analysis, 'lib/b'), join(analysis, 'lib/a'))
+  await symlink(join(analysis, 'lib/a'), join(analysis, 'lib/b'))
+  expect(await writeDecision({ tool_input: { file_path: `${analysis}/lib/a` } }, env)).toBeUndefined()
 })
 
 test('promptDecision does nothing without an analysis and a root', async () => {

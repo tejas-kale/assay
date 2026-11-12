@@ -87,6 +87,24 @@ export function isGuarded(path: string, home: string, base: string): boolean {
   return [DICTIONARIES, TRUSTED].some(folder => full === `${root}/${folder}` || full.startsWith(`${root}/${folder}/`))
 }
 
+/** Whether `path` is `folder` or inside it, compared ignoring case (macOS). Both are absolute and normal. */
+const isWithin = (path: string, folder: string) => {
+  const [full, at] = [path.toLowerCase(), folder.toLowerCase()]
+  return full === at || full.startsWith(`${at}/`)
+}
+
+/**
+ * The folder `path` is in that only Assay writes, or undefined: the open analysis's `.assay/` (the app's requests and
+ * the server's state) and `queries/` (the runs, immutable), and the root's git (a commit there is what makes a
+ * calculation trusted), and `installed`: Assay's own backend and venv, whose hooks and helpers enforce these rules.
+ * Callers pass real paths.
+ */
+export function serverOwned(path: string, home: string, analysis: string, installed: readonly string[] = []): string | undefined {
+  const full = normalPath(path, '/')
+  const folders = [`${analysis}/.assay`, `${analysis}/queries`, `${analysis}/.git`, `${home}/.git`, ...installed]
+  return folders.find(folder => isWithin(full, folder))
+}
+
 /**
  * The `analyses/<slug>` folder `path` is in when it is another analysis than the open one; undefined otherwise.
  * Compared ignoring case (macOS). Callers pass real paths, so a symlink cannot hide the folder.
@@ -186,8 +204,11 @@ export type RunHeader = { name: string; args: Record<string, unknown>; commit: s
 export const runHeader = ({ name, args, commit }: RunHeader) =>
   [`-- trusted: ${name}`, `-- args: ${JSON.stringify(args)}`, `-- commit: ${commit}`].join('\n')
 
-/** The header of a saved query that is a trusted run, if it is one. */
-export function parseTrustedHeader(text: string): RunHeader | undefined {
+/** The header of a saved query that is a trusted run, if it is one: read from its leading comment lines only, as the server writes it. */
+export function parseTrustedHeader(saved: string): RunHeader | undefined {
+  const lines = saved.split('\n')
+  const end = lines.findIndex(line => !line.startsWith('--'))
+  const text = lines.slice(0, end < 0 ? lines.length : end).join('\n')
   const name = /^-- trusted: (\S+)\s*$/m.exec(text)?.[1]
   if (!name) return undefined
   const commit = /^-- commit: (\S*)\s*$/m.exec(text)?.[1] ?? ''

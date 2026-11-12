@@ -128,7 +128,9 @@ class SegmentReader {
 /** A command line split at `;`, `&&`, `||`, `|`, `&` and newlines into segments of words (quotes honoured), with heredoc bodies dropped. */
 const shellSegments = (command: string): Segment[] => new SegmentReader(withoutHeredocBodies(command)).read()
 
-const PYTHON_PROGRAM = /^(?:.*\/)?(?:python|python3(?:\.\d+)?|python2(?:\.\d+)?|ipython3?)$/
+// Ignoring case: macOS finds `Python` as `python`. `t` is the free-threaded build (python3.13t); py and pypy run code too.
+const PYTHON_NAMES = [/^i?python[23]?(?:\.\d+)?t?$/i, /^(?:pypy[23]?(?:\.\d+)?|py)$/i]
+const PYTHON_PROGRAM = { test: (word: string) => PYTHON_NAMES.some(name => name.test(word.split('/').at(-1) ?? '')) }
 // Each wrapper that runs the command after it, with its options that take a value as the next word.
 const WRAPPERS = new Map<string, ReadonlySet<string>>([
   ['env', new Set(['-u', '--unset', '-C', '--chdir'])],
@@ -142,11 +144,24 @@ const WRAPPERS = new Map<string, ReadonlySet<string>>([
   ['stdbuf', new Set(['-i', '--input', '-o', '--output', '-e', '--error'])],
   ['timeout', new Set(['-s', '--signal', '-k', '--kill-after'])],
   ['caffeinate', new Set(['-t', '-w'])],
+  ['flock', new Set(['-w', '--timeout', '-E', '--conflict-exit-code'])],
+  ['arch', new Set()],
+  ['watch', new Set(['-n', '--interval', '-d', '-q', '--equexit'])],
   ['xargs', new Set(['-a', '--arg-file', '-d', '--delimiter', '-E', '-I', '-L', '-n', '--max-args', '-P', '--max-procs', '-s', '--max-chars'])],
 ])
 // Wrappers whose first word after the options is theirs (a duration), not the command's.
-const TAKES_OPERAND = new Set(['timeout'])
-const SHELLS = new Set(['sh', 'bash', 'zsh'])
+const TAKES_OPERAND = new Set(['timeout', 'flock'])
+const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish'])
+// Words that start a compound command or negate one: what follows is the command.
+const KEYWORDS = new Set(['!', '{', 'if', 'then', 'else', 'elif', 'do', 'while', 'until'])
+// Standard modules that run the code they are given (`python -m runpy x.py`, `-m code`, `-m timeit 'stmt'`).
+const CODE_MODULES = new Set(['runpy', 'code', 'IPython', 'idlelib', 'pdb', 'trace', 'cProfile', 'profile', 'timeit', 'ipykernel'])
+// Programs whose subcommand runs a Python script or notebook.
+const SCRIPT_RUNNERS = new Map([
+  ['jupyter', new Set(['execute', 'run', 'nbconvert', 'console'])],
+  ['streamlit', new Set(['run'])],
+  ['marimo', new Set(['run', 'edit'])],
+])
 
 const INFO_FLAGS = new Set(['--version', '-V', '-VV', '--help', '-h'])
 
@@ -159,8 +174,9 @@ const isCodeFlag = (arg: string) =>
 
 /** Whether python with these arguments (after the program) runs code: a script, `-c`, `-`, stdin. `-m`, `--version` and the like do not. */
 function pythonRunsCode(args: readonly string[], isFed: boolean): boolean {
-  for (const arg of args) {
-    if (isModuleFlag(arg) || INFO_FLAGS.has(arg)) return false
+  for (const [i, arg] of args.entries()) {
+    if (isModuleFlag(arg)) return CODE_MODULES.has(arg === '-m' ? (args[i + 1] ?? '') : arg.slice(2))
+    if (INFO_FLAGS.has(arg)) return false
     if (isCodeFlag(arg) || arg === '-' || !arg.startsWith('-')) return true
   }
   return isFed
@@ -207,19 +223,44 @@ function withoutPrefixes(all: readonly string[]): readonly string[] {
   for (;;) {
     const first = words[0] ?? ''
     const wrapper = basename(first)
-    if (/^[A-Za-z_]\w*=/.test(first)) words = words.slice(1)
+    if (/^[A-Za-z_]\w*=/.test(first) || KEYWORDS.has(first)) words = words.slice(1)
+    else if (first.startsWith('(') || first.startsWith('{')) words = [first.slice(1), ...words.slice(1)].filter(Boolean)
     else if (WRAPPERS.has(wrapper)) words = afterWrapper(wrapper, words.slice(1))
     else return words
   }
 }
 
-/** Whether `bash -c '<script>'` (up to three shells deep) runs Python; undefined when the words are not that. */
-function shellScriptRunsPython(program: string, args: readonly string[], depth: number): boolean | undefined {
-  if (!SHELLS.has(basename(program)) || depth >= 3) return undefined
-  const script = args[args.indexOf('-c') + 1]
-  if (!args.includes('-c') || script === undefined) return undefined
-  return shellSegments(script).some(inner => segmentRunsPython(inner, depth + 1))
+/** Whether a script given as text runs Python, up to three levels deep. */
+const scriptRunsPython = (script: string, depth: number) => depth < 3 && shellSegments(script).some(inner => segmentRunsPython(inner, depth + 1))
+
+/**
+ * The script of `bash -c '<script>'` (`-lc`, `-c --` too) or `eval ...`, or of a quoted command a wrapper runs through
+ * a shell (`watch 'python x.py'`); undefined when the words are not that.
+ */
+function scriptOf(program: string, args: readonly string[]): string | undefined {
+  const name = basename(program)
+  if (name === 'eval') return args.join(' ')
+  if (/\s/.test(program)) return [program, ...args].join(' ')
+  if (!SHELLS.has(name)) return undefined
+  const flag = args.findIndex(arg => /^-[A-Za-z]+$/.test(arg) && arg.includes('c'))
+  if (flag < 0) return undefined
+  const rest = args.slice(flag + 1)
+  return rest[0] === '--' ? rest[1] : rest[0]
 }
+
+/** Whether `uv run` or `uvx` runs Python code: python given code, or a `.py` script. Undefined when the words are not that. */
+function uvRunsPython(program: string, args: readonly string[], isFed: boolean): boolean | undefined {
+  const name = basename(program)
+  if (name !== 'uvx' && !(name === 'uv' && (args.includes('run') || args.includes('tool')))) return undefined
+  const subcommand = args.includes('run') ? 'run' : 'tool'
+  const rest = name === 'uvx' ? args : args.slice(args.indexOf(subcommand) + 1)
+  if (rest.some(word => word.endsWith('.py'))) return true
+  const at = rest.findIndex(word => PYTHON_PROGRAM.test(word))
+  return at >= 0 && pythonRunsCode(rest.slice(at + 1), isFed)
+}
+
+/** Whether a program's subcommand runs a script or notebook (`jupyter execute`, `streamlit run`). */
+const runnerRunsScript = (program: string, args: readonly string[]) => SCRIPT_RUNNERS.get(basename(program))?.has(args[0] ?? '') ?? false
 
 /** The command `find ... -exec <command> ;` runs, or undefined when the words are not that. */
 function findExecWords(program: string, args: readonly string[]): string[] | undefined {
@@ -232,21 +273,36 @@ function segmentRunsPython(segment: Segment, depth = 0): boolean {
   const [program = '', ...args] = withoutPrefixes(segment.words)
   // xargs hands the program its input as arguments.
   const isFed = segment.isPiped || segment.hasRedirect || segment.words.some(word => basename(word) === 'xargs')
-  const viaShell = shellScriptRunsPython(program, args, depth)
-  if (viaShell !== undefined) return viaShell
+  const script = scriptOf(program, args)
+  if (script !== undefined) return scriptRunsPython(script, depth)
   const executed = findExecWords(program, args)
   if (executed) return segmentRunsPython({ words: executed, isPiped: false, hasRedirect: false }, depth + 1)
-  if ((program === 'uv' || program.endsWith('/uv')) && args.includes('run')) {
-    const rest = args.slice(args.indexOf('run') + 1)
-    const at = rest.findIndex(word => PYTHON_PROGRAM.test(word))
-    return at >= 0 && pythonRunsCode(rest.slice(at + 1), isFed)
-  }
-  return PYTHON_PROGRAM.test(program) && pythonRunsCode(args, isFed)
+  const viaUv = uvRunsPython(program, args, isFed)
+  if (viaUv !== undefined) return viaUv
+  return runnerRunsScript(program, args) || (PYTHON_PROGRAM.test(program) && pythonRunsCode(args, isFed))
 }
+
+/** The commands inside `$(...)`, `<(...)`, `>(...)` and backticks, innermost first, as text. */
+function substitutions(command: string): string[] {
+  const found: string[] = []
+  let text = command
+  for (let pass = 0; pass < 5; pass++) {
+    const inner = [...text.matchAll(/[$<>]\(([^()]*)\)|`([^`]*)`/g)]
+    if (inner.length === 0) break
+    for (const match of inner) found.push(match[1] ?? match[2] ?? '')
+    text = text.replace(/[$<>]\(([^()]*)\)|`([^`]*)`/g, ' x ')
+  }
+  return found
+}
+
+/** A program named by a variable or a substitution, in a command that mentions Python: `p=python; $p x.py`. */
+const runsNamedPython = (command: string) =>
+  /python|pypy/i.test(command) && shellSegments(command).some(segment => /^[$`]/.test(withoutPrefixes(segment.words)[0] ?? ''))
 
 /**
  * Whether a Bash command runs Python code: `python`, `python3`, `python3.N`, `ipython`, a path ending in
  * `/python` or `/python3`, or `uv run python`, given a script, `-c`, `-`, a heredoc or a redirect, or fed by a pipe.
  * `python -m ...` (pytest, pip), `python --version`, `pytest` and package commands are not.
  */
-export const bashRunsPython = (command: string) => shellSegments(command).some(segment => segmentRunsPython(segment))
+export const bashRunsPython = (command: string): boolean =>
+  shellSegments(command).some(segment => segmentRunsPython(segment)) || substitutions(command).some(inner => scriptRunsPython(inner, 0)) || runsNamedPython(command)

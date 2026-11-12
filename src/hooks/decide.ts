@@ -1,29 +1,47 @@
 // The hooks' decisions as plain functions of their input and environment, so tests can call them directly.
-import { realpathSync } from 'node:fs'
+import { lstatSync, readlinkSync, realpathSync } from 'node:fs'
 import { access, readFile, rename, rm } from 'node:fs/promises'
 import { basename, dirname, join, relative } from 'node:path'
 
 import { bashRunsPython, BASH_PYTHON_DENY } from '../core/bashGuard.ts'
 import { folderName, openAnalysis } from '../core/analyses.ts'
-import { isGuarded, normalPath, otherAnalysis, TRUST_TAB } from '../core/calculations.ts'
+import { isGuarded, normalPath, otherAnalysis, serverOwned, TRUST_TAB } from '../core/calculations.ts'
 import type { CalculationList } from '../core/calculations.ts'
 import { inRootNotes } from '../core/rootNotes.ts'
 import { stripTrailingSlashes } from '../core/slugText.ts'
-import { promptContext, runNotice, toolName } from '../core/rules.ts'
+import { promptContext, runNotice, toolName, userRuns } from '../core/rules.ts'
 import type { OpenAnalysis, UserRun } from '../core/rules.ts'
 import { deny, addContext, field, toolInput } from './io.ts'
 import type { Proc } from '../server/proc.ts'
 
 type Env = Record<string, string | undefined>
 
-/** A path with symlinks resolved as far as it exists: the deepest existing ancestor is resolved, the rest appended. */
+/** Where a dangling symlink points, or undefined when `path` is not a symlink. */
+function linkTarget(path: string): string | undefined {
+  try {
+    return lstatSync(path).isSymbolicLink() ? normalPath(readlinkSync(path), dirname(path)) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * A path with symlinks resolved as far as it exists: the deepest existing ancestor is resolved, the rest appended. A
+ * dangling symlink is followed to where it points, since writing through it creates that file.
+ */
 function realPath(path: string, base: string): string {
   let at = normalPath(path, base)
   const rest: string[] = []
-  for (;;) {
+  for (let hops = 0; ; ) {
     try {
       return join(realpathSync.native(at), ...rest)
     } catch {
+      const target = hops < 40 ? linkTarget(at) : undefined
+      if (target !== undefined) {
+        hops++
+        at = target
+        continue
+      }
       const parent = dirname(at)
       if (parent === at) return join(at, ...rest)
       rest.unshift(basename(at))
@@ -45,7 +63,7 @@ async function openRef(analysis: string, home: string): Promise<OpenAnalysis> {
   return { title: found?.title ?? fallback, folder: relative(home, analysis) }
 }
 
-/** PreToolUse on Write, Edit and NotebookEdit: never into the shared dictionaries/, trusted/ or notes/, nor into another analysis. */
+/** PreToolUse on Write, Edit, MultiEdit and NotebookEdit: never into the shared dictionaries/, trusted/ or notes/, the root's git, the analysis's .assay/ or queries/, nor into another analysis. */
 export async function writeDecision(input: Record<string, unknown>, env: Env) {
   const home = env.ASSAY_ROOT
   if (!home || !env.ASSAY_ANALYSIS) return undefined
@@ -60,6 +78,11 @@ export async function writeDecision(input: Record<string, unknown>, env: Env) {
   if (other) {
     const open = await openRef(env.ASSAY_ANALYSIS, root)
     return deny(`${other} is not the open analysis. The open analysis is "${open.title}" (${open.folder}/): write only there.`)
+  }
+  const installed = [env.ASSAY_BACKEND, env.ASSAY_VENV].filter((folder): folder is string => Boolean(folder)).map(folder => realPath(stripTrailingSlashes(folder), '/'))
+  const owned = serverOwned(real, realRoot, realPath(env.ASSAY_ANALYSIS, '/'), installed)
+  if (owned) {
+    return deny(`${path} is in ${owned}, which only Assay writes: runs come from ${toolName('sql')} and ${toolName('python')}, and the app's requests and the git history from the user. Never Write or Edit there.`)
   }
   if (inRootNotes(real, realRoot)) {
     return deny(`Root notes change only through the note tools: ${toolName('note')} writes one, ${toolName('revise_note')} changes or deletes one, ${toolName('link_notes')} records the ones this analysis found. Read ${path} to see it; never Write or Edit under notes/.`)
@@ -90,7 +113,7 @@ async function takeList(analysis: string, name: string): Promise<unknown[]> {
 }
 
 /** The user's runs the server recorded since the last prompt. */
-const takeUserRuns = async (analysis: string) => (await takeList(analysis, 'user-runs.json')) as UserRun[]
+const takeUserRuns = async (analysis: string): Promise<UserRun[]> => userRuns(await takeList(analysis, 'user-runs.json'))
 
 /** The step checks that failed since the last prompt, one line each. */
 const takeStepNotices = async (analysis: string) => (await takeList(analysis, 'step-notices.json')).filter((line): line is string => typeof line === 'string')

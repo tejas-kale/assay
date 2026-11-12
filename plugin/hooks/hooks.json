@@ -6,7 +6,7 @@
     ],
     "PreToolUse": [
       { "matcher": "Bash", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/../out/hooks/bash.mjs\"" }] },
-      { "matcher": "Write|Edit|NotebookEdit", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/../out/hooks/write.mjs\"" }] },
+      { "matcher": "Write|Edit|MultiEdit|NotebookEdit", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/../out/hooks/write.mjs\"" }] },
       { "matcher": "AskUserQuestion", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/../out/hooks/state.mjs\"" }] }
     ],
     "PostToolUse": [

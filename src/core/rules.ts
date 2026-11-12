@@ -3,7 +3,7 @@
 import type { CalculationList } from './calculations.ts'
 import { blockSignature, DICTIONARIES, PROPOSE_SKILL, TRUST_TAB, TRUSTED, signature } from './calculations.ts'
 import { queryLabel } from './pythonRuns.ts'
-import { shellQuote } from './text.ts'
+import { oneLine, shellQuote } from './text.ts'
 
 /**
  * The name Claude sees for one of the server's tools. Claude Code names a plugin's MCP tools
@@ -38,6 +38,27 @@ export const analysisRules = (python: string | undefined, folder: string) =>
 
 export type UserRun = { number: number; language: 'sql' | 'python'; from?: number; replay?: number }
 
+const isRunNumber = (value: unknown) => Number.isInteger(value) && (value as number) > 0
+const isOptionalRunNumber = (value: unknown) => value === undefined || isRunNumber(value)
+
+/**
+ * The entries of `.assay/user-runs.json` that are runs as the server records them; anything else is dropped, since
+ * the text goes into the prompt's context.
+ */
+export function userRuns(entries: readonly unknown[]): UserRun[] {
+  return entries.filter((entry): entry is UserRun => {
+    if (!entry || typeof entry !== 'object') return false
+    const run = entry as Record<string, unknown>
+    return isRunNumber(run['number']) && (run['language'] === 'sql' || run['language'] === 'python') && isOptionalRunNumber(run['from']) && isOptionalRunNumber(run['replay'])
+  })
+}
+
+/** Text from a file Claude or a query could have written, as one short line of the prompt's context. */
+export const contextLine = (text: string, max = 300) => {
+  const line = oneLine(text)
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line
+}
+
 function runOrigin(run: UserRun): string {
   if (run.replay) return ` (replay of ${queryLabel(run.replay)})`
   return run.from ? ` (from ${queryLabel(run.from)})` : ''
@@ -56,13 +77,13 @@ export function runNotice(runs: readonly UserRun[], folder: string, stepLines: r
     const kernel = runs.some(run => run.language === 'python') ? ' Their Python ran in your kernel, so its variables may have changed;' : ''
     lines.push(`Since your last turn the user ran: ${items.join(', ')}.${kernel} read ${folder}/queries/<file> when it matters.`.replace(/\. read/, '. Read'))
   }
-  if (stepLines.length > 0) lines.push('Step checks failed since your last turn:', ...stepLines.map(line => `- ${line}`))
+  if (stepLines.length > 0) lines.push('Step checks failed since your last turn:', ...stepLines.map(line => `- ${contextLine(line)}`))
   return lines.length > 0 ? lines.join('\n') : undefined
 }
 
 /** The line that says which analysis is open and where its files are, for a session that works from the root. */
 export const openAnalysisRule = ({ title, folder }: OpenAnalysis) =>
-  `Open analysis: "${title}", in ${folder}/. You work from the root: give paths from it. Its runs (queries/), ${folder}/lib/, ${folder}/tests/, ${folder}/lib/trusted/ and ${folder}/lib/dictionaries/ are there: write drafts, lib/ and tests/ only there.`
+  `Open analysis: "${contextLine(title, 120)}", in ${folder}/. You work from the root: give paths from it. Its runs (queries/), ${folder}/lib/, ${folder}/tests/, ${folder}/lib/trusted/ and ${folder}/lib/dictionaries/ are there: write drafts, lib/ and tests/ only there.`
 
 /** The rule on the dictionary and trusted calculations, in the shared folder `home`. */
 export const trustRules = (home: string) =>

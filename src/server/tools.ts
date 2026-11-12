@@ -1,5 +1,6 @@
 // Claude's tools: their specs (as the mod registered them) and what each does. `callTool` is the whole of a call:
 // the MCP layer in index.ts only passes the arguments in and the text out.
+import { withoutHeaderLines } from '../core/runs.ts'
 import type { Engine } from '../core/runs.ts'
 import { oneLine } from '../core/text.ts'
 import { closeThread, focusThread, orderThreads, parkThread } from '../core/threads.ts'
@@ -184,13 +185,13 @@ export async function callTool(assay: Assay, name: string, args: Args): Promise<
 }
 
 function sqlTool(assay: Assay, args: Args): Promise<string> {
-  const sql = field(args, 'sql')
+  const sql = withoutHeaderLines(field(args, 'sql'), 'sql')
   const engine: Engine = field(args, 'engine') === 'postgres' ? 'postgres' : 'databricks'
   return sql.trim() ? runClaudeSql(assay, sql, field(args, 'slug'), engine) : Promise.resolve('Give the SQL to run.')
 }
 
 async function pythonTool(assay: Assay, args: Args): Promise<string> {
-  const code = field(args, 'code')
+  const code = withoutHeaderLines(field(args, 'code'), 'python')
   if (!code.trim()) return 'Give the Python code to run.'
   return (await runPython(assay, code, field(args, 'slug'), '')).text
 }

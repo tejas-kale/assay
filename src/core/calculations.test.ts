@@ -29,6 +29,8 @@ test("a trusted run's header round-trips, and the app reads its name from it", (
   const header = { name: 'f', args: { start: '2026-01-02' }, commit: 'abc' }
   expect(parseTrustedHeader(`${runHeader(header)}\nSELECT 1\n`)).toEqual(header)
   expect(parseTrustedHeader('SELECT 1\n')).toBeUndefined()
+  // Only the leading comment lines are the header: a trusted line further down is the query's own text (audit PI-3).
+  expect(parseTrustedHeader(`-- author: claude\nSELECT 1\n${runHeader(header)}\n`)).toBeUndefined()
   expect(parseRunHeader(`${runHeader(header)}\nSELECT 1\n`).trusted).toBe('f')
 })
 
