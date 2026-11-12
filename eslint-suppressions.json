@@ -626,35 +626,6 @@
       "count": 2
     }
   },
-  "src/renderer/components/FilesTab.tsx": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 5
-    },
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 3
-    },
-    "@typescript-eslint/use-unknown-in-catch-callback-variable": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "react-hooks/purity": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    },
-    "sonarjs/no-nested-conditional": {
-      "count": 2
-    },
-    "sonarjs/no-redundant-optional": {
-      "count": 1
-    },
-    "sonarjs/prefer-read-only-props": {
-      "count": 1
-    }
-  },
   "src/renderer/components/KeyHints.tsx": {
     "@typescript-eslint/no-confusing-void-expression": {
       "count": 1
@@ -715,57 +686,6 @@
       "count": 4
     }
   },
-  "src/renderer/components/OverviewTab.tsx": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 2
-    },
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 2
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    },
-    "sonarjs/no-nested-conditional": {
-      "count": 4
-    },
-    "sonarjs/prefer-read-only-props": {
-      "count": 2
-    }
-  },
-  "src/renderer/components/Palette.tsx": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "sonarjs/prefer-read-only-props": {
-      "count": 1
-    }
-  },
-  "src/renderer/components/Picker.tsx": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 3
-    },
-    "@typescript-eslint/use-unknown-in-catch-callback-variable": {
-      "count": 3
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "react-hooks/purity": {
-      "count": 1
-    },
-    "sonarjs/prefer-read-only-props": {
-      "count": 1
-    }
-  },
   "src/renderer/components/Preview.tsx": {
     "@typescript-eslint/no-confusing-void-expression": {
       "count": 3
@@ -795,80 +715,6 @@
       "count": 1
     }
   },
-  "src/renderer/components/RenameDialog.tsx": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 3
-    },
-    "@typescript-eslint/use-unknown-in-catch-callback-variable": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "sonarjs/prefer-read-only-props": {
-      "count": 1
-    }
-  },
-  "src/renderer/components/Search.tsx": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 6
-    },
-    "@typescript-eslint/no-unnecessary-template-expression": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    },
-    "sonarjs/prefer-read-only-props": {
-      "count": 1
-    }
-  },
-  "src/renderer/components/Settings.tsx": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 2
-    },
-    "@typescript-eslint/use-unknown-in-catch-callback-variable": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "sonarjs/prefer-read-only-props": {
-      "count": 1
-    }
-  },
-  "src/renderer/components/StepsTab.tsx": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 5
-    },
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 2
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "react-hooks/exhaustive-deps": {
-      "count": 2
-    },
-    "react-hooks/refs": {
-      "count": 1
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 2
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    },
-    "sonarjs/no-nested-conditional": {
-      "count": 2
-    },
-    "sonarjs/prefer-read-only-props": {
-      "count": 2
-    }
-  },
   "src/renderer/components/Strip.tsx": {
     "@typescript-eslint/no-confusing-void-expression": {
       "count": 2
@@ -894,55 +740,6 @@
       "count": 1
     },
     "sonarjs/no-misleading-array-reverse": {
-      "count": 1
-    },
-    "sonarjs/prefer-read-only-props": {
-      "count": 1
-    }
-  },
-  "src/renderer/components/ThreadsTab.tsx": {
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 2
-    },
-    "max-lines-per-function": {
-      "count": 2
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    },
-    "sonarjs/no-nested-conditional": {
-      "count": 1
-    },
-    "sonarjs/no-nested-template-literals": {
-      "count": 1
-    },
-    "sonarjs/no-redundant-optional": {
-      "count": 1
-    },
-    "sonarjs/prefer-read-only-props": {
-      "count": 1
-    }
-  },
-  "src/renderer/components/TrustTab.tsx": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 8
-    },
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    },
-    "react-hooks/purity": {
-      "count": 1
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
       "count": 1
     },
     "sonarjs/prefer-read-only-props": {

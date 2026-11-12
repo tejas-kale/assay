@@ -1,163 +1,231 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent } from 'react'
+import type { Dispatch, KeyboardEvent, SetStateAction } from 'react'
 
 import { formatAge } from '../../core/age.ts'
+import { openedMessage, previewKey, splitPath, stepImage, formatSize, chipLabel } from '../../core/filesView.ts'
 import { isMermaidFile } from '../../core/files.ts'
-import { THEMES } from '../../core/theme.ts'
-import { currentMode } from '../appearance.ts'
-import { renderMermaid } from './Mermaid.tsx'
 import { INITIAL, filterItems, listNav } from '../../core/listNav.ts'
 import type { ListNavState } from '../../core/listNav.ts'
+import type { PreviewSource } from '../../core/search.ts'
+import { THEMES } from '../../core/theme.ts'
 import type { FileEntry } from '../../shared/ipc.ts'
+import { currentMode } from '../appearance.ts'
 import { NAV_KEYS, SearchLine, isPaneKey, useReveal } from './common.tsx'
 import type { Reveal } from './common.tsx'
+import { renderMermaid } from './Mermaid.tsx'
 import { PreviewPopup } from './Preview.tsx'
-import type { PreviewSource } from '../../core/search.ts'
 
-const size = (bytes: number) =>
-  bytes < 1024 ? `${bytes} B` : bytes < 1024 ** 2 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`
+type Props = Readonly<{ refreshKey: unknown; reveal?: Reveal; onRevealed: () => void }>
+type ImageShown = { path: string; dataUrl: string }
+type Say = (text: string | undefined) => void
 
-const KIND_LABEL = { text: 'nvim', image: 'preview', other: 'open' } as const
-const chipLabel = (file: FileEntry) => (file.kind === 'text' && isMermaidFile(file.path) ? 'browser' : KIND_LABEL[file.kind])
+/** The file list, read again on every state push (a new query, a note) so new files show without a refresh. */
+function useFileList(refreshKey: unknown, say: Say) {
+  const [listing, setListing] = useState<{ files: FileEntry[]; loadedAt: number }>()
+  const load = useCallback(() => {
+    void window.app.files.list().then(
+      files => {
+        setListing({ files, loadedAt: Date.now() })
+      },
+      (err: unknown) => {
+        say(String(err))
+      },
+    )
+  }, [say])
+  useEffect(load, [load, refreshKey])
+  return { files: listing?.files, loadedAt: listing?.loadedAt ?? 0, load }
+}
+
+/** A Mermaid file: read it, draw it here, and open the chart as a page in the browser. */
+async function openChart(file: FileEntry, say: Say) {
+  const read = await window.app.files.preview(file.path)
+  if (!read.ok || read.kind !== 'text') {
+    say(read.ok ? 'Not a text file' : read.message)
+    return
+  }
+  const mode = currentMode()
+  const drawn = await renderMermaid(read.text, mode)
+  if ('error' in drawn) {
+    say(`Mermaid could not draw ${file.path}: ${drawn.error.split('\n')[0] ?? ''}`)
+    return
+  }
+  const { bg, text } = THEMES[mode].ui
+  const result = await window.app.files.openChart(file.path, drawn.svg, { bg, text })
+  say(result.ok ? openedMessage('browser', file.path) : result.message)
+}
+
+/** Opens a file as its chip says; an image comes back through `showImage`. */
+function openFile(file: FileEntry, say: Say, showImage: (image: ImageShown) => void) {
+  say(undefined)
+  if (file.kind === 'text' && isMermaidFile(file.path)) {
+    void openChart(file, say)
+    return
+  }
+  void window.app.files.open(file.path).then(result => {
+    if (!result.ok) say(result.message)
+    else if (result.how === 'image') showImage({ path: file.path, dataUrl: result.dataUrl })
+    else say(openedMessage(result.how, file.path))
+  })
+}
+
+function FileRow(props: Readonly<{ file: FileEntry; selected: boolean; loadedAt: number; onSelect: () => void; onOpen: () => void }>) {
+  const { file, selected } = props
+  const { folder, name } = splitPath(file.path)
+  return (
+    <li
+      role="option"
+      aria-selected={selected}
+      className={selected ? 'row sel' : 'row'}
+      onMouseDown={e => { e.preventDefault() }}
+      onClick={props.onSelect}
+      onDoubleClick={props.onOpen}
+    >
+      <span className="grow file-path">
+        {folder !== '' && <span className="dim">{folder}</span>}
+        {name}
+      </span>
+      <span className="dim">{formatSize(file.size)}</span>
+      <span className="dim file-age">{formatAge(file.mtimeMs, props.loadedAt)}</span>
+      <span className={`chip chip-${file.kind}`}>{chipLabel(file)}</span>
+    </li>
+  )
+}
+
+/** A search hit on a file selects it, and closes an image preview. */
+function useRevealedFile(args: { reveal: Reveal | undefined; files: FileEntry[] | undefined; setPreview: (shown: undefined) => void; setNav: Dispatch<SetStateAction<ListNavState>>; onRevealed: () => void }) {
+  const { setPreview, setNav } = args
+  useReveal(
+    args.reveal,
+    args.files,
+    (file, target) => target.kind === 'file' && target.path === file.path,
+    index => {
+      setPreview(undefined)
+      setNav({ selected: index, search: undefined })
+    },
+    args.onRevealed,
+  )
+}
+
+type Nav = { nav: ListNavState; setNav: Dispatch<SetStateAction<ListNavState>> }
+type KeyArgs = Nav & {
+  visible: FileEntry[]
+  selected: FileEntry | undefined
+  preview: ImageShown | undefined
+  setPopup: (source: PreviewSource) => void
+  open: (file: FileEntry) => void
+  load: () => void
+  closePreview: () => void
+}
+
+/** Keys: while an image shows, close it or step among the images; otherwise the list's keys, Tab, `r` and Enter. */
+function useFilesKeys(args: KeyArgs) {
+  const { nav, setNav, visible, selected, preview, open } = args
+
+  function stepPreview(shown: ImageShown, delta: 1 | -1) {
+    const next = stepImage(visible.filter(f => f.kind === 'image'), shown.path, delta)
+    if (!next) return
+    setNav(s => ({ ...s, selected: visible.indexOf(next) }))
+    open(next)
+  }
+
+  function onPreviewKey(e: KeyboardEvent, shown: ImageShown) {
+    const key = previewKey(e.key)
+    if (key === undefined) return
+    if (key === 'close') args.closePreview()
+    else stepPreview(shown, key === 'next' ? 1 : -1)
+    e.preventDefault()
+  }
+
+  return (e: KeyboardEvent) => {
+    if (!isPaneKey(e)) return
+    if (preview) {
+      onPreviewKey(e, preview)
+      return
+    }
+    if (e.key === 'Tab' && !e.shiftKey) {
+      e.preventDefault()
+      if (selected) args.setPopup({ type: 'path', path: selected.path })
+      return
+    }
+    if (!nav.search?.active && e.key === 'r') {
+      e.preventDefault()
+      args.load()
+      return
+    }
+    const next = listNav(nav, e.key, visible.length)
+    if (nav.search?.active || NAV_KEYS.has(e.key)) e.preventDefault()
+    setNav(next.state)
+    if (next.effect?.type === 'open' && selected) open(selected)
+  }
+}
+
+function FileList(props: Readonly<{ files: FileEntry[] | undefined; visible: FileEntry[]; search: ListNavState['search']; selectedIndex: number; loadedAt: number; onSelect: (i: number) => void; onOpen: (file: FileEntry) => void }>) {
+  const { files } = props
+  return (
+    <>
+      <SearchLine search={props.search} />
+      {files === undefined && <div className="empty">Reading the folder…</div>}
+      {files?.length === 0 && <div className="empty">No files.</div>}
+      <ul role="listbox" aria-label="Files">
+        {props.visible.map((file, i) => (
+          <FileRow
+            key={file.path}
+            file={file}
+            selected={i === props.selectedIndex}
+            loadedAt={props.loadedAt}
+            onSelect={() => { props.onSelect(i) }}
+            onOpen={() => { props.onOpen(file) }}
+          />
+        ))}
+      </ul>
+    </>
+  )
+}
+
+function ImagePreview({ preview }: Readonly<{ preview: ImageShown }>) {
+  return (
+    <div className="image-preview">
+      <div className="subhead">
+        {preview.path} <span className="dim">(Esc closes, j/k next image)</span>
+      </div>
+      <img src={preview.dataUrl} alt={preview.path} />
+    </div>
+  )
+}
 
 /**
  * Every file in the analysis, newest first. `/` searches, Enter opens: text in Neovim (a new
  * Ghostty window), images as a preview here, anything else in its default app. `r` refreshes.
  * Tab opens the selected file in a pop-up preview, with the cursor in it.
  */
-export function FilesTab({ refreshKey, reveal, onRevealed }: { refreshKey: unknown; reveal?: Reveal | undefined; onRevealed: () => void }) {
-  const [files, setFiles] = useState<FileEntry[]>()
+export function FilesTab({ refreshKey, reveal, onRevealed }: Props) {
   const [nav, setNav] = useState<ListNavState>(INITIAL)
   const [message, setMessage] = useState<string>()
-  const [preview, setPreview] = useState<{ path: string; dataUrl: string }>()
+  const [preview, setPreview] = useState<ImageShown>()
   const [popup, setPopup] = useState<PreviewSource>()
   const rootRef = useRef<HTMLDivElement>(null)
-
-  const load = useCallback(() => {
-    void window.app.files.list().then(setFiles, err => setMessage(String(err)))
-  }, [])
-  // Again on every state push (a new query, a note), so new files show without a refresh.
-  useEffect(load, [load, refreshKey])
+  const { files, loadedAt, load } = useFileList(refreshKey, setMessage)
 
   const visible = filterItems(files ?? [], nav, f => f.path)
   const selectedIndex = Math.max(0, Math.min(nav.selected, visible.length - 1))
-  const selected = visible[selectedIndex]
-  const images = visible.filter(f => f.kind === 'image')
-
-  useReveal(
-    reveal,
-    files,
-    (file, target) => target.kind === 'file' && target.path === file.path,
-    index => {
-      setPreview(undefined)
-      setNav({ selected: index, search: undefined })
-    },
-    onRevealed,
-  )
-
+  useRevealedFile({ reveal, files, setPreview, setNav, onRevealed })
   useEffect(() => {
     rootRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
   }, [selectedIndex, visible.length])
 
-  /** A Mermaid file: read it, draw it here, and open the chart as a page in the browser. */
-  const openChart = async (file: FileEntry) => {
-    const read = await window.app.files.preview(file.path)
-    if (!read.ok || read.kind !== 'text') return setMessage(read.ok ? 'Not a text file' : read.message)
-    const mode = currentMode()
-    const drawn = await renderMermaid(read.text, mode)
-    if ('error' in drawn) return setMessage(`Mermaid could not draw ${file.path}: ${drawn.error.split('\n')[0]}`)
-    const { bg, text } = THEMES[mode].ui
-    const result = await window.app.files.openChart(file.path, drawn.svg, { bg, text })
-    setMessage(result.ok ? `Opened the chart of ${file.path} in your browser` : result.message)
-  }
-
-  const openFile = (file: FileEntry) => {
-    setMessage(undefined)
-    if (file.kind === 'text' && isMermaidFile(file.path)) {
-      void openChart(file)
-      return
-    }
-    void window.app.files.open(file.path).then(result => {
-      if (!result.ok) setMessage(result.message)
-      else if (result.how === 'image') setPreview({ path: file.path, dataUrl: result.dataUrl })
-      else setMessage(result.how === 'nvim' ? `Opened ${file.path} in Neovim` : result.how === 'browser' ? `Opened the chart of ${file.path} in your browser` : `Opened ${file.path}`)
-    })
-  }
-
-  const step = (delta: number) => {
-    if (!preview) return
-    const at = images.findIndex(f => f.path === preview.path)
-    const next = images[(at + delta + images.length) % images.length]
-    if (!next || next.path === preview.path) return
-    setNav(s => ({ ...s, selected: visible.indexOf(next) }))
-    openFile(next)
-  }
-
-  function onKeyDown(e: KeyboardEvent) {
-    if (!isPaneKey(e)) return
-    if (preview) {
-      if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') setPreview(undefined)
-      else if (e.key === 'j' || e.key === 'l' || e.key === 'ArrowRight' || e.key === 'ArrowDown') step(1)
-      else if (e.key === 'k' || e.key === 'h' || e.key === 'ArrowLeft' || e.key === 'ArrowUp') step(-1)
-      else return
-      e.preventDefault()
-      return
-    }
-    if (e.key === 'Tab' && !e.shiftKey) {
-      e.preventDefault()
-      if (selected) setPopup({ type: 'path', path: selected.path })
-      return
-    }
-    if (!nav.search?.active && e.key === 'r') {
-      e.preventDefault()
-      load()
-      return
-    }
-    const next = listNav(nav, e.key, visible.length)
-    if (nav.search?.active || NAV_KEYS.has(e.key)) e.preventDefault()
-    setNav(next.state)
-    if (next.effect?.type === 'open' && selected) openFile(selected)
+  const open = (file: FileEntry) => { openFile(file, setMessage, setPreview) }
+  const onKeyDown = useFilesKeys({ nav, setNav, visible, selected: visible[selectedIndex], preview, setPopup, open, load, closePreview: () => { setPreview(undefined) } })
+  const select = (i: number) => {
+    setNav(s => ({ ...s, selected: i }))
+    rootRef.current?.focus()
   }
 
   return (
     <div className="list" tabIndex={-1} ref={rootRef} data-focus-target onKeyDown={onKeyDown}>
       {preview ? (
-        <div className="image-preview">
-          <div className="subhead">
-            {preview.path} <span className="dim">(Esc closes, j/k next image)</span>
-          </div>
-          <img src={preview.dataUrl} alt={preview.path} />
-        </div>
+        <ImagePreview preview={preview} />
       ) : (
-        <>
-          <SearchLine search={nav.search} />
-          {files === undefined && <div className="empty">Reading the folder…</div>}
-          {files?.length === 0 && <div className="empty">No files.</div>}
-          <ul role="listbox" aria-label="Files">
-            {visible.map((file, i) => (
-              <li
-                key={file.path}
-                role="option"
-                aria-selected={i === selectedIndex}
-                className={i === selectedIndex ? 'row sel' : 'row'}
-                onMouseDown={e => e.preventDefault()}
-                onClick={() => {
-                  setNav(s => ({ ...s, selected: i }))
-                  rootRef.current?.focus()
-                }}
-                onDoubleClick={() => openFile(file)}
-              >
-                <span className="grow file-path">
-                  {file.path.includes('/') && <span className="dim">{file.path.slice(0, file.path.lastIndexOf('/') + 1)}</span>}
-                  {file.path.slice(file.path.lastIndexOf('/') + 1)}
-                </span>
-                <span className="dim">{size(file.size)}</span>
-                <span className="dim file-age">{formatAge(file.mtimeMs, Date.now())}</span>
-                <span className={`chip chip-${file.kind}`}>{chipLabel(file)}</span>
-              </li>
-            ))}
-          </ul>
-        </>
+        <FileList files={files} visible={visible} search={nav.search} selectedIndex={selectedIndex} loadedAt={loadedAt} onSelect={select} onOpen={open} />
       )}
       {popup && (
         <PreviewPopup
