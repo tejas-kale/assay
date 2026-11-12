@@ -182,8 +182,18 @@ goes through the server into a numbered, immutable run in `queries/`.
 
 - **Security review first.** The mod writes request files from inside Claude Code's process, which only the app does
   today. Read `docs/developer/security.md` before building, record the mod as a request writer under PI-1, and confirm
-  that hooks still stop Claude writing into `.assay/`.
+  that hooks still stop Claude's file-edit tools writing into `.assay/`.
 - **Spike first.** Confirm in Ghostty that `Image` draws plots, that highlighting suits the Ayu themes, and that a
   `ToolUse` hook sees the `mcp__assay__` result text the row model needs.
 - An earlier analysis mod existed outside this repo; its model tests were ported into the core, and its pane was
   retired when the app took over. This work brings a mod back for the conversation alone.
+
+## Spike findings (2026-11-12)
+
+The mounted API spike and security review are recorded in `specs/notes/rich-conversation-spike.md`.
+`ToolUse.output` accepts supplied MCP text blocks in mounted tests. Per the documentation and declaration,
+`Image` is terminal-only, so desktop needs plot filenames; unsupported terminals show the image's `alt` text.
+These image behaviours remain unverified live. The mod filesystem's write API is not atomic;
+request submission must invoke a bundled safe writer. The inspected `ToolUse` contract has no `isExpanded` prop,
+so ctrl+o must preserve the engine row without assuming such a flag. Live Ghostty image/theme and MCP-result checks
+remain unverified; the mounted test does not establish those visual acceptance criteria.
