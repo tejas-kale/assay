@@ -43,8 +43,38 @@ test('a Python program given code is refused, however the program is named or wr
   ])
 })
 
-test('a wrapper with a flag that takes a value is not seen through, and uv run python with no arguments runs no code', () => {
-  expectDecisions(false, ['nice -n 5 python x.py', 'uv run ipython'])
+test('uv run python with no arguments runs no code', () => {
+  expectDecisions(false, ['uv run ipython'])
+})
+
+test('a wrapper is seen through past its options that take a value (audit finding PI-1)', () => {
+  expectDecisions(true, [
+    'nice -n 5 python x.py',
+    'nice --adjustment 5 python x.py',
+    'timeout -s KILL 5 python x.py',
+    'timeout --signal KILL -k 1 5 python x.py',
+    'timeout --signal=KILL 5 python x.py',
+    'env -u HOME python x.py',
+    'env -C /tmp python x.py',
+    'env -- python x.py',
+    "env -S 'python x.py'",
+    "env -S'python x.py'",
+    "env --split-string='python -c 1'",
+    'sudo -u root python x.py',
+    'time -f %e python x.py',
+    'stdbuf -o L python x.py',
+    'exec -a name python x.py',
+    'caffeinate -t 60 python x.py',
+    'ls *.py | xargs python',
+    'ls | xargs -n 1 python',
+    'xargs -a list.txt python',
+    'find . -name x.py -exec python {} \\;',
+    'find . -execdir python3 {} +',
+  ])
+})
+
+test('a wrapper running something else, or env -S without python, passes', () => {
+  expectDecisions(false, ['nice -n 5 ls', "env -S 'ls -l'", 'env -S', 'xargs rm', 'find . -name "*.py"', 'find . -exec cat {} \\;'])
 })
 
 test('python run through uv or a shell is refused too', () => {

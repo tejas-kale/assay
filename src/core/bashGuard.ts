@@ -129,7 +129,23 @@ class SegmentReader {
 const shellSegments = (command: string): Segment[] => new SegmentReader(withoutHeredocBodies(command)).read()
 
 const PYTHON_PROGRAM = /^(?:.*\/)?(?:python|python3(?:\.\d+)?|python2(?:\.\d+)?|ipython3?)$/
-const WRAPPERS = new Set(['env', 'time', 'nohup', 'exec', 'sudo', 'command', 'nice', 'builtin', 'stdbuf'])
+// Each wrapper that runs the command after it, with its options that take a value as the next word.
+const WRAPPERS = new Map<string, ReadonlySet<string>>([
+  ['env', new Set(['-u', '--unset', '-C', '--chdir'])],
+  ['time', new Set(['-f', '--format', '-o', '--output'])],
+  ['nohup', new Set()],
+  ['exec', new Set(['-a'])],
+  ['sudo', new Set(['-u', '--user', '-g', '--group', '-C', '--close-from', '-D', '--chdir', '-h', '--host', '-p', '--prompt', '-r', '--role', '-t', '--type', '-U', '--other-user', '-T', '--command-timeout'])],
+  ['command', new Set()],
+  ['builtin', new Set()],
+  ['nice', new Set(['-n', '--adjustment'])],
+  ['stdbuf', new Set(['-i', '--input', '-o', '--output', '-e', '--error'])],
+  ['timeout', new Set(['-s', '--signal', '-k', '--kill-after'])],
+  ['caffeinate', new Set(['-t', '-w'])],
+  ['xargs', new Set(['-a', '--arg-file', '-d', '--delimiter', '-E', '-I', '-L', '-n', '--max-args', '-P', '--max-procs', '-s', '--max-chars'])],
+])
+// Wrappers whose first word after the options is theirs (a duration), not the command's.
+const TAKES_OPERAND = new Set(['timeout'])
 const SHELLS = new Set(['sh', 'bash', 'zsh'])
 
 const INFO_FLAGS = new Set(['--version', '-V', '-VV', '--help', '-h'])
@@ -152,16 +168,47 @@ function pythonRunsCode(args: readonly string[], isFed: boolean): boolean {
 
 const basename = (path: string) => path.split('/').at(-1) ?? ''
 
-/** The words after leading VAR=value words and wrappers (env, time, sudo, ...) and their flags. */
+/** The string of `--split-string=...` or `-S...`, or undefined. */
+function attachedSplitString(option: string): string | undefined {
+  if (option.startsWith('--split-string=')) return option.slice('--split-string='.length)
+  return /^-S./.test(option) ? option.slice(2) : undefined
+}
+
+/** `env -S 'python x.py'` runs the words of its string: the words to look at then, or undefined for another option. */
+function splitStringAt(words: readonly string[], at: number): readonly string[] | undefined {
+  const option = words[at] ?? ''
+  const separate = option === '-S' || option === '--split-string'
+  const attached = attachedSplitString(option)
+  if (!separate && attached === undefined) return undefined
+  const text = separate ? (words[at + 1] ?? '') : (attached ?? '')
+  return [...(shellSegments(text)[0]?.words ?? []), ...words.slice(separate ? at + 2 : at + 1)]
+}
+
+/** The words after a wrapper's own options (and its operand, for `timeout`). */
+function afterWrapper(wrapper: string, words: readonly string[]): readonly string[] {
+  const takesValue = WRAPPERS.get(wrapper) ?? new Set<string>()
+  let at = 0
+  while (words[at]?.startsWith('-')) {
+    const option = words[at] ?? ''
+    if (option === '--') {
+      at++
+      break
+    }
+    const split = wrapper === 'env' ? splitStringAt(words, at) : undefined
+    if (split) return split
+    at += takesValue.has(option) ? 2 : 1
+  }
+  return words.slice(TAKES_OPERAND.has(wrapper) ? at + 1 : at)
+}
+
+/** The words after leading VAR=value words and wrappers (env, time, sudo, nice, timeout, ...) and their options. */
 function withoutPrefixes(all: readonly string[]): readonly string[] {
   let words = all
   for (;;) {
     const first = words[0] ?? ''
+    const wrapper = basename(first)
     if (/^[A-Za-z_]\w*=/.test(first)) words = words.slice(1)
-    else if (WRAPPERS.has(basename(first))) {
-      words = words.slice(1)
-      while (words[0]?.startsWith('-')) words = words.slice(1)
-    } else if (first === 'timeout' || first.endsWith('/timeout')) words = words.slice(2)
+    else if (WRAPPERS.has(wrapper)) words = afterWrapper(wrapper, words.slice(1))
     else return words
   }
 }
@@ -174,11 +221,21 @@ function shellScriptRunsPython(program: string, args: readonly string[], depth: 
   return shellSegments(script).some(inner => segmentRunsPython(inner, depth + 1))
 }
 
+/** The command `find ... -exec <command> ;` runs, or undefined when the words are not that. */
+function findExecWords(program: string, args: readonly string[]): string[] | undefined {
+  if (basename(program) !== 'find') return undefined
+  const at = args.findIndex(arg => arg === '-exec' || arg === '-execdir' || arg === '-ok' || arg === '-okdir')
+  return at < 0 ? undefined : args.slice(at + 1)
+}
+
 function segmentRunsPython(segment: Segment, depth = 0): boolean {
   const [program = '', ...args] = withoutPrefixes(segment.words)
-  const isFed = segment.isPiped || segment.hasRedirect
+  // xargs hands the program its input as arguments.
+  const isFed = segment.isPiped || segment.hasRedirect || segment.words.some(word => basename(word) === 'xargs')
   const viaShell = shellScriptRunsPython(program, args, depth)
   if (viaShell !== undefined) return viaShell
+  const executed = findExecWords(program, args)
+  if (executed) return segmentRunsPython({ words: executed, isPiped: false, hasRedirect: false }, depth + 1)
   if ((program === 'uv' || program.endsWith('/uv')) && args.includes('run')) {
     const rest = args.slice(args.indexOf('run') + 1)
     const at = rest.findIndex(word => PYTHON_PROGRAM.test(word))
