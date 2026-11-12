@@ -191,8 +191,8 @@ export async function promptDecision(env: Env, proc: Proc) {
   const venvPython = env.ASSAY_VENV ? `${env.ASSAY_VENV}/bin/python` : undefined
   const [runs, stepLines, python, list] = await Promise.all([takeUserRuns(analysis), takeStepNotices(analysis), kernelPython(analysis), calculations(proc, venvPython, analysis, home)])
   const open = await openRef(analysis, home)
-  const notice = runNotice(runs, open.folder, stepLines)
+  const notice = runNotice(runs, open.folder)
   // The kernel's python, else Assay's venv's when it is built.
   const named = python ?? (venvPython && (await access(venvPython).then(() => venvPython, () => undefined)))
-  return addContext(promptContext({ python: named, ...(notice ? { notice } : {}), home, list, open }))
+  return addContext(promptContext({ python: named, ...(notice ? { notice } : {}), stepLines, home, list, open }))
 }

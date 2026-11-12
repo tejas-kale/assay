@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import { expect } from '../testing/expect.ts'
 import { blockSignature, checkArgs, dictionaryText, draftHint, isGuarded, newSeen, normalPath, otherAnalysis, parseTrustedHeader, runHeader, signature, splitCheckEvents } from './calculations.ts'
 import type { Param } from './calculations.ts'
-import { calculationRules } from './rules.ts'
+import { calculationData, calculationRules } from './rules.ts'
 import { parseRunHeader } from './runs.ts'
 
 const PARAMS: Param[] = [
@@ -79,12 +79,13 @@ test('every pointer to approval names the Trust tab, never /an trust', () => {
 test('blocks are listed apart, with their contract', () => {
   const block = { name: 'entry_sessions', kind: 'sql' as const, file: 'entry_sessions.sql', description: 'Entry sessions.', parameters: [{ name: 'start', type: 'date' as const, required: true }], commit: 'abc', dirty: false, block: { grain: ['session_id'], columns: ['session_id', 'buyer'] } }
   const calc = { ...block, name: 'completes', description: 'Completes.', block: undefined }
-  const text = calculationRules({ calculations: [block, { ...calc }], problems: [] })
-  expect(text).toContain('Trusted blocks (params -> grain: columns):')
-  expect(text).toContain('include blocks and definitions by name')
-  expect(text).toContain('- entry_sessions(start: date) -> grain session_id: session_id, buyer: Entry sessions.')
-  expect(text).toContain('- completes(start: date): Completes.')
-  expect(text).not.toContain('- entry_sessions(start: date): Entry sessions.')
+  const list = { calculations: [block, { ...calc }], problems: [] }
+  expect(calculationRules(list)).toContain('include blocks and definitions by name')
+  expect(calculationData(list)).toEqual([
+    { label: 'trusted blocks (params -> grain: columns)', lines: ['- entry_sessions(start: date) -> grain session_id: session_id, buyer: Entry sessions.'] },
+    { label: 'dictionary definitions (<table>:<name>)', lines: [] },
+    { label: 'trusted calculations', lines: ['- completes(start: date): Completes.'] },
+  ])
 })
 
 test('a missing entry is hinted by what the name can say: a full name drafts, a short one asks for its catalog', () => {

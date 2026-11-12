@@ -228,14 +228,14 @@ test('promptDecision takes the recorded runs and step notices once, ignoring fil
   await writeFile(notices, JSON.stringify(['q001 step a: bad grain', 4, null]))
   const said = context(await promptDecision(env, noProc))
   expect(said).toContain('Since your last turn the user ran: 002 sql.')
-  expect(said).toContain('Step checks failed since your last turn:\n- q001 step a: bad grain')
+  expect(said).toContain('[step checks failed since your last turn]\n- q001 step a: bad grain')
   expect(await readFile(runs, 'utf8').catch(() => 'gone')).toBe('gone')
   expect(await readFile(notices, 'utf8').catch(() => 'gone')).toBe('gone')
   for (const bad of ['not json', '{"number":1}', '"x"']) {
     await writeFile(runs, bad)
     await writeFile(notices, bad)
     const text = context(await promptDecision(env, noProc))
-    expect([bad, text.includes('Since your last turn'), text.includes('Step checks failed')]).toEqual([bad, false, false])
+    expect([bad, text.includes('Since your last turn'), text.includes('step checks failed')]).toEqual([bad, false, false])
   }
 })
 
