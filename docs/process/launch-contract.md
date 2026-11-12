@@ -59,6 +59,7 @@ declares none. Two constraints hold for every launcher:
 
 ## Isolation is the launcher's job
 
-Assay enforces its own rules: its hooks (no Python through Bash, nothing written into `trusted/`, `dictionaries/` or
-another analysis), its tools, its IPC and its updater. It does not contain what code can do once it runs. Containing
-code execution belongs to the launcher: the Podman wrapper, or Claude Code's own sandbox.
+Assay enforces its own rules: its hooks (no Python through Bash, nothing written into `trusted/`, `dictionaries/`,
+`.git`, the runs, the app's requests or another analysis), its tools, its IPC and its updater. It does not contain what
+code can do once it runs. Containing code execution belongs to the launcher: the Podman wrapper, or Claude Code's own
+sandbox. docs/process/security.md draws this boundary in full.

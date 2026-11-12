@@ -6,11 +6,12 @@
 
 | Job | Runner | When | What |
 |---|---|---|---|
-| `unit` | ubuntu-latest | every push and pull request | `npm run check` (typecheck, ESLint, node tests, ruff, pytest, the coverage bar); on main, the release filter |
+| `unit` | ubuntu-latest | every push and pull request | `npm run check` (typecheck, ESLint, node tests, ruff, pytest, the coverage bar), `npm audit --audit-level=high`, `pip-audit` on every locked Python group; on main, the release filter |
 | `integration` | ubuntu-latest | every push, after `unit` | `npm run test:integration` under `xvfb-run`, with node-pty rebuilt for Electron |
-| `release` | macos-latest | a push to main, after both, unless the filter skips it | version, build, sign, notarize, tag, GitHub release |
+| `release` | macos-latest, environment `release` | a push to main, after both, unless the filter skips it | version, build, sign, notarize, fuse check, tag, GitHub release |
 
-Node comes from `.node-version` (22, the lowest supported); Python and its dependencies from `uv sync --frozen`.
+Node comes from `.node-version` (22, the lowest supported); uv is pinned in `setup-uv`; Python and its dependencies
+come from `uv sync --frozen`. `scripts/workflow.test.ts` pins the workflow's security properties (docs/process/security.md).
 
 ## The release filter
 
@@ -34,10 +35,16 @@ commit subject since the last tag.
 - `npm run release:build`: `electron-builder --mac dmg zip --arm64 --publish never --config.forceCodeSigning=true`,
   so a build electron-builder cannot sign fails instead of shipping unsigned. The DMG is for a first install;
   the zip and `latest-mac.yml` are what the updater (slice 11d) reads.
+- The release job installs with `npm ci --ignore-scripts`, then runs only the repo's own `scripts/postinstall.mjs`, so
+  no dependency's install script runs on the machine about to hold the signing secrets. Its checkout keeps no token
+  in `.git/config`; the one `git fetch` that needs it passes it for that call.
 - Hardened runtime, with `resources/entitlements.mac.plist` (`allow-jit`, `allow-unsigned-executable-memory`).
-- Fuses (`build.electronFuses`): `runAsNode`, `enableNodeOptionsEnvironmentVariable` and
-  `enableNodeCliInspectArguments` off; `enableEmbeddedAsarIntegrityValidation` and `onlyLoadAppFromAsar` on. The app
-  runs its server and hooks with the system `node`, never with Electron as Node.
+- Fuses (`build.electronFuses`) are all set: `runAsNode`, `enableNodeOptionsEnvironmentVariable`,
+  `enableNodeCliInspectArguments` and `loadBrowserProcessSpecificV8Snapshot` off; `enableCookieEncryption`,
+  `enableEmbeddedAsarIntegrityValidation`, `onlyLoadAppFromAsar` and `grantFileProtocolExtraPrivileges` on (the
+  renderer loads from `file://`). The app runs its server and hooks with the system `node`, never with Electron as
+  Node. After the build, `node scripts/fuse-check.ts dist/mac-arm64/Assay.app` reads the built app's fuses and fails
+  unless each is as package.json sets it.
 - The job then runs `gh release create v<version> --target <sha>`, which tags the pushed commit and uploads the DMG,
   the zip, the blockmaps and `latest-mac.yml`, with the notes. electron-builder does not publish: its GitHub publisher
   makes a draft, and the tag must name the commit CI tested.
@@ -52,6 +59,11 @@ holds this commit, and this commit's version, computed from the tags it can reac
 When the commits after it change only docs and tests, they release nothing, so it releases.
 
 ## Secrets
+
+The five secrets live in the GitHub Environment `release`, whose deployment branches are limited to `main`; the
+`release` job names it (`environment: release`). Repository secrets would be readable by a workflow edited on any
+pushed branch. To set it up once: Settings, Environments, New environment `release`; Deployment branches and tags,
+Selected branches, add `main`; add the five secrets there; then delete the repository secrets of the same names.
 
 | Name | What |
 |---|---|

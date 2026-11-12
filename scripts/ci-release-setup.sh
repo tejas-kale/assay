@@ -138,18 +138,18 @@ write_env() {
   printf '  %s✓ wrote%s %s → %s\n' "$GREEN" "$RESET" "$key" "$ENV_FILE"
 }
 
-# set_secret NAME VALUE sets a GitHub Actions repo secret via gh. Falls back
+# set_secret NAME VALUE sets a secret of the GitHub Environment `release` via gh. Falls back
 # to a warning (and records it) if gh is unavailable or unauthenticated.
 set_secret() {
   local name="$1" value="$2"
   if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    if printf '%s' "$value" | gh secret set "$name" >/dev/null 2>&1; then
+    if printf '%s' "$value" | gh secret set "$name" --env release >/dev/null 2>&1; then
       WRITTEN_SECRET+=("$name")
       printf '  %s✓ set%s GitHub secret %s\n' "$GREEN" "$RESET" "$name"
       return
     fi
   fi
-  SKIPPED+=("GitHub secret $name (set it manually: gh secret set $name)")
+  SKIPPED+=("GitHub secret $name (set it manually: gh secret set $name --env release)")
   warn "skipped GitHub secret $name: gh not ready; set it later"
 }
 
@@ -206,6 +206,12 @@ step "Name: Assay notarization   Access: Developer → Generate."
 step "Download the .p8. Note the Key ID in its row and the Issuer ID above the table."
 pause "Press Enter once the .p8 is downloaded."
 
+stage "Make the release environment"
+note "The secrets live in an environment only main can use, so a workflow edited on another branch cannot read them."
+step "On GitHub: the repo → Settings → Environments → New environment → name it release → Configure environment."
+step "Deployment branches and tags → Selected branches and tags → Add deployment branch or tag rule → main."
+step "If the repo already has the five secrets under Settings → Secrets and variables → Actions, delete them there."
+
 stage "Add the secrets to GitHub"
 ask CERT_PATH "Path to the .p12 file:"
 CERT_PATH="${CERT_PATH/#\~/$HOME}"
@@ -216,7 +222,7 @@ KEY_PATH="${KEY_PATH/#\~/$HOME}"
 [[ -f "$KEY_PATH" ]] || { warn "No file at $KEY_PATH. Re-run the wizard with the right path."; exit 1; }
 ask KEY_ID "The key's Key ID:"
 ask ISSUER_ID "The Issuer ID:"
-note "Writes CSC_LINK, CSC_KEY_PASSWORD, APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER to the repo of this checkout's origin."
+note "Writes CSC_LINK, CSC_KEY_PASSWORD, APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER to the release environment of this checkout's origin."
 if confirm "Set them now with gh?"; then
   set_secret CSC_LINK "$(base64 < "$CERT_PATH" | tr -d '\n')"
   set_secret CSC_KEY_PASSWORD "$CERT_PASSWORD"

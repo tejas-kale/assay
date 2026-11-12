@@ -1,6 +1,6 @@
 # Slice 11 spec: process, gates, backend in the app, CI/CD, auto-update, tab settings, audit
 
-Status: 11a and 11b built, 2026-11-10. 11c built and released: v0.1.0, signed with the Developer ID and notarized, 2026-11-11 (docs/process/ci-release.md). 11d built, 2026-11-11; its manual test on the Mac is still to run. 11e built, 2026-11-11; not yet tried in the running app. 11f built, 2026-11-12: every baseline empty and deleted; not yet tried in the running app. Written from the grilling session of 2026-11-10, after reading Assay's
+Status: 11a and 11b built, 2026-11-10. 11c built and released: v0.1.0, signed with the Developer ID and notarized, 2026-11-11 (docs/process/ci-release.md). 11d built, 2026-11-11; its manual test on the Mac is still to run. 11e built, 2026-11-11; not yet tried in the running app. 11f built, 2026-11-12: every baseline empty and deleted; not yet tried in the running app. 11g audited and mostly fixed, 2026-11-12: PI-1, PI-2 and UI-3 stay open (docs/security-audit-2026-11.md); Electron 45 not yet tried on the Mac. Written from the grilling session of 2026-11-10, after reading Assay's
 code.
 
 Seven slices, built in this order. Each ships, with CI green, before the next one starts:
@@ -491,3 +491,10 @@ until it is green).
   guarantees, and the accepted lows with reasons.
 - Done when every critical, high and medium finding is fixed with its test, and each low is fixed or accepted in
   `docs/process/security.md`.
+- Progress (2026-11-12): four Claude subagents audited the repo, one per threat (Codex was not available).
+  23 findings fixed with tests, 10 lows accepted (security.md), three open. PI-1 (critical: the kernel can write a
+  `trust-answer` request) and PI-2 (high: the kernel can commit into `trusted/`) cannot be closed by a hook, since the
+  kernel runs Claude's code as the user; they need the app to answer the review on the host and trust to rest on
+  something only the app writes (security.md, "Open decisions"). UI-3 (medium, the `file://` origin) needs the
+  renderer on an `app://` scheme, which needs the app run to try it. CI gained `npm audit`, `pip-audit` and the
+  fuse check; the signing secrets move to the `release` environment (a user step, ci-release.md).

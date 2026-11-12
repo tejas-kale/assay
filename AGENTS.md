@@ -22,6 +22,8 @@ one kernel the app shows. Protect this in every change.
 - `docs/process/ci-release.md`: the CI pipeline, the release filter, versions and `Release:` trailers, signing.
 - `docs/process/launch-contract.md`: how the app starts Claude, and what a launcher (the Podman wrapper) must provide.
 - `docs/process/adding-a-tab.md`: the tab registry, and the three places a new tab touches.
+- `docs/process/security.md`: the threat model, the isolation boundary, what Assay guarantees, and the accepted risks.
+  Read it before changing a hook, a tool, an IPC handler, the updater or CI.
 
 ## Where things are
 
@@ -34,8 +36,9 @@ one kernel the app shows. Protect this in every change.
   `close`, `focus`, `order`, `note`, `revise_note`, `link_notes`, `note_labels`. It owns the kernel
   (`python/analysis_kernel.py serve`), started with the server and ended with it.
 - `src/hooks`: UserPromptSubmit (the rules on each typed prompt, the trusted calculations, the user's runs since the
-  last prompt), PreToolUse on Bash (no Python through Bash) and on Write/Edit/NotebookEdit (nothing into
-  `$ASSAY_ROOT/trusted` or `dictionaries`, nor into another analysis). `plugin/skills`:
+  last prompt), PreToolUse on Bash (no Python through Bash) and on Write/Edit/MultiEdit/NotebookEdit (nothing into
+  `$ASSAY_ROOT/trusted`, `dictionaries`, `notes` or `.git`, the analysis's `.assay/` or `queries/`, Assay's backend
+  or venv, nor into another analysis). `plugin/skills`:
   - `assay:resume`: report where the analysis stands and offer past root notes to link.
   - `assay:wrap-up`: close threads, write findings as root notes, settle weak citations, link the notes read.
   - `assay:propose-trusted`: draft a trusted calculation or dictionary entry, with every file Check needs.
