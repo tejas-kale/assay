@@ -345,3 +345,32 @@ test('PI-5: substitutions are read with their quotes, nesting and backticks', ()
     'diff <(ls "a)b") x',
   ])
 })
+
+test('PI-5: env -S splits its string by env rules, not shell syntax', () => {
+  expectDecisions(true, [
+    `env -iS 'FOO=1; python3 -I -B -c "print(1)"'`,
+    "env -S 'FOO=1; python3 -c 1'",
+    "env -S 'python3\\_-c\\_1'",
+    `env -S 'X="a b" python x.py'`,
+    "env -S '${PY} x.py'",
+    "env -S 'python x.py \\q'",
+  ])
+  expectDecisions(false, ["env -S 'FOO=1; ls'", "env -S 'ls # python x.py'", "env -S 'echo \\c python x.py'", "env -S 'echo \"python x.py\"'"])
+})
+
+test('PI-5: a shell script run by -c or eval has its substitutions read too', () => {
+  expectDecisions(true, [
+    `bash -c 'echo $(python3 -c "print(1)")'`,
+    `sh -c "$(python -c 1)"`,
+    'sh -c "echo `python -c 1`"',
+    `bash -c 'echo \`python -c 1\`'`,
+    `eval 'echo $(python -c 1)'`,
+    `bash -c "bash -c 'echo \\$(python -c 1)'"`,
+  ])
+  expectDecisions(false, [`bash -c 'echo $(ls)'`, `sh -c 'echo "$(date)"'`])
+})
+
+test('PI-5: a comment hides a lone backtick or parenthesis, and only a comment', () => {
+  expectDecisions(false, ['echo hi # `', 'echo hi # $(', 'echo hi #`python -c 1`', 'echo a;# `\necho b'])
+  expectDecisions(true, ['echo hi#`python -c 1`', 'echo a # c\n echo `python -c 1`', 'echo "# `python -c 1`"', 'echo a\\ #`python -c 1`', 'echo ${#x} `python -c 1`'])
+})

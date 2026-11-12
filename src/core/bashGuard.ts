@@ -1,5 +1,6 @@
 // The Bash guard, ported from the analysis mod's hooks/model.ts: Claude runs Python with the python tool, not
 // through Bash.
+import { envSplitWords } from './envSplit.ts'
 import { toolName } from './rules.ts'
 
 export const BASH_PYTHON_DENY =
@@ -231,7 +232,7 @@ function splitStringAt(words: readonly string[], at: number): readonly string[] 
   if (!split) return undefined
   const isSeparate = split.value === '' && !(words[at] ?? '').includes('=')
   const text = isSeparate ? (words[at + 1] ?? '') : split.value
-  return [...(shellSegments(text)[0]?.words ?? []), ...words.slice(isSeparate ? at + 2 : at + 1)]
+  return [...(envSplitWords(text) ?? TOO_DEEP_WORDS), ...words.slice(isSeparate ? at + 2 : at + 1)]
 }
 
 /** How many words an option takes: two when it, or the last of its combined short options (`-iu`), takes a value as the next word. */
@@ -277,10 +278,15 @@ function withoutPrefixes(all: readonly string[]): readonly string[] {
 const MAX_DEPTH = 8
 // A script the parser reads as Python, standing for a construct it cannot follow.
 const TOO_DEEP = 'python -c 1'
+const TOO_DEEP_WORDS = ['python', '-c', '1']
 
 /** Whether a script given as text runs Python; a script nested deeper than the parser follows counts as running it. */
-const scriptRunsPython = (script: string, depth: number) =>
+const segmentsRunPython = (script: string, depth: number) =>
   depth >= MAX_DEPTH || shellSegments(script).some(inner => segmentRunsPython(inner, depth + 1))
+
+/** A shell script's commands and the commands inside its substitutions, quoted or not. */
+const scriptRunsPython = (script: string, depth: number) =>
+  segmentsRunPython(script, depth) || substitutions(script).some(inner => segmentsRunPython(inner, depth))
 
 /**
  * The script of `bash -c '<script>'` (`-lc`, `-c --` too) or `eval ...`, or of a quoted command a wrapper runs through
@@ -362,10 +368,22 @@ class SubstitutionScanner {
       return i + 1
     }
     if (char === "'" && !frame.isDouble) return this.afterSingleQuote(text, i, frame.isNested)
+    if (char === '#' && !frame.isDouble && this.startsWord(text, i)) return this.afterComment(text, i)
     if (char === '`') return this.afterBacktick(text, i, depth)
     if (this.opensSubstitution(text, i, frame.isDouble)) return this.afterParenthesised(text, i, depth)
     if (frame.isNested && !frame.isDouble) this.countParen(char, i, frame)
     return i + 1
+  }
+
+  /** A `#` starts a comment at the start of a word, but not right after an escaped space. */
+  private startsWord(text: string, i: number): boolean {
+    return i === 0 || (/[\s;&|(]/.test(text[i - 1] ?? '') && text[i - 2] !== '\\')
+  }
+
+  /** The end of the comment's line. */
+  private afterComment(text: string, i: number): number {
+    const end = text.indexOf('\n', i)
+    return end < 0 ? text.length : end
   }
 
   private countParen(char: string, i: number, frame: Frame) {
@@ -424,4 +442,4 @@ const runsNamedPython = (command: string) =>
  * `python -m ...` (pytest, pip), `python --version`, `pytest` and package commands are not.
  */
 export const bashRunsPython = (command: string): boolean =>
-  shellSegments(command).some(segment => segmentRunsPython(segment)) || substitutions(command).some(inner => scriptRunsPython(inner, 0)) || runsNamedPython(command)
+  shellSegments(command).some(segment => segmentRunsPython(segment)) || substitutions(command).some(inner => segmentsRunPython(inner, 0)) || runsNamedPython(command)
