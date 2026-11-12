@@ -73,6 +73,27 @@ test('approving says when the trusted folder cannot be made or a proposal file h
   await missing.done()
 })
 
+test('a checked file outside the proposal\'s own names refuses the whole approval before anything is written', async () => {
+  for (const bad of ['../x', '/etc/x', 'other.sql', 'sub/calc.sql', 'sub\\calc.sql', 'calc.sql\0', '..', 'calc.sql/../x']) {
+    const ws = await fake(files())
+    const answer = { ...CHECKED, files: ['calc.sql', bad], texts: { 'calc.sql': CODE, [bad]: 'evil\n' } }
+    const reply = await approve(ws, ok, answer)
+    expect(reply).toEqual({ error: `${JSON.stringify(bad)} is not a file this proposal may have.` })
+    expect(await ws.file('/work/trusted/calc.sql')).toBeUndefined()
+    expect(await ws.file('/work/x')).toBeUndefined()
+    await ws.done()
+  }
+})
+
+test('the files a calculation may have are its main file and its tests', async () => {
+  const ws = await fake(files())
+  const names = ['calc.sql', 'calc.test.yaml', 'test_calc.py', 'calc.rebuild.sql']
+  const answer = { ...CHECKED, files: names, texts: Object.fromEntries(names.map(each => [each, CODE])) }
+  expect(await approve(ws, ok, answer)).toEqual({ ok: true })
+  expect(await ws.file('/work/trusted/test_calc.py')).toBe(CODE)
+  await ws.done()
+})
+
 test('git add and git commit failures are the review error, with the last line of what git said', async () => {
   const added = await fake(files())
   expect(await approve(added, failing('add', { stderr: ' fatal: no pathspec \n' }))).toEqual({ error: 'git add failed: fatal: no pathspec' })

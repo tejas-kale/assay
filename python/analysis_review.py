@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -93,9 +94,21 @@ def _sample(columns: list[str], rows: list[list[str]]) -> dict[str, Any]:
     return {"columns": columns, "rows": rows[:SAMPLE_ROWS], "total": len(rows)}
 
 
-def _snapshot(folder: Path, answer: dict[str, Any]) -> None:
-    """Each proposal file's text as the check starts: approving copies exactly these."""
-    answer["texts"] = {file: (folder / file).read_text() for file in answer["files"]}
+def _read_once(folder: Path, names: list[str]) -> dict[str, str]:
+    """Each named file that exists, read exactly once: what the check shows, runs and snapshots, and approval copies.
+
+    Nothing else reads the live draft, so a writer swapping a file mid-check cannot make the check and the approval
+    disagree.
+    """
+    return {name: (folder / name).read_text() for name in names if (folder / name).is_file()}
+
+
+def _private_copy(texts: dict[str, str]) -> tempfile.TemporaryDirectory[str]:
+    """A scratch folder holding exactly ``texts``: the checks that need files on disk run against it, not the draft."""
+    scratch = tempfile.TemporaryDirectory(prefix="assay-check-")
+    for name, text in texts.items():
+        (Path(scratch.name) / name).write_text(text)
+    return scratch
 
 
 def _settled(folder: Path, answer: dict[str, Any], step: Steps) -> dict[str, Any]:
@@ -116,13 +129,17 @@ def check(folder: Path, name: str, analysis: Path, emit: Emit | None = None) -> 
 
     ``emit`` gets each event (``start``, ``step``) as it happens.
     """
-    review = _CalculationCheck(folder, name, analysis, Steps(emit))
-    review.run()
+    beside = [f"{name}.test.yaml", f"test_{name}.py", f"{name}.rebuild.sql"]
+    texts = _read_once(folder, [f"{name}.sql", f"{name}.py", *beside])
+    with _private_copy(texts) as scratch:
+        review = _CalculationCheck(Path(scratch), name, analysis, Steps(emit))
+        review.run()
     return _settled(folder, review.answer, review.step)
 
 
 class _CalculationCheck:
     def __init__(self, folder: Path, name: str, analysis: Path, step: Steps) -> None:
+        # ``folder`` is the private copy of the proposal's files: only the check reads it.
         self.folder, self.name, self.analysis, self.step = folder, name, analysis, step
         self.answer: dict[str, Any] = {"name": name, "ok": False, "steps": step.steps}
 
@@ -156,7 +173,7 @@ class _CalculationCheck:
         self.answer.update(kind=found["kind"], file=found["file"], description=found["description"], code=code)
         beside = (f"{self.name}.test.yaml", f"test_{self.name}.py", f"{self.name}.rebuild.sql")
         self.answer["files"] = [found["file"], *(f for f in beside if (self.folder / f).is_file())]
-        _snapshot(self.folder, self.answer)
+        self.answer["texts"] = {file: (self.folder / file).read_text() for file in self.answer["files"]}
         if "block" in found:
             self.answer["block"] = found["block"]
         self.step.start(self.answer)
@@ -222,13 +239,16 @@ class _CalculationCheck:
 def check_entry(path: Path, analysis: Path, emit: Emit | None = None) -> dict[str, Any]:
     """What the Trust tab shows for a drafted dictionary entry: its text, whether its form is sound, and its
     definitions' cases and live runs."""
-    review = _EntryCheck(path, analysis, Steps(emit))
-    review.run()
+    texts = _read_once(path.parent, [path.name, f"{path.name[: -len('.yaml')]}.test.yaml"])
+    with _private_copy(texts) as scratch:
+        review = _EntryCheck(Path(scratch) / path.name, analysis, Steps(emit))
+        review.run()
     return _settled(path.parent, review.answer, review.step)
 
 
 class _EntryCheck:
     def __init__(self, path: Path, analysis: Path, step: Steps) -> None:
+        # ``path`` is in the private copy of the proposal's files: only the check reads it.
         self.path, self.analysis, self.step = path, analysis, step
         self.name = path.name[: -len(".yaml")]
         self.answer: dict[str, Any] = {
@@ -242,6 +262,8 @@ class _EntryCheck:
     def run(self) -> None:
         try:
             # The text goes in the answer first: the Trust tab shows it even when it does not parse.
+            if not self.path.is_file():
+                raise TrustError(f"{self.path.name} does not exist")
             self.answer["code"] = self.path.read_text()
             data = yaml.safe_load(self.answer["code"])
             columns = self._check_form(data)
@@ -266,7 +288,7 @@ class _EntryCheck:
         self.answer["description"] = str(data["description"]).strip().splitlines()[0]
         tests = f"{self.name}.test.yaml"
         self.answer["files"] = [self.path.name, *([tests] if (self.path.parent / tests).is_file() else [])]
-        _snapshot(self.path.parent, self.answer)
+        self.answer["texts"] = {file: (self.path.parent / file).read_text() for file in self.answer["files"]}
         self.step.start(self.answer)
         self.step({"step": "form", "ok": True, "text": plural(len(columns), "column")})
 
