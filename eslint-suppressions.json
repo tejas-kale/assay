@@ -1,103 +1,415 @@
 {
-  "src/renderer/components/FilesTab.tsx": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 5
-    },
+  "scripts/import-denote.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 2
+    }
+  },
+  "scripts/postinstall.mjs": {
+    "sonarjs/no-os-command-from-path": {
+      "count": 3
+    }
+  },
+  "src/core/age.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 6
+    }
+  },
+  "src/core/analyses.test.ts": {
+    "@typescript-eslint/require-await": {
+      "count": 6
+    }
+  },
+  "src/core/analyses.ts": {
     "@typescript-eslint/restrict-template-expressions": {
       "count": 3
     },
-    "@typescript-eslint/use-unknown-in-catch-callback-variable": {
-      "count": 1
-    },
+    "sonarjs/super-linear-regex": {
+      "count": 4
+    }
+  },
+  "src/core/bashGuard.ts": {
     "max-lines-per-function": {
-      "count": 1
-    },
-    "react-hooks/purity": {
       "count": 1
     },
     "sonarjs/cognitive-complexity": {
-      "count": 1
-    },
-    "sonarjs/no-nested-conditional": {
       "count": 2
     },
-    "sonarjs/no-redundant-optional": {
+    "sonarjs/single-char-in-character-classes": {
       "count": 1
     },
-    "sonarjs/prefer-read-only-props": {
+    "sonarjs/super-linear-regex": {
       "count": 1
     }
   },
-  "src/renderer/components/OverviewTab.tsx": {
-    "@typescript-eslint/no-confusing-void-expression": {
+  "src/core/calculations.test.ts": {
+    "@typescript-eslint/no-unused-vars": {
       "count": 2
     },
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 2
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    },
-    "sonarjs/no-nested-conditional": {
+    "@typescript-eslint/require-await": {
       "count": 4
     },
-    "sonarjs/prefer-read-only-props": {
+    "sonarjs/unused-import": {
       "count": 2
     }
   },
-  "src/renderer/components/Palette.tsx": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 1
+  "src/core/calculations.ts": {
+    "sonarjs/cognitive-complexity": {
+      "count": 2
     },
-    "max-lines-per-function": {
-      "count": 1
+    "sonarjs/no-nested-conditional": {
+      "count": 5
     },
-    "sonarjs/prefer-read-only-props": {
-      "count": 1
-    }
-  },
-  "src/renderer/components/Picker.tsx": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 3
-    },
-    "@typescript-eslint/use-unknown-in-catch-callback-variable": {
-      "count": 3
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "react-hooks/purity": {
-      "count": 1
-    },
-    "sonarjs/prefer-read-only-props": {
+    "sonarjs/no-nested-template-literals": {
       "count": 1
     }
   },
-  "src/renderer/components/RenameDialog.tsx": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 3
-    },
-    "@typescript-eslint/use-unknown-in-catch-callback-variable": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "sonarjs/prefer-read-only-props": {
-      "count": 1
-    }
-  },
-  "src/renderer/components/Search.tsx": {
-    "@typescript-eslint/no-confusing-void-expression": {
+  "src/core/citationLabels.test.ts": {
+    "@typescript-eslint/require-await": {
       "count": 6
+    }
+  },
+  "src/core/citationLabels.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 1
     },
-    "@typescript-eslint/no-unnecessary-template-expression": {
+    "sonarjs/super-linear-regex": {
+      "count": 1
+    }
+  },
+  "src/core/claudeState.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/core/cmdHold.test.ts": {
+    "@typescript-eslint/no-confusing-void-expression": {
+      "count": 2
+    }
+  },
+  "src/core/engines.ts": {
+    "@typescript-eslint/restrict-plus-operands": {
+      "count": 2
+    },
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 1
+    }
+  },
+  "src/core/files.test.ts": {
+    "@typescript-eslint/require-await": {
+      "count": 1
+    }
+  },
+  "src/core/files.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    },
+    "sonarjs/no-nested-template-literals": {
+      "count": 1
+    }
+  },
+  "src/core/fuzzy.test.ts": {
+    "sonarjs/no-alphabetical-sort": {
+      "count": 1
+    }
+  },
+  "src/core/fuzzy.ts": {
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "src/core/keymap.test.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 4
+    }
+  },
+  "src/core/keymap.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 3
+    }
+  },
+  "src/core/lineage.test.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 1
+    }
+  },
+  "src/core/lineage.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 7
+    },
+    "sonarjs/no-nested-conditional": {
+      "count": 1
+    }
+  },
+  "src/core/modModel.test.ts": {
+    "@typescript-eslint/require-await": {
+      "count": 14
+    },
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 3
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/core/notesView.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 1
+    },
+    "sonarjs/no-nested-conditional": {
+      "count": 1
+    },
+    "sonarjs/no-nested-template-literals": {
+      "count": 1
+    }
+  },
+  "src/core/overview.ts": {
+    "max-lines-per-function": {
+      "count": 2
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 2
+    },
+    "sonarjs/updated-loop-counter": {
+      "count": 1
+    }
+  },
+  "src/core/pythonRuns.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 4
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "max-params": {
+      "count": 1
+    },
+    "sonarjs/no-nested-template-literals": {
+      "count": 1
+    },
+    "sonarjs/super-linear-regex": {
+      "count": 2
+    }
+  },
+  "src/core/replay.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 1
+    }
+  },
+  "src/core/requests.ts": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/restrict-plus-operands": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 2
+    },
+    "sonarjs/concise-regex": {
+      "count": 2
+    }
+  },
+  "src/core/rootNotes.test.ts": {
+    "@typescript-eslint/no-unnecessary-condition": {
+      "count": 1
+    }
+  },
+  "src/core/rootNotes.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 2
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    },
+    "sonarjs/super-linear-regex": {
+      "count": 5
+    },
+    "sonarjs/updated-loop-counter": {
+      "count": 1
+    }
+  },
+  "src/core/rules.ts": {
+    "sonarjs/no-nested-conditional": {
+      "count": 1
+    }
+  },
+  "src/core/runs.test.ts": {
+    "@typescript-eslint/no-unnecessary-condition": {
+      "count": 1
+    },
+    "sonarjs/no-nested-conditional": {
+      "count": 1
+    }
+  },
+  "src/core/runs.ts": {
+    "@typescript-eslint/restrict-plus-operands": {
+      "count": 2
+    },
+    "max-lines-per-function": {
+      "count": 2
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 4
+    }
+  },
+  "src/core/search.test.ts": {
+    "@typescript-eslint/no-unnecessary-condition": {
+      "count": 1
+    },
+    "sonarjs/no-alphabetical-sort": {
+      "count": 1
+    }
+  },
+  "src/core/search.ts": {
+    "sonarjs/no-nested-conditional": {
+      "count": 1
+    }
+  },
+  "src/core/session.test.ts": {
+    "@typescript-eslint/no-confusing-void-expression": {
+      "count": 1
+    },
+    "sonarjs/void-use": {
+      "count": 3
+    }
+  },
+  "src/core/settings.ts": {
+    "sonarjs/super-linear-regex": {
+      "count": 1
+    }
+  },
+  "src/core/steps.test.ts": {
+    "@typescript-eslint/no-unnecessary-condition": {
+      "count": 2
+    }
+  },
+  "src/core/steps.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 13
+    }
+  },
+  "src/core/strip.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 2
+    }
+  },
+  "src/core/terminalKeys.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 3
+    }
+  },
+  "src/core/theme.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 7
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 4
+    },
+    "sonarjs/no-unused-vars": {
+      "count": 4
+    }
+  },
+  "src/core/theme.ts": {
+    "sonarjs/reduce-initial-value": {
+      "count": 1
+    }
+  },
+  "src/core/threads.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 4
+    },
+    "sonarjs/super-linear-regex": {
+      "count": 2
+    }
+  },
+  "src/core/trust.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 5
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 1
+    },
+    "sonarjs/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "src/core/trust.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 4
+    },
+    "no-control-regex": {
+      "count": 1
+    },
+    "sonarjs/no-nested-conditional": {
+      "count": 1
+    }
+  },
+  "src/core/watch.test.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-condition": {
+      "count": 1
+    },
+    "@typescript-eslint/require-await": {
+      "count": 3
+    },
+    "sonarjs/no-nested-conditional": {
+      "count": 1
+    },
+    "sonarjs/void-use": {
+      "count": 3
+    }
+  },
+  "src/core/watch.ts": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 2
+    }
+  },
+  "src/hooks/decide.ts": {
+    "@typescript-eslint/no-unnecessary-condition": {
+      "count": 1
+    },
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 1
+    },
+    "sonarjs/super-linear-regex": {
+      "count": 1
+    }
+  },
+  "src/hooks/io.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/hooks/state.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 1
+    }
+  },
+  "src/main/files.ts": {
+    "@typescript-eslint/no-confusing-void-expression": {
+      "count": 1
+    },
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 2
+    },
+    "max-lines": {
       "count": 1
     },
     "max-lines-per-function": {
@@ -106,65 +418,263 @@
     "sonarjs/cognitive-complexity": {
       "count": 1
     },
-    "sonarjs/prefer-read-only-props": {
+    "sonarjs/no-alphabetical-sort": {
+      "count": 2
+    },
+    "sonarjs/no-nested-conditional": {
       "count": 1
     }
   },
-  "src/renderer/components/Settings.tsx": {
+  "src/main/index.ts": {
     "@typescript-eslint/no-confusing-void-expression": {
-      "count": 2
+      "count": 1
+    }
+  },
+  "src/main/ipc.ts": {
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 3
     },
-    "@typescript-eslint/use-unknown-in-catch-callback-variable": {
+    "@typescript-eslint/no-unsafe-return": {
       "count": 1
     },
     "max-lines-per-function": {
       "count": 1
+    }
+  },
+  "src/main/notes.test.ts": {
+    "@typescript-eslint/no-unnecessary-condition": {
+      "count": 3
     },
-    "sonarjs/prefer-read-only-props": {
+    "sonarjs/no-os-command-from-path": {
       "count": 1
     }
   },
-  "src/renderer/components/StepsTab.tsx": {
+  "src/main/notes.ts": {
+    "@typescript-eslint/no-meaningless-void-operator": {
+      "count": 1
+    },
+    "max-params": {
+      "count": 1
+    },
+    "sonarjs/void-use": {
+      "count": 1
+    }
+  },
+  "src/main/session.ts": {
+    "@typescript-eslint/unbound-method": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "src/main/windows.ts": {
     "@typescript-eslint/no-confusing-void-expression": {
-      "count": 5
+      "count": 10
+    },
+    "@typescript-eslint/no-unnecessary-condition": {
+      "count": 2
     },
     "@typescript-eslint/restrict-template-expressions": {
       "count": 2
     },
+    "@typescript-eslint/unbound-method": {
+      "count": 1
+    },
+    "@typescript-eslint/use-unknown-in-catch-callback-variable": {
+      "count": 1
+    },
+    "max-lines": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 2
+    },
+    "sonarjs/no-nested-conditional": {
+      "count": 1
+    }
+  },
+  "src/migrate/importDenote.test.ts": {
+    "sonarjs/no-alphabetical-sort": {
+      "count": 1
+    }
+  },
+  "src/migrate/importDenote.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 3
+    },
+    "sonarjs/no-alphabetical-sort": {
+      "count": 2
+    },
+    "sonarjs/super-linear-regex": {
+      "count": 1
+    }
+  },
+  "src/migrate/migrateNotes.test.ts": {
+    "@typescript-eslint/use-unknown-in-catch-callback-variable": {
+      "count": 1
+    },
+    "sonarjs/no-alphabetical-sort": {
+      "count": 1
+    }
+  },
+  "src/migrate/migrateNotes.ts": {
+    "@typescript-eslint/no-meaningless-void-operator": {
+      "count": 2
+    },
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 6
+    },
     "max-lines-per-function": {
       "count": 1
     },
-    "react-hooks/exhaustive-deps": {
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    },
+    "sonarjs/no-alphabetical-sort": {
+      "count": 1
+    },
+    "sonarjs/no-nested-conditional": {
+      "count": 3
+    },
+    "sonarjs/super-linear-regex": {
+      "count": 4
+    },
+    "sonarjs/void-use": {
+      "count": 2
+    }
+  },
+  "src/migrate/migrateRoot.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 13
+    }
+  },
+  "src/migrate/migrateRoot.ts": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    },
+    "sonarjs/no-alphabetical-sort": {
+      "count": 1
+    },
+    "sonarjs/no-nested-conditional": {
+      "count": 3
+    }
+  },
+  "src/preload/index.ts": {
+    "@typescript-eslint/no-confusing-void-expression": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unnecessary-type-parameters": {
+      "count": 1
+    }
+  },
+  "src/renderer/App.tsx": {
+    "@typescript-eslint/no-confusing-void-expression": {
+      "count": 10
+    },
+    "max-lines-per-function": {
+      "count": 2
+    },
+    "react-hooks/refs": {
+      "count": 6
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    },
+    "sonarjs/no-nested-conditional": {
+      "count": 1
+    }
+  },
+  "src/renderer/appearance.ts": {
+    "@typescript-eslint/no-confusing-void-expression": {
+      "count": 2
+    }
+  },
+  "src/renderer/components/Banners.tsx": {
+    "sonarjs/prefer-read-only-props": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/CitedRun.tsx": {
+    "@typescript-eslint/no-confusing-void-expression": {
+      "count": 2
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "sonarjs/no-nested-conditional": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/CodeView.tsx": {
+    "max-lines-per-function": {
       "count": 2
     },
     "react-hooks/refs": {
       "count": 1
     },
-    "react-hooks/set-state-in-effect": {
-      "count": 2
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    },
     "sonarjs/no-nested-conditional": {
-      "count": 2
+      "count": 6
+    },
+    "sonarjs/no-redundant-optional": {
+      "count": 1
     },
     "sonarjs/prefer-read-only-props": {
       "count": 2
     }
   },
-  "src/renderer/components/ThreadsTab.tsx": {
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 2
+  "src/renderer/components/KeyHints.tsx": {
+    "@typescript-eslint/no-confusing-void-expression": {
+      "count": 1
     },
     "max-lines-per-function": {
-      "count": 2
+      "count": 1
     },
-    "sonarjs/cognitive-complexity": {
+    "react-hooks/refs": {
+      "count": 1
+    },
+    "sonarjs/prefer-read-only-props": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/Mermaid.tsx": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 1
+    },
+    "sonarjs/no-nested-assignment": {
+      "count": 1
+    },
+    "sonarjs/prefer-read-only-props": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/NotesTab.tsx": {
+    "@typescript-eslint/no-confusing-void-expression": {
+      "count": 6
+    },
+    "@typescript-eslint/no-unnecessary-condition": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 3
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    },
+    "react-hooks/purity": {
       "count": 1
     },
     "sonarjs/no-nested-conditional": {
-      "count": 1
+      "count": 5
     },
     "sonarjs/no-nested-template-literals": {
       "count": 1
@@ -173,32 +683,114 @@
       "count": 1
     },
     "sonarjs/prefer-read-only-props": {
+      "count": 4
+    }
+  },
+  "src/renderer/components/Preview.tsx": {
+    "@typescript-eslint/no-confusing-void-expression": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unnecessary-condition": {
+      "count": 1
+    },
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 2
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "react-hooks/refs": {
+      "count": 3
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    },
+    "sonarjs/no-nested-conditional": {
+      "count": 8
+    },
+    "sonarjs/no-redundant-optional": {
+      "count": 1
+    },
+    "sonarjs/prefer-read-only-props": {
       "count": 1
     }
   },
-  "src/renderer/components/TrustTab.tsx": {
+  "src/renderer/components/Strip.tsx": {
     "@typescript-eslint/no-confusing-void-expression": {
-      "count": 8
+      "count": 2
     },
     "@typescript-eslint/restrict-template-expressions": {
+      "count": 1
+    },
+    "sonarjs/prefer-read-only-props": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/TerminalPane.tsx": {
+    "@typescript-eslint/no-confusing-void-expression": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unnecessary-condition": {
+      "count": 2
+    },
+    "@typescript-eslint/use-unknown-in-catch-callback-variable": {
       "count": 1
     },
     "max-lines-per-function": {
       "count": 1
     },
+    "sonarjs/no-misleading-array-reverse": {
+      "count": 1
+    },
+    "sonarjs/prefer-read-only-props": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/Workspace.tsx": {
+    "@typescript-eslint/no-confusing-void-expression": {
+      "count": 3
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "sonarjs/no-nested-template-literals": {
+      "count": 1
+    },
+    "sonarjs/prefer-read-only-props": {
+      "count": 1
+    }
+  },
+  "src/renderer/components/common.tsx": {
+    "@typescript-eslint/no-confusing-void-expression": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "max-params": {
+      "count": 1
+    },
     "react-hooks/exhaustive-deps": {
       "count": 1
     },
-    "react-hooks/purity": {
+    "react-hooks/refs": {
       "count": 1
     },
     "react-hooks/set-state-in-effect": {
       "count": 1
     },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    },
     "sonarjs/prefer-read-only-props": {
+      "count": 2
+    }
+  },
+  "src/renderer/terminal.ts": {
+    "@typescript-eslint/no-confusing-void-expression": {
+      "count": 2
+    },
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 2
+    },
+    "max-lines-per-function": {
       "count": 1
     }
   },
@@ -405,6 +997,38 @@
     },
     "sonarjs/no-nested-template-literals": {
       "count": 1
+    }
+  },
+  "src/shared/trustedCommit.test.ts": {
+    "sonarjs/no-os-command-from-path": {
+      "count": 1
+    }
+  },
+  "src/shared/trustedCommit.ts": {
+    "@typescript-eslint/no-confusing-void-expression": {
+      "count": 1
+    },
+    "sonarjs/no-os-command-from-path": {
+      "count": 1
+    }
+  },
+  "src/testing/bundle.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/testing/expect.ts": {
+    "@typescript-eslint/no-confusing-void-expression": {
+      "count": 9
+    },
+    "@typescript-eslint/no-unsafe-return": {
+      "count": 1
+    },
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 5
+    },
+    "sonarjs/no-selector-parameter": {
+      "count": 2
     }
   }
 }
