@@ -22,12 +22,13 @@ A build-ready plan for the **hybrid** Assay: a native Swift Mac app, with CodeMi
 
 <!-- one line per resolved ticket: [title](issues/NN-slug.md): gist -->
 
+- [How the native shell hosts CodeMirror and Mermaid in web views](issues/02-webview-bridge.md): the editor needs an AppKit `WKWebView` subclass so Assay's shortcuts beat the page; SwiftUI's `WebView` suffices for display-only Mermaid; JS built at app build time; key routing and cost settled by a spike.
 - [Which terminal component runs Claude Code in the native shell](issues/03-terminal-choice.md): SwiftTerm or GhosttyKit, decided by a side-by-side spike on the Mac; libghostty-vt waits for the fully native phase.
 - [What the TypeScript server, hooks and shared core do, and what moves to Python](issues/04-server-inventory.md): mostly orchestration over Python that already exists; the parsing rules shared with the app would be written twice unless Python serves parsed views; the launch contract and the Podman wrapper must change together.
 
 ## Not yet specified
 
-- **Mermaid in the hybrid:** a web view (faithful to mermaid.js) or MermaidKit (native, ignores `classDef`, `style`, `click` and `init`). This turns on how the web-view bridge works out, and on how much the user's notes rely on styling.
+- **Mermaid in the hybrid:** a web view (faithful to mermaid.js) or MermaidKit (native, ignores `classDef`, `style`, `click` and `init`). This turns on how the web-view bridge works out, and on how much the user's notes rely on styling. Research found SwiftUI's `WebView` enough for a display-only Mermaid view.
 - **The tabs outside the core subset** (Overview, Plots, Steps, Threads, Files): their order, and whether each needs a web view.
 - **The Doctor and first-run setup** once Node and brew uv are gone: what it checks, and how the app installs uv and Python.
 - **Moving off Electron Assay:** what happens to its settings and the user data folder, and when Electron Assay stops being maintained.
