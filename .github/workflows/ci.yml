@@ -25,12 +25,21 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: 0.11.32
       - run: npm ci
       - run: uv sync --frozen --project python
         env:
           UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.venv
       # The same gate as the pre-push hook: typecheck, ESLint, node tests, ruff, pytest, the coverage bar.
       - run: npm run check
+      # Known vulnerabilities in the locked dependencies (docs/process/security.md). Electron counts although it is a
+      # dev dependency: it is the runtime the app ships, so no --omit=dev.
+      - run: npm audit --audit-level=high
+      # Every group, on the lowest Python the project supports: pip-audit checks only the lines whose markers match.
+      - run: |
+          uv export --frozen --project python --format requirements-txt --no-emit-project --all-groups -o "$RUNNER_TEMP/requirements.txt"
+          uvx --python 3.11 pip-audit@2.10.1 -r "$RUNNER_TEMP/requirements.txt" --require-hashes --disable-pip --progress-spinner off
       - id: paths
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: node scripts/release-paths.ts "${{ github.event.before }}" "${{ github.sha }}" >> "$GITHUB_OUTPUT"
@@ -47,6 +56,8 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: 0.11.32
       - run: npm ci
       # The postinstall rebuilds node-pty for Electron only on the Mac; the app smoke test needs it here too.
       - run: npx electron-rebuild -f -w node-pty
@@ -62,12 +73,17 @@ jobs:
     concurrency:
       group: release
       cancel-in-progress: false
+    # The signing and notarization secrets live in this environment, which only main may use (ci-release.md): a
+    # workflow edited on another branch cannot read them.
+    environment: release
     permissions:
       contents: write
     steps:
+      # No token left in .git/config while dependency code runs; the fetch below passes it for that one call.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
@@ -76,8 +92,11 @@ jobs:
       # release holds this commit, and this commit's version (from the tags it can reach) could collide with theirs.
       # When they change only docs and tests, they release nothing, so this commit still must.
       - id: tip
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git fetch --quiet origin main
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" fetch --quiet origin main
           newer=$(node scripts/release-paths.ts "$GITHUB_SHA" origin/main)
           if [ "$(git rev-parse origin/main)" = "$GITHUB_SHA" ] || [ "$newer" = "release=false" ]; then
             echo "current=true" >> "$GITHUB_OUTPUT"
@@ -85,8 +104,10 @@ jobs:
             echo "current=false" >> "$GITHUB_OUTPUT"
             echo "::notice::A newer push to main releases this commit"
           fi
+      # No dependency's install script runs on the machine that is about to hold the signing secrets; only the repo's
+      # own postinstall (Electron's unpack, node-pty's rebuild).
       - if: steps.tip.outputs.current == 'true'
-        run: npm ci
+        run: npm ci --ignore-scripts && node scripts/postinstall.mjs
       - id: version
         if: steps.tip.outputs.current == 'true'
         run: |
@@ -119,6 +140,9 @@ jobs:
           APPLE_API_KEY: ${{ runner.temp }}/notarize-key.p8
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      # The built app's fuses, as package.json sets them (scripts/fuse-check.ts).
+      - if: steps.tip.outputs.current == 'true'
+        run: node scripts/fuse-check.ts dist/mac-arm64/Assay.app
       # The tag and the release in one step: gh tags the pushed commit, not whatever main is by now.
       - if: steps.tip.outputs.current == 'true'
         run: |

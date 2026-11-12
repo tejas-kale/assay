@@ -1,4 +1,4 @@
-# Assay's Python environment. The app builds it at launch with `uv sync --frozen --no-editable` from this file and
+# Assay's Python environment. The app builds it at launch with `uv sync --frozen --no-editable --no-dev` from this file and
 # uv.lock (shipped in the app under backend/python) into ~/Library/Application Support/Assay/venvs/<version>, and
 # passes it to Claude in ASSAY_VENV (docs/process/launch-contract.md). After changing this file, run `uv lock` and
 # commit the new uv.lock: the next release builds it. (tests/test_venv.sh builds this file with uv in a scratch folder.)
@@ -6,7 +6,8 @@
 [project]
 name = "notes-src"
 version = "0"
-requires-python = ">=3.10"
+# 3.11 at least: on 3.10 the lock can only hold Pillow and Tornado releases with known vulnerabilities (pip-audit).
+requires-python = ">=3.11"
 dependencies = [
   "ipykernel",
   "pytest",
@@ -28,8 +29,10 @@ dependencies = [
 
 # The project installs itself, editable, so `import analysis_db` (and the server's `python -m analysis_trust`)
 # works from any analysis folder, whatever is on sys.path.
+# The backend is pinned here and in [tool.uv] below: it runs on every user's Mac when the app builds its venv, and uv
+# fetches it outside uv.lock.
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools==84.2.1"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -62,6 +65,9 @@ packages = []
 # parallel. Not shipped with the app.
 [dependency-groups]
 dev = ["ruff", "pytest-cov", "pytest-xdist"]
+
+[tool.uv]
+build-constraint-dependencies = ["setuptools==84.2.1"]
 
 # The smell gate (docs/process/coding-standards.md). Today's violations are counted in ruff-baseline.json, which the
 # ratchet (scripts/ratchet.ts) lets only shrink.

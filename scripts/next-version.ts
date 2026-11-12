@@ -17,7 +17,8 @@ const bumpOf = (trailer: string): Bump => {
 /** The version after `lastTag`, given the values of the `Release:` trailers of the commits since it. */
 export function nextVersion(lastTag: string | null, releaseTrailers: string[]): string {
   if (lastTag === null) return FIRST_VERSION
-  const [major = 0, minor = 0, patch = 0] = lastTag.replace(/^v/, '').split('.').map(Number)
+  if (!/^v\d+\.\d+\.\d+$/.test(lastTag)) throw new Error(`The latest release tag ${lastTag} is not vMAJOR.MINOR.PATCH`)
+  const [major = 0, minor = 0, patch = 0] = lastTag.slice(1).split('.').map(Number)
   const bump = releaseTrailers.map(bumpOf).reduce<Bump>((a, b) => (RANK[b] > RANK[a] ? b : a), 'patch')
   switch (bump) {
     case 'major':

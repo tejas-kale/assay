@@ -82,3 +82,7 @@ test('from git: a "Release: major" line in the body, with prose after it, is not
   repo.commit('Document trailers\n\nWrite it like this:\n\nRelease: major\n\nand CI bumps the major.')
   assert.equal(versionFromGit(repo.dir), '0.4.3')
 })
+
+test('a latest tag that is not vMAJOR.MINOR.PATCH stops the release instead of giving NaN (audit UP-7)', () => {
+  for (const tag of ['v1.2.3-rc', 'v1.2', '1.2.3', 'vx.y.z']) assert.throws(() => nextVersion(tag, []), /not vMAJOR\.MINOR\.PATCH/, tag)
+})

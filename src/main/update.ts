@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto'
 import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { checkToken, initialUpdate, isCheckDue, nextCheckAt, updateOn } from '../core/update.ts'
+import { checkToken, initialUpdate, isCheckDue, nextCheckAt, updateOn, UPDATER_OPTIONS } from '../core/update.ts'
 import type { UpdateEvent, UpdateState } from '../core/update.ts'
 import type { SetTokenResult, UpdateView } from '../shared/ipc.ts'
 
@@ -60,7 +60,10 @@ async function readToken(): Promise<TokenRead> {
     return isMissing ? { isMissing: true } : { error: `${UNREADABLE} ${errorLine(error)}` }
   }
   try {
-    return { token: safeStorage.decryptString(bytes) }
+    const { result, shouldReEncrypt } = await safeStorage.decryptStringAsync(bytes)
+    // The Keychain key rotated: saved again under the new one, so the next launch still reads it.
+    if (shouldReEncrypt) await writeToken(result)
+    return { token: result }
   } catch {
     return { error: UNREADABLE }
   }
@@ -78,10 +81,10 @@ function setToken(token: string | undefined, error?: string) {
 }
 
 async function writeToken(token: string): Promise<SetTokenResult> {
-  if (!safeStorage.isEncryptionAvailable()) return { ok: false, message: 'The Keychain is not available, so the token cannot be kept.' }
+  if (!(await safeStorage.isAsyncEncryptionAvailable())) return { ok: false, message: 'The Keychain is not available, so the token cannot be kept.' }
   const temp = `${tokenPath()}.${randomUUID()}.tmp`
   try {
-    await writeFile(temp, safeStorage.encryptString(token), { mode: 0o600 })
+    await writeFile(temp, await safeStorage.encryptStringAsync(token), { mode: 0o600 })
     await rename(temp, tokenPath())
     return { ok: true }
   } catch (error) {
@@ -134,7 +137,7 @@ function listen() {
 /** At launch, packaged builds only: reads the token, wires the updaters' events, and checks on schedule. */
 export async function startUpdater() {
   if (!app.isPackaged) return
-  autoUpdater.autoDownload = true
+  Object.assign(autoUpdater, UPDATER_OPTIONS)
   listen()
   const read = await readToken()
   if ('token' in read) setToken(read.token)
