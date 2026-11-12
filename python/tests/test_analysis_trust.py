@@ -261,6 +261,50 @@ def test_check_snapshots_every_proposal_file_and_fails_when_one_changes_during_t
     }
 
 
+def swapping_after_first_read(monkeypatch: pytest.MonkeyPatch, folder: Path, evil: str) -> None:
+    """Every file under ``folder`` reads as it is the first time, then as ``evil``: a writer racing the check."""
+    real, seen = Path.read_text, set()
+
+    def read_text(self: Path, *args: Any, **kwargs: Any) -> str:
+        if self.parent != folder:
+            return real(self, *args, **kwargs)
+        if self in seen:
+            return evil
+        seen.add(self)
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+
+
+def test_a_calculation_swapped_after_it_is_read_is_shown_checked_and_approved_as_read(
+    trusted: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    tables = yaml_tables()
+    on_cint(trusted)
+    monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: fixtures.fixture_engine(tables))
+    benign = (trusted / "completes_by_site.sql").read_text()
+    swapping_after_first_read(monkeypatch, trusted, "/*---\ndescription: evil\n---*/\nDROP TABLE x\n")
+    answer = review.check(trusted, "completes_by_site", tmp_path)
+    assert answer["code"] == answer["texts"]["completes_by_site.sql"] == benign
+    assert all("evil" not in text for text in answer["texts"].values())
+
+
+def test_an_entry_swapped_after_it_is_read_is_shown_checked_and_approved_as_read(
+    draft: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    path = draft / "main.panel.surveys.yaml"
+    benign = path.read_text()
+    swapping_after_first_read(monkeypatch, draft, "description: evil\n")
+    answer = review.check_entry(path, tmp_path)
+    assert answer["code"] == answer["texts"]["main.panel.surveys.yaml"] == benign
+    assert all("evil" not in text for text in answer["texts"].values())
+
+
+def test_a_missing_entry_fails_its_form_step(tmp_path: Path) -> None:
+    answer = review.check_entry(tmp_path / "main.panel.gone.yaml", tmp_path)
+    assert answer["steps"] == [{"step": "form", "ok": False, "text": "main.panel.gone.yaml does not exist"}]
+
+
 def yaml_tables() -> dict[str, str]:
     """The fixture tables under catalog cint: a live engine on DuckDB cannot have a catalog named main."""
     return {name.replace("main.", "cint."): text for name, text in yaml.safe_load(TEMPLATE_TESTS)["tables"].items()}
