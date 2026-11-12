@@ -13,7 +13,9 @@ export function Strip() {
   const [hints, setHints] = useState<HoldKind>()
   useEffect(() => {
     const stops = [window.app.onStripEntries(setView), window.app.onHints(setHints)]
-    return () => stops.forEach(stop => stop())
+    return () => {
+      for (const stop of stops) stop()
+    }
   }, [])
   return (
     <nav className={`strip ${view.side}`} aria-label="Open analyses">
@@ -21,7 +23,7 @@ export function Strip() {
         <button
           key={entry.number}
           className={`strip-entry${entry.current ? ' current' : ''}`}
-          title={`⌘${entry.number}  ${entry.title}`}
+          title={`⌘${String(entry.number)}  ${entry.title}`}
           onClick={() => void window.app.showAnalysis(entry.number)}
         >
           {entry.state && <StateIcon state={entry.state} />}
@@ -44,7 +46,7 @@ const STATE_NAME: Record<State, string> = {
 }
 
 /** Claude's state as an icon, with no visible words: empty circle, pulsing orange dot, or a small white hand. */
-function StateIcon({ state }: { state: State }) {
+function StateIcon({ state }: Readonly<{ state: State }>) {
   if (state !== 'waiting') return <span className={`strip-dot ${state}`} role="img" aria-label={STATE_NAME[state]} />
   // A raised hand: drawn once thick in the outline colour, then filled white on top, so it reads on light panels too.
   const hand = (

@@ -3,31 +3,21 @@ import type { RefObject } from 'react'
 import { createPortal } from 'react-dom'
 
 import type { PreviewSource } from '../../core/search.ts'
+import { previewView } from '../../core/previewView.ts'
+import type { PreviewView } from '../../core/previewView.ts'
 import type { PreviewResult } from '../../shared/ipc.ts'
 import { CodeView, languageOfPath } from './CodeView.tsx'
 import { MermaidDiagram } from './Mermaid.tsx'
+import { closeOnKeys, useFocusOnOpen } from './popup.ts'
 
-const size = (bytes: number) =>
-  bytes < 1024 ? `${bytes} B` : bytes < 1024 ** 2 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`
+const sourceLanguage = (source: PreviewSource | undefined) => {
+  if (source?.type === 'path') return languageOfPath(source.path)
+  return source?.type === 'text' ? source.language : undefined
+}
 
-/**
- * A read-only look at a file or a piece of text, in the Code tab's view: highlighted by extension, SQL
- * formatted (`o` shows the original text). It follows `source`: a newer source replaces an older one
- * still loading. `find` selects and scrolls to the first match. `focus` puts the cursor in it (a
- * pop-up); otherwise it never takes the keys (the search box keeps them). `refreshKey` reads the file again.
- */
-export function Preview(props: {
-  source: PreviewSource | undefined
-  find?: string | undefined
-  focus?: boolean
-  bodyRef?: RefObject<HTMLDivElement | null>
-  refreshKey?: unknown
-}) {
-  const { source, find, focus } = props
+/** The content of the file at `path`, read again when `refreshKey` changes. A newer path replaces an older one still loading. */
+function usePreviewResult(path: string | undefined, refreshKey: unknown): PreviewResult | undefined {
   const [result, setResult] = useState<{ for: string; value: PreviewResult }>()
-  const [original, setOriginal] = useState(false)
-  const path = source?.type === 'path' ? source.path : undefined
-
   useEffect(() => {
     if (path === undefined) return
     let live = true
@@ -37,41 +27,96 @@ export function Preview(props: {
     return () => {
       live = false
     }
-  }, [path, props.refreshKey])
+  }, [path, refreshKey])
+  return result !== undefined && result.for === path ? result.value : undefined
+}
 
+type CodeProps = Readonly<{
+  view: Extract<PreviewView, { view: 'code' }>
+  source: PreviewSource | undefined
+  path: string | undefined
+  find?: string
+  focus?: boolean
+  /** Whether SQL shows its original text; kept by Preview, so it holds from one file to the next. */
+  original: boolean
+  onToggleOriginal: () => void
+}>
+
+function CodeBody({ view, source, path, find, focus, original, onToggleOriginal }: CodeProps) {
+  return (
+    <>
+      <CodeView
+        code={view.text}
+        language={sourceLanguage(source)}
+        focusKey={path ?? view.text}
+        original={original}
+        onToggleOriginal={onToggleOriginal}
+        passive={!focus}
+        autoFocus={focus ?? false}
+        find={find}
+      />
+      {view.truncated && <div className="status dim">Cut here: the file is larger than the preview shows.</div>}
+    </>
+  )
+}
+
+function PreviewBody({ view, ...code }: Readonly<{ view: PreviewView } & Omit<CodeProps, 'view'>>) {
+  switch (view.view) {
+    case 'reading':
+      return <div className="empty">Reading…</div>
+    case 'error':
+      return <div className="status warn">{view.message}</div>
+    case 'image':
+      return <img src={view.dataUrl} alt={code.path} />
+    case 'binary':
+      return <div className="empty">Binary file, {view.size}. Enter in the Files tab opens it in its app.</div>
+    case 'diagram':
+      return (
+        <div className="mermaid-file">
+          <MermaidDiagram text={view.text} />
+        </div>
+      )
+    case 'code':
+      return <CodeBody view={view} {...code} />
+  }
+}
+
+type PreviewProps = Readonly<{
+  source: PreviewSource | undefined
+  find?: string
+  focus?: boolean
+  bodyRef?: RefObject<HTMLDivElement | null>
+  refreshKey?: unknown
+}>
+
+/**
+ * A read-only look at a file or a piece of text, in the Code tab's view: highlighted by extension, SQL
+ * formatted (`o` shows the original text). It follows `source`: a newer source replaces an older one
+ * still loading. `find` selects and scrolls to the first match. `focus` puts the cursor in it (a
+ * pop-up); otherwise it never takes the keys (the search box keeps them). `refreshKey` reads the file again.
+ */
+export function Preview({ source, find, focus, bodyRef, refreshKey }: PreviewProps) {
+  const path = source?.type === 'path' ? source.path : undefined
+  const fetched = usePreviewResult(path, refreshKey)
+  const [original, setOriginal] = useState(false)
   const shown: PreviewResult | undefined =
-    source?.type === 'text' ? { ok: true, kind: 'text', text: source.text, truncated: false } : result && result.for === path ? result.value : undefined
-
+    source?.type === 'text' ? { ok: true, kind: 'text', text: source.text, truncated: false } : fetched
   return (
     <div className="preview" aria-label="Preview">
-      <div className="subhead preview-title dim">{source === undefined ? 'Nothing selected' : path ?? 'Text'}</div>
-      <div className="preview-body" ref={props.bodyRef} tabIndex={-1}>
-        {source === undefined ? null : shown === undefined ? (
-          <div className="empty">Reading…</div>
-        ) : !shown.ok ? (
-          <div className="status warn">{shown.message}</div>
-        ) : shown.kind === 'image' ? (
-          <img src={shown.dataUrl} alt={path} />
-        ) : shown.kind === 'binary' ? (
-          <div className="empty">Binary file, {size(shown.size)}. Enter in the Files tab opens it in its app.</div>
-        ) : path !== undefined && /\.(mmd|mermaid)$/i.test(path) ? (
-          <div className="mermaid-file">
-            <MermaidDiagram text={shown.text} />
-          </div>
-        ) : (
-          <>
-            <CodeView
-              code={shown.text}
-              language={path === undefined ? (source?.type === 'text' ? source.language : undefined) : languageOfPath(path)}
-              focusKey={path ?? shown.text}
-              original={original}
-              onToggleOriginal={() => setOriginal(o => !o)}
-              passive={!focus}
-              autoFocus={focus ?? false}
-              find={find}
-            />
-            {shown.truncated && <div className="status dim">Cut here: the file is larger than the preview shows.</div>}
-          </>
+      <div className="subhead preview-title dim">{source === undefined ? 'Nothing selected' : (path ?? 'Text')}</div>
+      <div className="preview-body" ref={bodyRef} tabIndex={-1}>
+        {source !== undefined && (
+          <PreviewBody
+            view={previewView(shown, path)}
+            source={source}
+            path={path}
+            find={find}
+            focus={focus}
+            original={original}
+            onToggleOriginal={() => {
+              setOriginal(o => !o)
+            }}
+          />
         )}
       </div>
     </div>
@@ -82,18 +127,13 @@ export function Preview(props: {
  * The preview as a pop-up over the window, with the cursor in it: h j k l, w b, g G move, `o` shows
  * SQL's original text. Esc, Tab or q closes it, and `onClose` gives the keys back to the list.
  */
-export function PreviewPopup(props: { source: PreviewSource; onClose: () => void }) {
+export function PreviewPopup({ source, onClose }: Readonly<{ source: PreviewSource; onClose: () => void }>) {
   const box = useRef<HTMLDivElement>(null)
   // An image, a binary file or an error has no editor to focus: the pop-up itself takes the keys.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!box.current?.contains(document.activeElement)) box.current?.focus()
-    }, 50)
-    return () => clearTimeout(timer)
-  }, [])
+  useFocusOnOpen(box)
   // At the page root, so no pane drawn later on the page covers it. React still bubbles its keys to the tab, which ignores keys from a dialog.
   return createPortal(
-    <div className="overlay" onMouseDown={props.onClose}>
+    <div className="overlay" onMouseDown={onClose}>
       <div
         className="palette preview-popup"
         role="dialog"
@@ -101,17 +141,12 @@ export function PreviewPopup(props: { source: PreviewSource; onClose: () => void
         aria-label="Preview"
         tabIndex={-1}
         ref={box}
-        onMouseDown={e => e.stopPropagation()}
-        onKeyDown={e => {
-          if (e.metaKey || e.ctrlKey || e.altKey) return
-          if (e.key === 'Escape' || e.key === 'Tab' || e.key === 'q') {
-            e.preventDefault()
-            e.stopPropagation()
-            props.onClose()
-          }
+        onMouseDown={e => {
+          e.stopPropagation()
         }}
+        onKeyDown={closeOnKeys(onClose)}
       >
-        <Preview source={props.source} focus />
+        <Preview source={source} focus />
         <div className="hint">h j k l · w b · g G move · o original SQL · Esc / Tab / q close</div>
       </div>
     </div>,

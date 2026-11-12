@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from 'react'
 
 import { INITIAL, filterItems, listNav } from '../../core/listNav.ts'
@@ -14,25 +14,30 @@ export type Reveal = { target: SearchTarget; n: number }
 /**
  * Carries out a reveal once `items` are there: finds the item `matches` picks and hands it to `apply`
  * (which selects it), then calls `onDone` so a later remount of the tab does not select it again.
+ * `handlers` is `matches`, `apply` and `onDone`, in that order.
  */
 export function useReveal<T>(
   reveal: Reveal | undefined,
   items: readonly T[] | undefined,
-  matches: (item: T, target: SearchTarget) => boolean,
-  apply: (index: number, item: T) => void,
-  onDone: () => void,
+  ...handlers: [
+    matches: (item: T, target: SearchTarget) => boolean,
+    apply: (index: number, item: T) => void,
+    onDone: () => void,
+  ]
 ) {
-  const latest = useRef({ items, matches, apply, onDone })
-  latest.current = { items, matches, apply, onDone }
+  const [matches, apply, onDone] = handlers
+  const carryOut = useEffectEvent(() => {
+    if (!reveal || !items) return
+    const index = items.findIndex(item => matches(item, reveal.target))
+    const item = items[index]
+    if (item !== undefined) apply(index, item)
+    onDone()
+  })
+  const requestNumber = reveal?.n
   const ready = items !== undefined
   useEffect(() => {
-    const { items: now, matches: test, apply: select, onDone: done } = latest.current
-    if (!reveal || !now) return
-    const index = now.findIndex(item => test(item, reveal.target))
-    const item = now[index]
-    if (item !== undefined) select(index, item)
-    done()
-  }, [reveal?.n, ready])
+    carryOut()
+  }, [requestNumber, ready])
 }
 
 /** True for inputs, textareas, selects, editable elements and anything inside a dialog: pane keys must not run there. */
@@ -50,14 +55,16 @@ export function isPaneKey(e: KeyboardEvent): boolean {
 }
 
 /** One-line input: Enter saves a non-empty value, Escape cancels. */
-export function InlineInput(props: {
-  label: string
-  initial?: string
-  /** Enter saves an empty value too. */
-  allowEmpty?: boolean
-  onSubmit: (value: string) => void
-  onCancel: () => void
-}) {
+export function InlineInput(
+  props: Readonly<{
+    label: string
+    initial?: string
+    /** Enter saves an empty value too. */
+    allowEmpty?: boolean
+    onSubmit: (value: string) => void
+    onCancel: () => void
+  }>,
+) {
   const [value, setValue] = useState(props.initial ?? '')
   return (
     <div className="inline-input">
@@ -67,7 +74,9 @@ export function InlineInput(props: {
           autoFocus
           value={value}
           spellCheck={false}
-          onChange={e => setValue(e.target.value)}
+          onChange={e => {
+            setValue(e.target.value)
+          }}
           onKeyDown={e => {
             if (e.nativeEvent.isComposing) return
             if (e.key === 'Enter') {
@@ -85,7 +94,7 @@ export function InlineInput(props: {
 }
 
 /** The `/query` line shown while a search is active or kept. */
-export function SearchLine(props: { search: { active: boolean; query: string } | undefined }) {
+export function SearchLine(props: Readonly<{ search: { active: boolean; query: string } | undefined }>) {
   if (!props.search) return null
   return (
     <div className="searchline">
@@ -95,20 +104,19 @@ export function SearchLine(props: { search: { active: boolean; query: string } |
   )
 }
 
-type ListMode = { type: 'list' }
+export type ListMode = { type: 'list' }
+const LIST: ListMode = { type: 'list' }
 
-/**
- * State and key handling shared by the list tabs. `M` is the tab's mode union; `list` and
- * `confirmDelete` are the two modes this hook knows about.
- */
-export function useListPane<T, M extends { type: string }>(opts: {
+type ListPaneOptions<T, M extends { type: string }> = {
   items: readonly T[]
   textOf: (item: T) => string
   /** True when the item a non-list mode points at is gone (a poll removed it): the pane then returns to the list. */
   targetGone: (mode: M | ListMode) => boolean
   /** Deletes the item of a confirmed `confirmDelete` mode. */
   confirmDelete: (mode: Extract<M, { type: 'confirmDelete' }>) => Promise<EditResult>
-}): {
+}
+
+export type ListPane<T, M extends { type: string }> = {
   nav: ListNavState
   setNav: Dispatch<SetStateAction<ListNavState>>
   mode: M | ListMode
@@ -125,51 +133,66 @@ export function useListPane<T, M extends { type: string }>(opts: {
   confirmDeleteKey: (e: KeyboardEvent) => boolean
   /** The shared tail of the list-mode key handler: moves the selection and returns listNav's effect. */
   navigate: (e: KeyboardEvent) => ListNavEffect | undefined
-} {
+}
+
+/** The pane's mode, back at the list as soon as the item it points at is gone. */
+function useMode<M extends { type: string }>(targetGone: (mode: M | ListMode) => boolean) {
+  const [mode, setMode] = useState<M | ListMode>(LIST)
+  // Set during render, not in an effect: React renders again at once, so the gone item is never drawn.
+  if (mode.type !== 'list' && targetGone(mode)) setMode(LIST)
+  return [mode, setMode] as const
+}
+
+/** How a mode ends: back to the list, with the root focused again and the edit's failure, if any, as the message. */
+function useModeEnd<M extends { type: string }>(
+  setMode: Dispatch<SetStateAction<M | ListMode>>,
+  setMessage: Dispatch<SetStateAction<string | undefined>>,
+  rootRef: RefObject<HTMLDivElement | null>,
+) {
+  const refocus = () => requestAnimationFrame(() => rootRef.current?.focus())
+  const finish = (result: EditResult) => {
+    setMode(LIST)
+    setMessage(result.ok ? undefined : result.message)
+    refocus()
+  }
+  const cancel = () => {
+    setMode(LIST)
+    refocus()
+  }
+  return { finish, cancel }
+}
+
+/**
+ * State and key handling shared by the list tabs. `M` is the tab's mode union; `list` and
+ * `confirmDelete` are the two modes this hook knows about.
+ */
+export function useListPane<T, M extends { type: string }>(opts: ListPaneOptions<T, M>): ListPane<T, M> {
   const [nav, setNav] = useState<ListNavState>(INITIAL)
-  const [mode, setMode] = useState<M | ListMode>({ type: 'list' })
+  const [mode, setMode] = useMode<M>(opts.targetGone)
   const [message, setMessage] = useState<string>()
   const rootRef = useRef<HTMLDivElement>(null)
 
   const visible = filterItems(opts.items, nav, opts.textOf)
   const selectedIndex = Math.max(0, Math.min(nav.selected, visible.length - 1))
   const selected = visible[selectedIndex]
-
   useEffect(() => {
     rootRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
   }, [selectedIndex, visible.length])
 
-  const gone = mode.type !== 'list' && opts.targetGone(mode)
-  useEffect(() => {
-    if (gone) setMode({ type: 'list' })
-  }, [gone])
-
-  const refocus = () => requestAnimationFrame(() => rootRef.current?.focus())
-  const finish = (result: EditResult) => {
-    setMode({ type: 'list' })
-    setMessage(result.ok ? undefined : result.message)
-    refocus()
-  }
-  const cancel = () => {
-    setMode({ type: 'list' })
-    refocus()
-  }
-
+  const { finish, cancel } = useModeEnd(setMode, setMessage, rootRef)
   const confirmDeleteKey = (e: KeyboardEvent) => {
     if (mode.type !== 'confirmDelete') return false
     e.preventDefault()
     const target = mode as unknown as Extract<M, { type: 'confirmDelete' }>
-    setMode({ type: 'list' })
+    setMode(LIST)
     if (e.key === 'y') void opts.confirmDelete(target).then(finish)
     return true
   }
-
   const navigate = (e: KeyboardEvent) => {
     const next = listNav(nav, e.key, visible.length)
     if (nav.search?.active || NAV_KEYS.has(e.key)) e.preventDefault()
     setNav(next.state)
     return next.effect
   }
-
   return { nav, setNav, mode, setMode, message, setMessage, rootRef, visible, selectedIndex, selected, finish, cancel, confirmDeleteKey, navigate }
 }
