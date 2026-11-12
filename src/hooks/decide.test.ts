@@ -190,7 +190,7 @@ test('promptDecision lists the trusted calculations only when the venv python pr
   await mkdir(join(dir, 'venv/bin'), { recursive: true })
   const seen: string[][] = []
   expect(context(await promptDecision(env, procPrinting(JSON.stringify(list), seen)))).toContain('- by_site(): Per site.')
-  expect(seen).toEqual([[`${dir}/venv/bin/python`, '-m', 'analysis_trust', 'list', root]])
+  expect(seen).toEqual([[`${dir}/venv/bin/python`, '-I', '-m', 'analysis_trust', 'list', root]])
   for (const out of ['', 'not json', 'null', '5', JSON.stringify({ error: 'broken' })])
     expect([out, context(await promptDecision(env, procPrinting(out))).includes('by_site')]).toEqual([out, false])
   expect(context(await promptDecision(env, noProc))).not.toContain('by_site')

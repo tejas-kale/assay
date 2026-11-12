@@ -62,15 +62,15 @@ type Seen = { helper: { argv: readonly string[]; input?: string }[]; queried: st
 /** Plays the helper (expand, lint, steps) and the warehouse. */
 function script(ws: Fake, expansion: object = EXPANSION, seen: Seen = { helper: [], queried: [] }, retypes: string[] = []) {
   ws.setRun((argv, options?: RunOptions) => {
-    if (argv[2] === 'analysis_sql') {
+    if (argv[3] === 'analysis_sql') {
       seen.helper.push({ argv, ...(options?.input === undefined ? {} : { input: options.input }) })
-      if (argv[3] === 'expand') return { stdout: JSON.stringify(expansion) }
-      if (argv[3] === 'lint') return { stdout: JSON.stringify({ errors: [], warnings: [] }) }
-      if (argv[3] === 'retype') return { stdout: JSON.stringify({ warnings: retypes }) }
-      if (argv[3] === 'steps') return { stdout: JSON.stringify(PLAN) }
+      if (argv[4] === 'expand') return { stdout: JSON.stringify(expansion) }
+      if (argv[4] === 'lint') return { stdout: JSON.stringify({ errors: [], warnings: [] }) }
+      if (argv[4] === 'retype') return { stdout: JSON.stringify({ warnings: retypes }) }
+      if (argv[4] === 'steps') return { stdout: JSON.stringify(PLAN) }
       return { stdout: '{}' }
     }
-    if (argv[2] === 'analysis_trust') return { stdout: JSON.stringify({ tables: [], glossary: {} }) }
+    if (argv[3] === 'analysis_trust') return { stdout: JSON.stringify({ tables: [], glossary: {} }) }
     const file = fileOf(argv)
     seen.queried.push(file)
     if (file.endsWith('.counts.sql')) return output(['assay_rows', 'assay_grain_rows'], [['4', '4']])
@@ -85,10 +85,10 @@ test("Claude's query with includes runs expanded: the run keeps the SQL as writt
   const reply = await ws.call('sql', { sql: WRITTEN, slug: 'by-buyer' })
   expect(reply.split('\n')[0]).toBe('Built from: client_entry_sessions (block), cint.mkt.sessions:client_entry (definition), all_buyers (block).')
   expect(reply.split('\n')[1]).toBe('Query 001: 1 row. Columns: buyer_id, n')
-  expect(seen.helper[0]?.argv.slice(3)).toEqual(['expand', 'databricks', ws.root])
+  expect(seen.helper[0]?.argv.slice(4)).toEqual(['expand', 'databricks', ws.root])
   expect(seen.helper[0]?.input).toBe(WRITTEN)
   // The rules read the SQL as written, each block body a plain select.
-  expect(seen.helper[1]?.argv[3]).toBe('lint')
+  expect(seen.helper[1]?.argv[4]).toBe('lint')
   expect(seen.helper[1]?.input).toBe(EXPANSION.lint_sql)
   const saved = (await ws.file('queries/001_by-buyer.sql')) ?? ''
   expect(saved).toBe(`-- built from: client_entry_sessions@1a2b3c4d5e6f, cint.mkt.sessions:client_entry@aaaaaaaaaaaa, all_buyers@bbbbbbbbbbbb\n${WRITTEN}\n`)
@@ -113,7 +113,7 @@ test("the analyst's runs expand too, and a failed expansion is the request's err
   const seen = script(ws)
   expect(await ws.requests.perform({ kind: 'sql', sql: WRITTEN, slug: 'mine', engine: 'databricks' })).toEqual({ number: 1 })
   expect(seen.queried).toEqual(['queries/001.expanded.sql'])
-  expect(seen.helper.some(call => call.argv[3] === 'lint')).toBe(false)
+  expect(seen.helper.some(call => call.argv[4] === 'lint')).toBe(false)
   script(ws, { errors: ['bad'] })
   expect(await ws.requests.perform({ kind: 'sql', sql: WRITTEN, slug: 'mine', engine: 'databricks' })).toEqual({ error: 'Not run: the included trusted pieces cannot be used. Fix and send again:\n- bad' })
   await ws.done()
@@ -123,7 +123,7 @@ test('SQL without includes is not expanded', async () => {
   const ws = await fake(FILES)
   const seen = script(ws)
   await ws.call('sql', { sql: 'SELECT 1 AS x', slug: 'plain' })
-  expect(seen.helper.some(call => call.argv[3] === 'expand')).toBe(false)
+  expect(seen.helper.some(call => call.argv[4] === 'expand')).toBe(false)
   expect(await ws.file('queries/001.expanded.sql')).toBe(undefined)
   await ws.done()
 })
@@ -135,9 +135,9 @@ test('end to end: a query including two blocks lists both and steps through each
   expect(reply).toContain('client_entry_sessions (block)')
   expect(reply).toContain('all_buyers (block)')
   expect(await ws.requests.perform({ kind: 'steps', run: 1 })).toEqual({ ok: true })
-  const planned = seen.helper.find(call => call.argv[3] === 'steps')
+  const planned = seen.helper.find(call => call.argv[4] === 'steps')
   // Steps read the expanded SQL (without its blocks line) and are told which CTE holds which block.
-  expect(planned?.argv.slice(3)).toEqual(['steps', 'databricks', '--blocks', 'sessions=client_entry_sessions,buyers=all_buyers'])
+  expect(planned?.argv.slice(4)).toEqual(['steps', 'databricks', '--blocks', 'sessions=client_entry_sessions,buyers=all_buyers'])
   expect(planned?.input).toBe(`${EXPANSION.sql}\n`)
   const steps = parseSteps((await ws.file('queries/001.steps.json')) ?? '')
   expect(steps?.steps.map(step => [step.name, step.block, step.status, step.checks?.map(check => [check.kind, check.ok])])).toEqual([
@@ -155,8 +155,8 @@ test('a retyped piece is a warning: the query runs, the reply lists it, and the 
   const sql = 'SELECT count(*) AS n FROM cint.mkt.sessions s WHERE s.lk_responsestatusid = 3'
   const reply = await ws.call('sql', { sql, slug: 'n' })
   expect(reply).toBe(`Query 001: 1 row. Columns: buyer_id, n\nbuyer_id  n\n10        2\n\nRetyped trusted logic (include the piece, or add -- retype: <piece>: <why> above the statement):\n- ${line}`)
-  const retype = seen.helper.find(call => call.argv[3] === 'retype')
-  expect(retype?.argv.slice(3)).toEqual(['retype', 'databricks', ws.root])
+  const retype = seen.helper.find(call => call.argv[4] === 'retype')
+  expect(retype?.argv.slice(4)).toEqual(['retype', 'databricks', ws.root])
   expect(retype?.input).toBe(sql)
   expect(JSON.parse((await ws.file('queries/001.notices.json')) ?? 'null')).toEqual({ rules: [], retype: [line] })
   await ws.done()
@@ -166,7 +166,7 @@ test('the retype check reads the SQL with its includes removed', async () => {
   const ws = await fake(FILES)
   const seen = script(ws)
   await ws.call('sql', { sql: WRITTEN, slug: 'by-buyer' })
-  expect(seen.helper.find(call => call.argv[3] === 'retype')?.input).toBe(EXPANSION.retype_sql)
+  expect(seen.helper.find(call => call.argv[4] === 'retype')?.input).toBe(EXPANSION.retype_sql)
   expect(await ws.file('queries/001.notices.json')).toBe(undefined)
   await ws.done()
 })

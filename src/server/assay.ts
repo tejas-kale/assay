@@ -318,7 +318,7 @@ export class Assay {
     const python = await this.toolsPython()
     if (!python) return { error: await this.venvHint() }
     const ran = await this.config.proc
-      .run([python, '-m', module, ...args], { cwd: this.config.analysis, timeoutMs, ...(input === undefined ? {} : { input }) })
+      .run([python, '-I', '-m', module, ...args], { cwd: this.config.analysis, timeoutMs, ...(input === undefined ? {} : { input }) })
       .catch((error: unknown) => ({ exitCode: 1, stdout: '', stderr: message(error) }))
     try {
       const parsed: unknown = JSON.parse(ran.stdout)
