@@ -67,8 +67,9 @@ writes, out of reach of the launcher's container:
   root's `.git` read-only, or the app keeps the approved hashes in its own data folder, mounted read-only like
   `ASSAY_BACKEND`, and a calculation is trusted only when its hash is there.
 
-UI-3 (medium) is open too: serving the renderer from an `app://` scheme so `'self'` means the app alone, then turning
-`grantFileProtocolExtraPrivileges` off. It needs the app run on a Mac or in CI's smoke test.
+UI-3 (medium) is fixed in code, untried on a Mac: the packaged renderer loads from the `app://assay` scheme
+(`src/core/appProtocol.ts` decides which file a request may read, `src/main/appScheme.ts` serves it), so `'self'` means
+the app alone, and `grantFileProtocolExtraPrivileges` is off. It needs the app run on a Mac or in CI's smoke test.
 
 ## Accepted lows
 

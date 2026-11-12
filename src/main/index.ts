@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { RUNNING, shutdownOn } from '../core/shutdown.ts'
 import type { Shutdown, ShutdownAction, ShutdownEvent } from '../core/shutdown.ts'
 import { CHANNELS } from '../shared/ipc.ts'
+import { registerAppScheme, serveAppScheme } from './appScheme.ts'
 import { registerIpc } from './ipc.ts'
 import { onDoctorChange, prepareBackend } from './runtime.ts'
 import { installAndRelaunch, onUpdateChange, setOnRestart, startUpdater } from './update.ts'
@@ -47,6 +48,8 @@ function step(event: ShutdownEvent): ShutdownAction {
   return next.action
 }
 
+registerAppScheme()
+
 setOnRestart(() => step({ type: 'restart', live: isAnyLive() }))
 
 app.on('before-quit', event => {
@@ -73,6 +76,7 @@ void app.whenReady().then(() => {
   // v1 runs unpackaged, so the Dock icon is set here rather than from an app bundle.
   app.dock?.setIcon(fileURLToPath(new URL('../../resources/icon.png', import.meta.url)))
   Menu.setApplicationMenu(buildMenu())
+  serveAppScheme()
   registerIpc()
   onDoctorChange(view => {
     broadcast(CHANNELS.doctorChanged, view)
