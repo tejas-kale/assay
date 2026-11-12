@@ -22,6 +22,7 @@ A build-ready plan for the **hybrid** Assay: a native Swift Mac app, with CodeMi
 
 <!-- one line per resolved ticket: [title](issues/NN-slug.md): gist -->
 
+- [How the app is signed, notarised, released and updated](issues/06-distribution.md): free macOS runners for public repos; the existing Developer ID certificate and a Team API key sign and notarise; Sparkle 2 adds one EdDSA secret; uv-managed Python arrives unquarantined and runs as a separate process, with known uv issues to check.
 - [How Claude builds, tests and drives a native Mac app](issues/05-agent-dev-loop.md): Foundation-only Swift builds, tests and lints on Linux; the app, UI tests and xcodebuild need the Mac; XCUIAutomation replaces CDP; hence a portable core package plus a thin app target.
 - [How the native shell hosts CodeMirror and Mermaid in web views](issues/02-webview-bridge.md): the editor needs an AppKit `WKWebView` subclass so Assay's shortcuts beat the page; SwiftUI's `WebView` suffices for display-only Mermaid; JS built at app build time; key routing and cost settled by a spike.
 - [Which terminal component runs Claude Code in the native shell](issues/03-terminal-choice.md): SwiftTerm or GhosttyKit, decided by a side-by-side spike on the Mac; libghostty-vt waits for the fully native phase.
