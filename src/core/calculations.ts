@@ -244,6 +244,8 @@ export type CheckAnswer = {
   code?: string
   /** The proposal's files, by name, that approving copies. */
   files?: string[]
+  /** Each of those files' text as the check started: approving copies exactly these. */
+  texts?: Record<string, string>
   sample?: { columns: string[]; rows: string[][]; total: number }
 }
 
@@ -252,7 +254,7 @@ export const PROPOSAL_NAME = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+){0,2}$/
 
 /** One line of `analysis_trust check --stream`. */
 export type CheckEvent =
-  | { event: 'start'; name: string; kind?: string; file?: string; description?: string; code?: string; files?: string[]; block?: { grain: string[]; columns: string[] } }
+  | { event: 'start'; name: string; kind?: string; file?: string; description?: string; code?: string; files?: string[]; texts?: Record<string, string>; block?: { grain: string[]; columns: string[] } }
   | { event: 'step'; step: CheckStep }
   | { event: 'done'; answer: CheckAnswer | { error: string } }
 

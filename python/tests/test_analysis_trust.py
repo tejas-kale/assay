@@ -239,6 +239,28 @@ def test_check_runs_every_step_and_a_live_run(trusted: Path, monkeypatch: pytest
     assert answer["code"] == TEMPLATE.replace("main.panel", "cint.panel")
 
 
+def test_check_snapshots_every_proposal_file_and_fails_when_one_changes_during_the_check(
+    trusted: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    tables = yaml_tables()
+    on_cint(trusted)
+    monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: fixtures.fixture_engine(tables))
+    answer = review.check(trusted, "completes_by_site", tmp_path)
+    assert answer["texts"] == {name: (trusted / name).read_text() for name in answer["files"]}
+
+    def edit_companion(event: dict[str, Any]) -> None:
+        if event.get("step", {}).get("step") == "test":
+            (trusted / "completes_by_site.test.yaml").write_text("cases: []\n")
+
+    changed = review.check(trusted, "completes_by_site", tmp_path, edit_companion)
+    assert changed["ok"] is False
+    assert changed["steps"][-1] == {
+        "step": "changed",
+        "ok": False,
+        "text": "completes_by_site.test.yaml changed during the check: check again",
+    }
+
+
 def yaml_tables() -> dict[str, str]:
     """The fixture tables under catalog cint: a live engine on DuckDB cannot have a catalog named main."""
     return {name.replace("main.", "cint."): text for name, text in yaml.safe_load(TEMPLATE_TESTS)["tables"].items()}

@@ -184,6 +184,7 @@ const START = {
   description: 'Completes per site between two days.',
   code: CODE,
   files: ['completes_by_site.sql', 'completes_by_site.test.yaml'],
+  texts: { 'completes_by_site.sql': CODE, 'completes_by_site.test.yaml': 'cases: []\n' },
 }
 const CHECKED = { ...START, ok: true, steps: STEPS, sample: SAMPLE }
 const PROPOSAL = {
@@ -273,6 +274,21 @@ test('the review is the trust file through every state; trust-answer trust appro
   // Answered once: a second answer is refused.
   expect(await perform(ws, { kind: 'trust-answer', name: 'completes_by_site', answer: 'trust' })).toEqual({ error: 'No review of completes_by_site is waiting for an answer.' })
   await ws.done()
+})
+
+test('a companion file edited or removed after the check: the checked bytes are approved, the edit is kept', async () => {
+  for (const edit of ['cases: [evil]\n', '']) {
+    const ws = await fake(files(PROPOSAL))
+    ws.setRun(scripted(ws, {}))
+    await perform(ws, { kind: 'trust-check', name: 'completes_by_site' })
+    passing(await checking(ws))
+    expect(await until(async () => (await stateOf(ws)) === 'asking')).toBe(true)
+    await ws.put('lib/trusted/completes_by_site.test.yaml', edit)
+    expect(await perform(ws, { kind: 'trust-answer', name: 'completes_by_site', answer: 'trust' })).toEqual({ ok: true })
+    expect(await ws.file('/work/trusted/completes_by_site.test.yaml')).toBe('cases: []\n')
+    expect(await ws.file('lib/trusted/completes_by_site.test.yaml')).toBe(edit)
+    await ws.done()
+  }
 })
 
 test('a review that fails a check is "failed" and cannot be answered', async () => {
@@ -365,7 +381,7 @@ test('a drafted dictionary entry is checked with check-entry and approved into d
   await ws.requests.poll()
   const check = await checking(ws)
   expect(check.argv).toEqual([python(ws), '-m', 'analysis_trust', 'check-entry', `${ws.analysis}/lib/dictionaries/main.panel.sites.yaml`, ws.analysis, '--stream'])
-  const entry = { name: 'main.panel.sites', ok: true, kind: 'dictionary', file: 'main.panel.sites.yaml', code: 'description: Sites.\n', files: ['main.panel.sites.yaml'], steps: [{ step: 'form', ok: true, text: '0 columns' }] }
+  const entry = { name: 'main.panel.sites', ok: true, kind: 'dictionary', file: 'main.panel.sites.yaml', code: 'description: Sites.\n', files: ['main.panel.sites.yaml'], texts: { 'main.panel.sites.yaml': 'description: Sites.\n' }, steps: [{ step: 'form', ok: true, text: '0 columns' }] }
   check.emit({ event: 'start', ...entry, ok: undefined, steps: undefined })
   check.emit({ event: 'step', step: entry.steps[0] })
   check.emit({ event: 'done', answer: entry })
