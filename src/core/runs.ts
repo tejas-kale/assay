@@ -306,8 +306,19 @@ export function codeBody(text: string, language: 'sql' | 'python'): string {
 /**
  * Claude's code with every header-shaped line taken out of its leading comment lines, where the header is read: only
  * the server writes a run's header, so Claude's code cannot claim to be the user's or a trusted calculation's.
+ * The code comes back trimmed, as a run saves it, and is stripped again until nothing changes: a blank or indented
+ * line before a forged header would otherwise bring the header back to the top when the run is saved (audit PI-3).
  */
 export function withoutHeaderLines(code: string, language: 'sql' | 'python'): string {
+  let current = code.trim()
+  for (;;) {
+    const next = stripLeadingHeaderLines(current, language).trim()
+    if (next === current) return current
+    current = next
+  }
+}
+
+function stripLeadingHeaderLines(code: string, language: 'sql' | 'python'): string {
   const comment = language === 'python' ? '#' : '--'
   const pattern = language === 'python' ? PYTHON_HEADER_LINE : SQL_HEADER_LINE
   const lines = code.split('\n')
