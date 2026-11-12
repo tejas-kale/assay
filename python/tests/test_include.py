@@ -284,3 +284,24 @@ def test_a_template_including_a_definition_is_checked_expanded(
         ("rebuild", True),
     ], answer["steps"]
     assert "{{ client_entry(s) }}" in answer["code"]
+
+
+def test_a_template_including_a_definition_runs_live_against_the_private_copy(
+    root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analysis = root / "analyses" / "a"
+    drafts = analysis / "lib" / "trusted"
+    drafts.mkdir(parents=True)
+    (drafts / "entered.sql").write_text(
+        "/*---\ndescription: Entered sessions on a day.\nparameters:\n  day: date\n---*/\n"
+        "SELECT count(*) AS n FROM cint.mkt.sessions s WHERE s.day = :day AND {{ client_entry(s) }}\n"
+    )
+    (drafts / "entered.test.yaml").write_text(
+        "live: {day: 2026-11-02}\n"
+    )
+    (drafts / "test_entered.py").write_text("def test_it():\n    assert True\n")
+    tables = {"cint.mkt.sessions": "session_id,day,lk_responsestatusid,surveyid\n1,2026-11-02,3,7\n"}
+    monkeypatch.setattr(analysis_db, "engine", lambda start=None, **_: fixtures.fixture_engine(tables))
+    answer = review.check(drafts, "entered", analysis)
+    live = [step for step in answer["steps"] if step["step"] == "live"]
+    assert [step["ok"] for step in live] == [True], answer["steps"]

@@ -1,4 +1,5 @@
 // The trust review's edges: why approving fails, how the helper's stream can end, and the proposals it lists.
+import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import { test, mock } from 'node:test'
 
 import { expect } from '../testing/expect.ts'
@@ -83,6 +84,22 @@ test('a checked file outside the proposal\'s own names refuses the whole approva
     expect(await ws.file('/work/x')).toBeUndefined()
     await ws.done()
   }
+})
+
+test('a destination file or folder that is a link refuses the approval and writes nothing through it', async () => {
+  const file = await fake(files())
+  await mkdir(`${file.root}/trusted`, { recursive: true })
+  await writeFile(`${file.dir}/outside.sql`, 'outside\n')
+  await symlink(`${file.dir}/outside.sql`, `${file.root}/trusted/calc.sql`)
+  expect(await approve(file, ok)).toEqual({ error: '"calc.sql" is a link: approving will not write through it.' })
+  expect(await file.file('/outside.sql')).toBe('outside\n')
+  await file.done()
+  const folder = await fake(files())
+  await mkdir(`${folder.dir}/elsewhere`)
+  await symlink(`${folder.dir}/elsewhere`, `${folder.root}/trusted`)
+  expect(await approve(folder, ok)).toEqual({ error: `${folder.root}/trusted is a link: approving will not write through it.` })
+  expect(await folder.file('/elsewhere/calc.sql')).toBeUndefined()
+  await folder.done()
 })
 
 test('the files a calculation may have are its main file and its tests', async () => {
