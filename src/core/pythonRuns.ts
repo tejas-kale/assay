@@ -145,8 +145,8 @@ function tableReply(table: PythonTable, i: number, queriesDir: string, maxCell: 
  * stdout, the error's traceback (last 30 lines), each table (at most 50 rows)
  * and each plot's file.
  */
-export function formatPythonRun(number: number, run: PythonRun, ms: number, ...where: [queriesDir?: string, maxCell?: number]): string {
-  const [queriesDir = 'queries', maxCell = 80] = where
+export function formatPythonRun(number: number, run: PythonRun, ms: number, where: { queriesDir?: string; maxCell?: number } = {}): string {
+  const { queriesDir = 'queries', maxCell = 80 } = where
   const lines = [`Run ${queryLabel(number)}: ${run.status} (${((run.durationMs ?? ms) / 1000).toFixed(1)} s).`]
   if (run.stdout.trim()) lines.push(run.stdout.trimEnd())
   if (run.error) {

@@ -44,7 +44,7 @@ export async function runPythonNow(assay: Assay, code: string, slugText: string,
         const parsed = await runFile(assay, live, file)
         if (!('status' in parsed)) return parsed
         made.status = parsed.status
-        return { reply: note + formatPythonRun(claimed, parsed, Date.now() - startedAt, assay.shown(QUERIES)) }
+        return { reply: note + formatPythonRun(claimed, parsed, Date.now() - startedAt, { queriesDir: assay.shown(QUERIES) }) }
       })
     },
   })

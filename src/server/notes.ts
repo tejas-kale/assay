@@ -25,7 +25,7 @@ import {
   writeRootNote,
 } from '../core/rootNotes.ts'
 import type { Assay } from './assay.ts'
-import { byCodeUnit } from './codeUnitOrder.ts'
+import { byCodeUnit } from '../core/nameOrder.ts'
 
 type Args = Record<string, unknown>
 const text = (args: Args, key: string) => {

@@ -4,7 +4,7 @@
 import { readdir, readFile, rename, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { byCodeUnit } from './codeUnitOrder.ts'
+import { byCodeUnit } from '../core/nameOrder.ts'
 import { slugify } from '../core/rootNotes.ts'
 import { ANALYSIS_FILE, isoDay, parseAnalysisFile, slugFor, yamlScalar } from '../core/analyses.ts'
 

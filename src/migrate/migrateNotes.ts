@@ -4,7 +4,7 @@
 // and a rerun finds nothing to do. The old formats are parsed here: the app no longer reads them.
 import { mkdir, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 
-import { byCodeUnit } from './codeUnitOrder.ts'
+import { byCodeUnit } from '../core/nameOrder.ts'
 import { ANALYSIS_FILE, listAnalyses, type FsPort } from '../core/analyses.ts'
 import { addWritten, freeId, idTime, noteBody, noteFileName, noteIds, noteLines, noteText, noteTitle, NOTES_DIR, parseNoteLists } from '../core/rootNotes.ts'
 

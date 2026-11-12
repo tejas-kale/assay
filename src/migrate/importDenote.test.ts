@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
-import { byCodeUnit } from './codeUnitOrder.ts'
+import { byCodeUnit } from '../core/nameOrder.ts'
 import { applyImport, convertDenote, parseField, planImport } from './importDenote.ts'
 
 const FINDING = `---

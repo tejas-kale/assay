@@ -1,6 +1,7 @@
 // The analyses under the root: `<root>/analyses/<slug>/analysis.yaml` marks one and holds its title and target, over
 // an injected port. The slug is the folder name, made from the title once at creation and never changed.
 import { slugify } from './rootNotes.ts'
+import { stripTrailingSlashes } from './slugText.ts'
 
 export type FsStat = { isDirectory: boolean; mtimeMs: number }
 export type FsPort = {
@@ -22,13 +23,6 @@ export type Analysis = AnalysisRef & { modifiedMs: number }
 
 export const ANALYSIS_FILE = 'analysis.yaml'
 const ANALYSES = 'analyses'
-
-/** The path without the `/`s at its end (a loop, not a regex: `/+$` is slow on a long run of slashes). */
-export function stripTrailingSlashes(path: string): string {
-  let end = path.length
-  while (end > 0 && path[end - 1] === '/') end--
-  return path.slice(0, end)
-}
 
 const join = (root: string, ...parts: string[]) => [stripTrailingSlashes(root), ...parts].join('/')
 

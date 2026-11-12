@@ -135,7 +135,7 @@ test('a Python reply lists each table with its file and row count, and says when
     ],
     plots: ['p.png'],
   }
-  const text = formatPythonRun(1, run, 0, 'q', 5).split('\n')
+  const text = formatPythonRun(1, run, 0, { queriesDir: 'q', maxCell: 5 }).split('\n')
   assert.equal(text[1], 'Table 1 (q/t1.csv): 60 rows. Columns: n')
   assert.ok(text.includes('Truncated: showing 50 of 60 rows. q/t1.csv has all of them.'))
   assert.ok(text.includes('Table 2 (q/t2.csv): 1 row. Columns: n'))

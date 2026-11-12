@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 
 import { expect } from '../testing/expect.ts'
-import { byCodeUnit } from './codeUnitOrder.ts'
+import { byCodeUnit } from '../core/nameOrder.ts'
 import { answering, fake } from './testing.ts'
 
 test('a session in an analysis sets up the files, leaving what exists', async () => {

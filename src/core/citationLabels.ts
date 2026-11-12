@@ -3,7 +3,7 @@
 // other SQL run with a result), computed (a Python run that ended ok), unverified; plus stale (a trusted run whose
 // calculation has a newer commit) and missing (no such analysis or run).
 import type { FsPort } from './analyses.ts'
-import { stripTrailingSlashes } from './analyses.ts'
+import { stripTrailingSlashes } from './slugText.ts'
 import { parseTrustedHeader } from './calculations.ts'
 import { parseRunResult, parseRuns } from './runs.ts'
 import type { Citation } from './rootNotes.ts'

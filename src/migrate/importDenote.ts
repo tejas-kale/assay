@@ -6,7 +6,7 @@
 import { readdir, readFile, stat, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { byCodeUnit } from './codeUnitOrder.ts'
+import { byCodeUnit } from '../core/nameOrder.ts'
 import { isNoteId, noteFileName, noteIds, noteLines, noteSegments, noteText, NOTES_DIR } from '../core/rootNotes.ts'
 
 const SKIP_TAGS = ['recap', 'source']

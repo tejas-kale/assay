@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import { promisify } from 'node:util'
 
 import { expect } from '../testing/expect.ts'
-import { byCodeUnit } from './codeUnitOrder.ts'
+import { byCodeUnit } from '../core/nameOrder.ts'
 import { parseFactLine, rewriteBody } from './migrateNotes.ts'
 
 const run = promisify(execFile)

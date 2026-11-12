@@ -8,6 +8,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 
 import { NOT_ASSAY } from '../core/rules.ts'
+import { stripTrailingSlashes } from '../core/slugText.ts'
 import { Assay } from './assay.ts'
 import { currentCommit } from '../shared/trustedCommit.ts'
 import type { Config } from './assay.ts'
@@ -17,12 +18,6 @@ import { Requests } from './requests.ts'
 import { callTool, TOOLS } from './tools.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
-
-function withoutTrailingSlashes(path: string): string {
-  let end = path.length
-  while (end > 0 && path[end - 1] === '/') end--
-  return path.slice(0, end)
-}
 
 /**
  * The session's config from the environment Assay set (docs/process/launch-contract.md), or undefined when Assay did
@@ -37,7 +32,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv, proc: Proc = realProc): Co
     root: resolve(root),
     venv: resolve(venv),
     runner: env.ASSAY_KERNEL_RUNNER || resolve(here, '../../python/analysis_kernel.py'),
-    tmp: withoutTrailingSlashes(env.TMPDIR || tmpdir()) || '/tmp',
+    tmp: stripTrailingSlashes(env.TMPDIR || tmpdir()) || '/tmp',
     proc,
     currentCommit: name => currentCommit(resolve(root), name),
   }

@@ -7,6 +7,11 @@ export function trimEndChar(text: string, char: string): string {
   return text.slice(0, end)
 }
 
+/** The path without the `/`s at its end. */
+export function stripTrailingSlashes(path: string): string {
+  return trimEndChar(path, '/')
+}
+
 /** Lower case, each run of characters other than a-z and 0-9 as one dash, no dash at either end, at most `maxLength` characters. */
 export function kebabCase(text: string, maxLength: number): string {
   const dashed = text.toLowerCase().replace(/[^a-z0-9]+/g, '-')

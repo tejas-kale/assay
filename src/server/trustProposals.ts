@@ -2,7 +2,7 @@
 import { DRAFT_DICTIONARIES, DRAFT_TRUSTED } from '../core/calculations.ts'
 import type { Proposal } from '../core/requests.ts'
 import type { Assay } from './assay.ts'
-import { byCodeUnit } from './codeUnitOrder.ts'
+import { byCodeUnit } from '../core/nameOrder.ts'
 
 export type FoundProposal = Proposal & { ext: string }
 

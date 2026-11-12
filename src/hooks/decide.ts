@@ -8,6 +8,7 @@ import { folderName, openAnalysis } from '../core/analyses.ts'
 import { isGuarded, normalPath, otherAnalysis, TRUST_TAB } from '../core/calculations.ts'
 import type { CalculationList } from '../core/calculations.ts'
 import { inRootNotes } from '../core/rootNotes.ts'
+import { stripTrailingSlashes } from '../core/slugText.ts'
 import { promptContext, runNotice, toolName } from '../core/rules.ts'
 import type { OpenAnalysis, UserRun } from '../core/rules.ts'
 import { deny, addContext, field, toolInput } from './io.ts'
@@ -37,13 +38,6 @@ export function bashDecision(input: Record<string, unknown>, env: Env) {
   return bashRunsPython(field(toolInput(input), 'command')) ? deny(BASH_PYTHON_DENY) : undefined
 }
 
-/** A path without the slashes at its end. */
-function withoutTrailingSlashes(path: string): string {
-  let end = path.length
-  while (end > 0 && path[end - 1] === '/') end--
-  return path.slice(0, end)
-}
-
 /** The open analysis for the rules and reasons: its title (the folder's name when analysis.yaml has none) and its folder from the root. */
 async function openRef(analysis: string, home: string): Promise<OpenAnalysis> {
   const fallback = folderName(analysis)
@@ -59,7 +53,7 @@ export async function writeDecision(input: Record<string, unknown>, env: Env) {
   const path = field(tool, 'file_path') || field(tool, 'notebook_path')
   const base = field(input, 'cwd') || env.ASSAY_ANALYSIS
   if (!path) return undefined
-  const root = withoutTrailingSlashes(home)
+  const root = stripTrailingSlashes(home)
   const real = realPath(path, base)
   const realRoot = realPath(root, '/')
   const other = otherAnalysis(real, realRoot, realPath(env.ASSAY_ANALYSIS, '/'), '/')

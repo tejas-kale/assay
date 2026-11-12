@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 
 import { Assay } from './assay.ts'
-import { byCodeUnit } from './codeUnitOrder.ts'
+import { byCodeUnit } from '../core/nameOrder.ts'
 import type { Child, Proc, RunOptions, RunResult } from './proc.ts'
 import { Requests } from './requests.ts'
 

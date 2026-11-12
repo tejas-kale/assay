@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { analysisSlug, cleanTitle, createAnalysis, isoDay, listAnalyses, openAnalysis, parseAnalysisFile, renameAnalysis, setTitle, slugFor, stripTrailingSlashes } from './analyses.ts'
+import { analysisSlug, cleanTitle, createAnalysis, isoDay, listAnalyses, openAnalysis, parseAnalysisFile, renameAnalysis, setTitle, slugFor } from './analyses.ts'
+import { stripTrailingSlashes } from './slugText.ts'
 import type { FsPort } from './analyses.ts'
 
 /** An in-memory port: `dirs` maps a folder to its mtime; `files` maps a file path to its text. */
