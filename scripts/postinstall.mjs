@@ -6,7 +6,7 @@
 import { execFileSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { delimiter, dirname, join } from 'node:path'
+import { join } from 'node:path'
 
 const ELECTRON_BIN = 'Electron.app/Contents/MacOS/Electron'
 
@@ -38,32 +38,21 @@ async function repairElectron() {
   })
   rmSync(dist, { recursive: true, force: true })
   mkdirSync(dist)
-  execFileSync('/usr/bin/ditto', ['-x', '-k', zip, dist], { stdio: 'inherit' })
+  execFileSync('ditto', ['-x', '-k', zip, dist], { stdio: 'inherit' })
   writeFileSync(pathTxt, ELECTRON_BIN)
   if (!ok()) throw new Error(`postinstall: Electron still does not run after unpacking ${zip}`)
   console.log(`postinstall: Electron ${version} unpacked`)
 }
 
-/** The absolute path of the first executable `name` on PATH, or undefined. */
-function which(name) {
-  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
-    const candidate = join(dir, name)
-    if (dir && existsSync(candidate)) return candidate
-  }
-  return undefined
-}
-
 try {
-  const git = which('git')
-  if (git === undefined) throw new Error('git is not installed')
-  execFileSync(git, ['config', 'core.hooksPath', '.githooks'], { stdio: 'ignore' })
+  execFileSync('git', ['config', 'core.hooksPath', '.githooks'], { stdio: 'ignore' })
 } catch {
   // Not a git checkout (an installed tarball): no hooks to set.
 }
 
 if (process.platform === 'darwin') {
   await repairElectron()
-  execFileSync(join(dirname(process.execPath), 'npx'), ['electron-rebuild', '-f', '-w', 'node-pty'], { stdio: 'inherit' })
+  execFileSync('npx', ['electron-rebuild', '-f', '-w', 'node-pty'], { stdio: 'inherit' })
 
   const prebuilds = join('node_modules', 'node-pty', 'prebuilds')
   if (existsSync(prebuilds)) {
