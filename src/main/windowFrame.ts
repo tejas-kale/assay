@@ -32,7 +32,8 @@ function saveSet(set: AnalysisSet) {
 /** Puts every view and the strip where the window's size and the strip's settings say. */
 export function layout() {
   const host = windowState.host
-  if (!host) return
+  // The window's 'closed' handler disposes the views after the window is destroyed; nothing is left to lay out.
+  if (!host || host.win.isDestroyed()) return
   const { strip, views } = frameFor(host.win.getContentBounds(), host.stripPrefs, host.set.paths.length)
   host.strip.setVisible(strip !== undefined)
   for (const ctx of allContexts()) ctx.view.setBounds(views)
