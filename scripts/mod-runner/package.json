@@ -1,0 +1,8 @@
+{
+  "name": "assay-mod-test-runner",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@anthropic-ai/claude-code-linux-x64": "2.1.323"
+  }
+}

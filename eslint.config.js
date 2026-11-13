@@ -8,7 +8,7 @@ import tseslint from 'typescript-eslint'
 const SIZE = { skipBlankLines: true, skipComments: true }
 
 export default tseslint.config(
-  { ignores: ['out/**', 'dist/**', 'node_modules/**', 'coverage/**', 'python/**', 'plugin/**', '.venv/**'] },
+  { ignores: ['out/**', 'dist/**', 'node_modules/**', 'coverage/**', 'python/**', 'plugin/skills/**', 'plugin/.claude-plugin/**', 'plugin/hooks/conversation-model.js', '.venv/**'] },
   js.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   sonarjs.configs.recommended,
@@ -38,7 +38,8 @@ export default tseslint.config(
     files: ['scripts/**/*.{ts,mjs}', 'tests/**/*.ts'],
     rules: { 'sonarjs/no-os-command-from-path': 'off' },
   },
-  { files: ['**/*.{js,mjs,cjs}'], ...tseslint.configs.disableTypeChecked },
+  { files: ['**/*.{js,mjs,cjs}', 'plugin/tests/*.test.ts'], ...tseslint.configs.disableTypeChecked },
+  { files: ['plugin/hooks/conversation*.js'], languageOptions: { globals: { h: 'readonly' } } },
   {
     files: ['**/*.{js,mjs,cjs}'],
     languageOptions: { globals: { process: 'readonly', console: 'readonly' } },

@@ -109,7 +109,7 @@ test('the bundled CLI creates a new analysis and launches it, and refuses before
     assert.equal(created.stdout, 'Created analyses/panel-churn-q4\n')
     assert.match(await readFile(join(w.root, 'analyses/panel-churn-q4/analysis.yaml'), 'utf8'), /^title: Panel churn Q4\ncreated: \d{4}-\d{2}-\d{2}\n$/)
     assert.ok((await readFile(w.capture, 'utf8')).startsWith(`${w.root}/analyses/panel-churn-q4\n`))
-    await assert.rejects(w.cli('new'), /Usage: assay open \[name\] \| assay new <title>\nRun assay --help/)
+    await assert.rejects(w.cli('new'), /Usage: assay open \[name\] \| assay new <title> \| assay root \[path\]\nRun assay --help/)
     const help = await w.cli('open', '--help')
     assert.match(help.stdout, /^assay \S+: work on an Assay analysis/)
     assert.ok(help.stdout.includes(`Root: ${w.root}\n`))

@@ -16,8 +16,15 @@ The code is the source of truth. `specs/slices/slice-*.md` are the specs each sl
 - Assay needs, on your login shell's PATH: Claude Code (`claude`), `node` 22 or later (`brew install node`), `uv`
   (`brew install uv`) and `databricks` (`brew install databricks/tap/databricks`). Settings (Cmd+,) has a Doctor that
   checks them and names each fix; only a missing `claude` stops an analysis from opening. Nothing is bundled.
-- `npm install` (postinstall repairs Electron's unpack on Node 26, rebuilds node-pty for Electron, fixes `spawn-helper`
+- `npm install --include=optional` (postinstall repairs Electron's unpack on Node 26, rebuilds node-pty for Electron, fixes `spawn-helper`
   and runs `npm run build:server`)
+- If a build reports `Cannot find module @rollup/rollup-darwin-arm64`, repair dependencies on the Mac:
+  ```bash
+  npm install --include=optional
+  node -e "require('rollup'); console.log('Rollup loads')"
+  npm run install-app
+  ```
+  Keep `package-lock.json`: it already includes the Mac ARM64 package.
 - `npm run build:server` bundles the MCP server and the hook scripts with esbuild into `out/server/index.mjs` and
   `out/hooks/*.mjs`, which the plugin runs with plain `node`. Run it after changing them: `npm run dev` uses this
   checkout as the backend.
@@ -34,8 +41,10 @@ The code is the source of truth. `specs/slices/slice-*.md` are the specs each sl
   title, in any case. With no name, or one that matches nothing, it opens a picker with fuzzy search; Enter opens the
   selected analysis, or creates one titled what you typed when you select the last row.
   `assay new <title>` creates an analysis, as the app's picker does, and starts Claude in it.
-  Choose a root in the app's Settings once. The app need not be open: on the first launch after an update, `assay`
-  installs that version's backend and builds its venv itself (about a minute). `ASSAY_CLAUDE_BIN` selects your usual launcher.
+  Set the root once with `assay root ~/Code/assay-test` (or in Settings); `assay root` shows it. The root must be an
+  existing folder holding `analyses/`; your current terminal directory does not select it.
+  The app need not be open: on the first launch after an update, `assay` installs that version's backend and builds
+  its venv itself (about a minute). `ASSAY_CLAUDE_BIN` selects your usual launcher.
   Set `ASSAY_THEME=light-ansi` for a light terminal. Close its app session before starting the same analysis here;
   Trust review still requires closing the terminal session and opening the app. Crash recovery is documented in
   [the launch contract](docs/developer/launch-contract.md#starting-from-a-terminal).
@@ -55,7 +64,7 @@ It keeps this version's and the previous one's folders and deletes older ones. A
 
 ## Environment
 
-- The root, which holds `analyses/`, `dictionaries/` and `trusted/`, is set in Settings (Cmd+,). The app asks on first
+- The root, which holds `analyses/`, `dictionaries/` and `trusted/`, is set with `assay root <path>` or in Settings (Cmd+,). The app asks on first
   run. Picking `analyses/` or one analysis inside it sets the folder above. Every analysis is
   `<root>/analyses/<slug>/` holding `analysis.yaml` (`title`, `created`, and optional `profile`, `warehouse`,
   `pg_database`). The slug comes from the title once and never changes; editing the title (palette: Rename analysis)

@@ -1,8 +1,8 @@
 // What `assay --help` says, and which command the arguments ask for. The CLI adapter (src/cli) prints it.
 
-export type CliVerb = 'help' | 'version' | 'open' | 'new' | 'usage'
+export type CliVerb = 'help' | 'version' | 'open' | 'new' | 'root' | 'usage'
 
-export const USAGE = 'Usage: assay open [name] | assay new <title>\nRun assay --help for what each does.'
+export const USAGE = 'Usage: assay open [name] | assay new <title> | assay root [path]\nRun assay --help for what each does.'
 
 /** A help or version flag wins wherever it appears; no arguments at all ask for help. */
 export function cliVerb(args: readonly string[]): CliVerb {
@@ -11,19 +11,12 @@ export function cliVerb(args: readonly string[]): CliVerb {
   const [verb, ...rest] = args
   if (verb === 'open' && rest.length <= 1) return 'open'
   if (verb === 'new' && rest.length > 0) return 'new'
+  if (verb === 'root' && rest.length <= 1) return 'root'
   return 'usage'
 }
 
-export function helpText({ version, root }: { version: string; root?: string }): string {
-  return `assay ${version}: work on an Assay analysis with Claude Code in this terminal.
-
-Usage:
-  assay open [name]   Start Claude in an analysis
-  assay new <title>   Create an analysis, then start Claude in it
-  assay --help        Show this help (also: assay help, -h)
-  assay --version     Print the Assay version this command runs (also: -v)
-
-assay open [name]
+/** What each command does, in the help after the usage lines. */
+const COMMANDS = `assay open [name]
   name is the analysis's folder (quarantine-checks) or its title in any case
   ("Quarantine Checks"). With no name, or one that matches nothing, it opens
   a picker: the analyses, most recently changed first, searched fuzzily from
@@ -36,14 +29,32 @@ assay new <title>
   does, then opens it. Words need no quotes: assay new Panel churn Q4.
   Nothing is written when the launch could not follow.
 
-What a launch does
+assay root [path]
+  Prints the root in use. With a path, saves it as the root, as the app's
+  Settings does: an existing folder holding analyses/; picking analyses/ or
+  one analysis inside it sets the folder above. The current terminal
+  directory never selects the root.
+
+`
+
+export function helpText({ version, root }: { version: string; root?: string }): string {
+  return `assay ${version}: work on an Assay analysis with Claude Code in this terminal.
+
+Usage:
+  assay open [name]   Start Claude in an analysis
+  assay new <title>   Create an analysis, then start Claude in it
+  assay root [path]   Show the Assay root, or set it to path
+  assay --help        Show this help (also: assay help, -h)
+  assay --version     Print the Assay version this command runs (also: -v)
+
+${COMMANDS}What a launch does
   Claude replaces this command in this terminal, in the analysis folder,
   with the same tools, hooks and recorded runs as the app. The first launch
   after an app update installs that version's backend and builds its Python
   environment with uv (about a minute). The app need not be open.
 
 Before you start
-  - Choose your Assay root once, in the app's Settings (Cmd+,).
+  - Choose your Assay root once: assay root <path>, or the app's Settings.
   - Close the app's session of an analysis before opening it here: one
     server owns an analysis at a time.
   - Trust review happens only in the app.
@@ -54,7 +65,7 @@ Environment
                      as a sandbox wrapper
   ASSAY_THEME        light-ansi for a light terminal; otherwise dark-ansi
 
-Root: ${root ?? "not set: choose one in the app's Settings"}
+Root: ${root ?? "not set: run assay root <path>, or choose one in the app's Settings"}
 
 Examples
   assay open

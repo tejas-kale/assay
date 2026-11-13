@@ -1,6 +1,6 @@
 # Rich conversation in Ghostty
 
-Status: design agreed with the user on 2026-11-12 in a design interview. Not implemented. `ready-for-agent`.
+Status: tickets 03–08 implemented; automated checks and backend integration passed. On 2026-11-12 the user authorised tickets 03–08 before the live Ghostty and installed-app trials; those acceptance checks remain pending for the user to run later.
 
 ## Problem Statement
 
@@ -197,3 +197,14 @@ These image behaviours remain unverified live. The mod filesystem's write API is
 request submission must invoke a bundled safe writer. The inspected `ToolUse` contract has no `isExpanded` prop,
 so ctrl+o must preserve the engine row without assuming such a flag. Live Ghostty image/theme and MCP-result checks
 remain unverified; the mounted test does not establish those visual acceptance criteria.
+
+## Deferred live acceptance (2026-11-12)
+
+Ghostty 1.4.0 is installed in the development container, but launching it fails with `Gtk: Failed to open display`.
+There is no X11 or Wayland display available. The user explicitly authorised continuing implementation of tickets
+03–08 and will test in Ghostty later. This waives the implementation dependency on live acceptance; it does not
+claim the image, theme, MCP-result delivery or installed-app History checks passed.
+
+Installed Claude Code 2.1.323 subsequently supplied a `ToolUse.isExpanded?: boolean` declaration in an empty
+interactive scratch session. The implementation uses this signal for ctrl+o, preserving the engine row first
+when true and conservatively when absent. This supersedes the older declaration limitation above.

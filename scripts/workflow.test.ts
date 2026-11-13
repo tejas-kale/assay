@@ -49,3 +49,19 @@ test('every action is pinned by commit, and uv by version (audit DEP-7)', () => 
   for (const action of uses) assert.match(action, /@[0-9a-f]{40}$/, action)
   assert.equal([...workflow.matchAll(/setup-uv@\S+ # \S+\n {8}with:\n {10}version: \d+\.\d+\.\d+\n/g)].length, workflow.split('setup-uv@').length - 1)
 })
+
+test('mod checks install and audit only the locked native runner without install scripts', () => {
+  const unit = jobs().get('unit') ?? ''
+  assert.match(unit, /npm ci --prefix scripts\/mod-runner --ignore-scripts/)
+  assert.match(unit, /npm audit --prefix scripts\/mod-runner --audit-level=high/)
+  assert.doesNotMatch(unit, /npm install/)
+  const lock = JSON.parse(readFileSync(new URL('mod-runner/package-lock.json', import.meta.url), 'utf8')) as {
+    lockfileVersion: number; packages: Record<string, { version?: string; resolved?: string; integrity?: string }>
+  }
+  assert.equal(lock.lockfileVersion, 3)
+  assert.equal(Object.keys(lock.packages).length, 2)
+  const runner = lock.packages['node_modules/@anthropic-ai/claude-code-linux-x64']
+  assert.equal(runner?.version, '2.1.323')
+  assert.equal(runner.resolved, 'https://registry.npmjs.org/@anthropic-ai/claude-code-linux-x64/-/claude-code-linux-x64-2.1.323.tgz')
+  assert.match(runner.integrity ?? '', /^sha512-[A-Za-z0-9+/]+=*$/)
+})

@@ -57,3 +57,16 @@ Discovered with Kagi, then read directly as Markdown on 2026-11-12:
 - [Published declaration](https://raw.githubusercontent.com/anthropics/claude-code/main/mods/types/claude-code.d.ts):
   `RenderPropsOf.ToolUse`, `ToolGroup`, filesystem and test-kit press contracts. A live interactive load must still
   compare the declaration Claude writes for the installed build before relying on version-specific behavior.
+
+## Implementation follow-up: installed Claude Code 2.1.323
+
+Ghostty 1.4.0 is installed, but launching fails with `Gtk: Failed to open display`. The user deferred
+live acceptance and authorised implementing the remaining tickets.
+
+An empty interactive Claude session in a scratch directory generated the installed declaration without a model
+call. Unlike the older published declaration, this build includes `ToolUse.isExpanded?: boolean`: true for ctrl+o,
+verbose mode or expanded groups; absent where the surface does not report it. Rich rows can preserve the engine
+row first when expanded and conservatively when the flag is absent. The installed declaration also confirms
+`$.state.get/set`, `$.ui.copy({ text, surface })` returning `isCopied`, and `$.process.run` with captured streams.
+Interactive editor stdio therefore needs a controlling terminal rather than the helper process’s JSON stdin.
+These API observations do not establish image drawing or Ayu readability in Ghostty.

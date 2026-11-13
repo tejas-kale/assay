@@ -1,6 +1,6 @@
 // The backend end to end, as the app and Claude use it: the bundled server over MCP with a real kernel in a real venv,
 // requests through .assay/requests/, and the bundled hooks on real files. Run with `npm run test:integration`.
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { writeFile } from 'node:fs/promises'
 import { test } from 'node:test'
 
@@ -94,7 +94,7 @@ test("rich-row edits and re-runs are new user runs naming their saved source", {
   const editor = join(w.dir, 'editor.sh')
   await writeFile(editor, '#!/bin/sh\nprintf "print(8)\\n" > "$1"\n')
   for (const [action, file] of [['rerun', '001_sites.sql'], ['edit', '002_total.py']]) {
-    const ran = await runNode(resolve('src/cli/runAction.ts'), JSON.stringify({ action, file }), { ...w.env, EDITOR: `/bin/sh '${editor}'` })
+    const ran = await runNode(join(await bundle(), 'cli/run-action.mjs'), JSON.stringify({ action, file }), { ...w.env, EDITOR: `/bin/sh '${editor}'` })
     const sent = JSON.parse(ran.stdout) as { ok: boolean; id: string }
     expect(sent.ok).toBe(true)
     const reply = `.assay/replies/${sent.id}.json`

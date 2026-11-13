@@ -15,5 +15,7 @@ three things the design rests on, plus the security record for a mod that writes
 - [x] Findings that change the spec are written back into `specs/rich-conversation.md`; the spike's code is discarded.
 
 The mounted contract test passed for supplied MCP result text on terminal and desktop, and the existing hook decision
-suite passed (17/17). These do not complete the live-session result criterion. Ghostty is absent in this container;
+suite passed (17/17). These do not complete the live-session result criterion. Ghostty 1.4.0 is installed, but cannot open a graphical display in this container;
 image drawing and Ayu theme readability still require a real terminal trial. The throwaway mod is not shipped.
+
+On 2026-11-12 the user deferred this live gate and authorised implementing tickets 03–08. The unchecked live criteria remain pending.

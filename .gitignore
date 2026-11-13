@@ -7,3 +7,5 @@ coverage
 .venv
 .coverage*
 python/build
+
+plugin/hooks/conversation-model.js

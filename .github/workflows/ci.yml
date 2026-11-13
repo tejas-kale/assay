@@ -31,11 +31,16 @@ jobs:
       - run: uv sync --frozen --project python
         env:
           UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.venv
+      # Mod tests run the pinned CLI without signing in or sending model requests.
+      - run: |
+          npm ci --prefix scripts/mod-runner --ignore-scripts
+          echo "$GITHUB_WORKSPACE/scripts/mod-runner/node_modules/@anthropic-ai/claude-code-linux-x64" >> "$GITHUB_PATH"
       # The same gate as the pre-push hook: typecheck, ESLint, node tests, ruff, pytest, the coverage bar.
       - run: npm run check
       # Known vulnerabilities in the locked dependencies (docs/developer/security.md). Electron counts although it is a
       # dev dependency: it is the runtime the app ships, so no --omit=dev.
       - run: npm audit --audit-level=high
+      - run: npm audit --prefix scripts/mod-runner --audit-level=high
       # Every group, on the lowest Python the project supports: pip-audit checks only the lines whose markers match.
       - run: |
           uv export --frozen --project python --format requirements-txt --no-emit-project --all-groups -o "$RUNNER_TEMP/requirements.txt"

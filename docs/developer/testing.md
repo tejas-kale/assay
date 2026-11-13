@@ -1,7 +1,7 @@
 # Testing
 
 `npm run check` is the gate: typecheck, ESLint, the node tests with coverage, ruff, pytest with coverage, then the
-coverage bar. `git push` runs it through `.githooks/pre-push` (`scripts/postinstall.mjs` sets `core.hooksPath`; `.githooks/post-commit` and `post-rewrite` still run the clone's own hooks in `.git/hooks`); CI runs
+coverage bar. Rich-conversation mod tests also run with Claude Code 2.1.323 or later (`claude plugin test plugin`), without sign-in or model requests. `git push` runs it through `.githooks/pre-push` (`scripts/postinstall.mjs` sets `core.hooksPath`; `.githooks/post-commit` and `post-rewrite` still run the clone's own hooks in `.git/hooks`); CI runs
 the same checks, so `--no-verify` only delays a failure.
 
 ## Unit tests
@@ -54,3 +54,19 @@ Every file meets the bar, with no exceptions recorded anywhere (slice 11f emptie
 - ESLint and ruff fail on any violation. Fix the code; never add `eslint-disable`, `# noqa` or a per-file ignore.
 - `npm run coverage-bar` (`scripts/coverage-bar.ts`) fails on any file in scope below 90% on lines or branches, and
   on an `eslint-suppressions.json`, which would let ESLint skip the violations it lists.
+
+## Conversation mod
+
+`npm run test:mod` bundles the pure row model and mounts tool rows with Claude Code’s own test kit. It exercises
+terminal and desktop trees and presses buttons, stubbing filesystem, clipboard and process boundaries. It does not
+paint a terminal or start a live model session. CI provisions Claude Code 2.1.323 from its native Linux package using the pinned, hashed lockfile in
+`scripts/mod-runner/`, with install scripts disabled and the runner dependency audited.
+
+`plugin/node-tests/` also drives the exported render registration boundary with an in-memory surface and filesystem,
+so `npm run test:node` measures each hand-written `plugin/hooks/conversation*.js` file. The generated
+`conversation-model.js` is excluded; its source modules in `src/core` are measured directly. The same per-file 90%
+line and branch bar applies to hand-written mod files. These checks supplement the native mounted tests.
+
+The edit/re-run helper is tested both as its TypeScript source process and its shipped bundle, including a
+controlling PTY, real requests and symlink refusals. Its source also meets the enforced per-file 90% coverage bar. The backend integration test verifies those requests become new user runs with source provenance.
+Live acceptance still requires Ghostty; use `specs/notes/rich-conversation-acceptance.md`.

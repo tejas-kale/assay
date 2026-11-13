@@ -57,11 +57,13 @@ export function parseCoverageJson(report: CoverageReport, folder: string): Cover
 
 /** The TypeScript under the bar; python/ is listed whole by coverage.py itself. */
 const TS_SCOPE = ['src/core', 'src/server', 'src/hooks']
+const MOD_SCOPE = 'plugin/hooks'
 const ESLINT_SUPPRESSIONS = 'eslint-suppressions.json'
 
 function measure(): CoverageByFile {
   const scope = TS_SCOPE.flatMap(dir => readdirSync(dir, { recursive: true, encoding: 'utf8' }).map(file => join(dir, file)))
-  const ts = withUnmeasured(parseLcov(readFileSync('coverage/lcov.info', 'utf8')), scope.filter(f => /(?<!\.test)\.tsx?$/.test(f)))
+  const mods = readdirSync(MOD_SCOPE).filter(file => /^conversation(?!-model).*\.js$/.test(file)).map(file => join(MOD_SCOPE, file))
+  const ts = withUnmeasured(parseLcov(readFileSync('coverage/lcov.info', 'utf8')), [...scope.filter(f => /(?<!\.test)\.tsx?$/.test(f)), ...mods, 'src/cli/runAction.ts'])
   const python = JSON.parse(readFileSync('coverage/python.json', 'utf8')) as CoverageReport
   return { ...ts, ...parseCoverageJson(python, 'python') }
 }

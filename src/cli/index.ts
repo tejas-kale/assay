@@ -1,9 +1,9 @@
 // A terminal adapter only: launch decisions and the spawn contract live in core.
 import { writeSync } from 'node:fs'
-import { readFile, stat } from 'node:fs/promises'
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { emitKeypressEvents } from 'node:readline'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { cliVerb, helpText, USAGE } from '../core/cliHelp.ts'
@@ -12,7 +12,7 @@ import { newCommand, openCommand } from '../core/open.ts'
 import type { Choice, OpenCommand } from '../core/open.ts'
 import { pickerScreen, pickerStep } from '../core/termPicker.ts'
 import type { TermKey, TermPickerEffect } from '../core/termPicker.ts'
-import { parseSettings } from '../core/settings.ts'
+import { parseSettings, serializeSettings } from '../core/settings.ts'
 import { parseVenvBuild, venvFailed, venvStatusPath } from '../core/venv.ts'
 import { backendStamp, buildReleaseVenv, installBackend, installedStamp } from '../main/backend.ts'
 import { uvWith } from '../main/doctor.ts'
@@ -43,6 +43,21 @@ async function rootPath() {
   const settings = parseSettings(await read(join(userData, 'settings.json')))
   const resolved = settings.root ? await resolveRoot(settings.root, homedir()) : undefined
   return resolved?.ok ? resolved.path : undefined
+}
+
+/** Prints the root in use; with a path, saves it as the root first, keeping the other settings. */
+async function rootCommand(input?: string) {
+  const path = join(userData, 'settings.json')
+  const settings = parseSettings(await read(path), await read(join(userData, 'strip.json')))
+  const result = await resolveRoot(input ?? settings.root ?? '', homedir())
+  if (!result.ok) throw new Error(result.message)
+  if (input !== undefined) {
+    await mkdir(dirname(path), { recursive: true })
+    const temp = `${path}.${String(process.pid)}.tmp`
+    await writeFile(temp, serializeSettings({ ...settings, root: result.path }))
+    await rename(temp, path)
+  }
+  console.log(result.path)
 }
 
 async function facts(slug?: string) {
@@ -139,6 +154,10 @@ async function command(argv: string[]): Promise<OpenCommand | undefined> {
     return undefined
   }
   if (verb === 'usage') throw new Error(USAGE)
+  if (verb === 'root') {
+    await rootCommand(args[0])
+    return undefined
+  }
   if (verb === 'open') {
     const known = await facts(args[0])
     const result = await launch(known)

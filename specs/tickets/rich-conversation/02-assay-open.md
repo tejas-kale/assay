@@ -27,3 +27,5 @@ not the installed-app trial. Close older app sessions before that trial.
 Accepted trial tradeoff: SIGKILL or a crash leaves a stale server claim. This also blocks reopening in the app,
 whose unchanged UI reports a generic MCP connection failure. Follow the launch contract's manual recovery only
 after all sessions for the analysis have stopped; automatic cross-namespace liveness recovery is out of scope.
+
+On 2026-11-12 the user deferred installed-app acceptance and authorised implementing tickets 03–08. The trial remains pending.

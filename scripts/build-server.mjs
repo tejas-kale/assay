@@ -24,5 +24,8 @@ await build({
 })
 
 const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
-await build({ ...common, entryPoints: { assay: 'src/cli/index.ts' }, outdir: `${outdir}/cli`,
+await build({ ...common, entryPoints: { assay: 'src/cli/index.ts', 'run-action': 'src/cli/runAction.ts' }, outdir: `${outdir}/cli`,
   outExtension: { '.js': '.mjs' }, define: { ASSAY_VERSION: JSON.stringify(version) } })
+
+await build({ bundle: true, platform: 'neutral', format: 'esm', target: 'es2023',
+  entryPoints: ['src/core/conversationBundle.ts'], outfile: 'plugin/hooks/conversation-model.js', logLevel: 'warning' })

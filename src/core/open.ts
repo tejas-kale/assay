@@ -39,7 +39,7 @@ function resolve(typed: string, analyses: Choice[]): string | undefined {
 }
 
 const rootProblem = (facts: OpenFacts) =>
-  !facts.root || !facts.rootExists ? 'Assay root is missing. Open Assay and choose your root in Settings.' : undefined
+  !facts.root || !facts.rootExists ? 'Assay root is missing. Run assay root <path>, or choose your root in Assay Settings.' : undefined
 
 function backendProblem(facts: OpenFacts) {
   if (!facts.backendReady) return 'Assay backend is missing after preparing it. Reinstall Assay.app from its GitHub release.'

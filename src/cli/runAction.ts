@@ -7,7 +7,6 @@ import { spawn } from 'node:child_process'
 
 import { canRerun } from '../core/requests.ts'
 import { codeBody, parseRunHeader, parseRuns } from '../core/runs.ts'
-import type { Run } from '../core/runs.ts'
 import { messageOf } from '../main/fsAccess.ts'
 import { writeRequest } from '../main/requestFiles.ts'
 
@@ -47,11 +46,11 @@ async function runEditor(editor: string, path: string): Promise<boolean> {
   }
 }
 
-async function editedCode(run: Run, body: string): Promise<string | undefined> {
+async function editedCode(file: string, body: string): Promise<string | undefined> {
   const editor = process.env.EDITOR
   if (!editor?.trim()) throw new Error('Set EDITOR to edit a run.')
   const scratch = await mkdtemp(join(tmpdir(), 'assay-edit-'))
-  const path = join(scratch, run.code ?? 'run.sql')
+  const path = join(scratch, file)
   try {
     await writeFile(path, body, { flag: 'wx', mode: 0o600 })
     // EDITOR is the person's shell command; the file path is a separate shell argument, never interpolated.
@@ -75,7 +74,7 @@ async function main() {
   const analysis = process.env.ASSAY_ANALYSIS
   if (!analysis) throw new Error('ASSAY_ANALYSIS is missing.')
   const saved = await savedRun(analysis, file)
-  const body = action === 'edit' ? await editedCode(saved.run, saved.body) : saved.body
+  const body = action === 'edit' ? await editedCode(file, saved.body) : saved.body
   if (body === undefined) return { ok: true, unchanged: true }
   return writeRequest(analysis, saved.run.language === 'python'
     ? { kind: 'python', code: body, from: saved.run.number }
