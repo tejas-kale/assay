@@ -76,15 +76,7 @@ its window's session was launched with, not to the settings root now.
 ## Known gaps
 
 - A forged `sql` or `python` request file can make a run show as the user's (PI-1, run authorship).
-  The rich-conversation mod is also a request writer under PI-1: its edit and re-run buttons must use the same
-  checked-folder, exclusive no-follow create and rename protocol as main (`src/main/requestFiles.ts`).
-  Claude Code's `$.fs.write` is not atomic and is insufficient for this protocol; a bundled request-writing process must enforce it. The mod must register
-  no tool or command for these actions. The documented mods API exposes button callbacks to surface presses and
-  provides no API to press buttons (unverified in a live session); no tool of Claude's may expose those callbacks.
-  This does not strengthen the isolation boundary: arbitrary code still has the accepted ability to forge requests inside the launcher's writable area.
-  The existing Write/Edit/MultiEdit/NotebookEdit guard continues to refuse `.assay/` and `queries/`, including
-  linked and differently cased paths. The spike's evidence and outstanding runtime checks are recorded in
-  `specs/notes/rich-conversation-spike.md`.
+  The rich-conversation mod writes no requests: it draws rows and copies a VisiData command, and runs no process.
 - A trusted calculation can import a module from `trusted/` only if that file is approved, and the app approves only
   a proposal's own files, so a shared helper has to be proposed as a calculation of its own.
 - The trust ledger and the `app://assay` scheme (UI-3) are tested in code only, not yet in the running app on a Mac.

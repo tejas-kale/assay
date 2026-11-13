@@ -1,11 +1,10 @@
 // The life of the bundled server's process: it serves one session over a transport and ends with Claude Code's.
-import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, unlinkSync } from 'node:fs'
+import { lstatSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 
 import { configFromEnv, createSession } from './main.ts'
-import type { Config } from './assay.ts'
 import type { Session } from './main.ts'
 
 /** The part of `process` the server uses, so a test can stand in for it. */
@@ -16,50 +15,18 @@ export type Host = {
   exit(code: number): unknown
 }
 
-/** An exclusive server claim, independent of launcher PID namespaces. A crash deliberately leaves it for manual recovery. */
-function claimAnalysis(analysis: string): () => void {
+/** The server writes its session files in `.assay/`; a linked folder would send them outside the analysis. */
+function refuseLinkedSessionFolder(analysis: string) {
   const folder = join(analysis, '.assay')
   mkdirSync(folder, { recursive: true })
   if (!lstatSync(folder).isDirectory()) throw new Error(`${folder} is not a real folder.`)
-  const path = join(folder, 'session.lock')
-  let handle: number
-  try {
-    handle = openSync(path, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600)
-  } catch (error) {
-    throw new Error(`${analysis} already has an Assay session or an unrecovered session.lock. Close all its app and terminal sessions first. After a crash, remove ${path} only after every session has stopped.`, { cause: error })
-  }
-  const owned = fstatSync(handle)
-  let released = false
-  return () => {
-    if (released) return
-    released = true
-    try {
-      const current = lstatSync(path, { throwIfNoEntry: false })
-      if (current?.ino === owned.ino && current.dev === owned.dev) unlinkSync(path)
-    } finally {
-      closeSync(handle)
-    }
-  }
 }
 
-function lockedSession(config: Config | undefined): Session {
-  const release = config ? claimAnalysis(config.analysis) : () => undefined
-  try {
-    const session = createSession(config)
-    const endSession = session.close
-    session.close = () => {
-      try { endSession() } finally { release() }
-    }
-    return session
-  } catch (error) {
-    release()
-    throw error
-  }
-}
-
-/** Starts the session on `transport`; only one server may own the analysis and its kernel. */
+/** Starts the session on `transport` and returns it; the session is closed once, whichever way the process ends. */
 export async function serve(host: Host, transport: Transport): Promise<Session> {
-  const session = lockedSession(configFromEnv(host.env))
+  const config = configFromEnv(host.env)
+  if (config) refuseLinkedSessionFolder(config.analysis)
+  const session = createSession(config)
   let isClosing = false
   const close = () => {
     if (isClosing) return

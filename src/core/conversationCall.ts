@@ -4,7 +4,7 @@ export type ConversationFiles = Readonly<Record<string, string>>
 export type ConversationTable = { file: string; columns: string[]; rows: string[][]; rowCount: number; columnCount: number }
 export type ConversationRun = {
   kind: 'run'; number?: number; author: 'claude' | 'user'; language: 'sql' | 'python'; code: string
-  file?: string; blockedReason?: string; running: boolean; tables: ConversationTable[]; plots: string[]; error?: string; stdout?: string
+  running: boolean; tables: ConversationTable[]; plots: string[]; error?: string; stdout?: string
 }
 export function resultText(output: unknown): string {
   if (typeof output === 'string') return output

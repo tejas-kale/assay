@@ -67,6 +67,4 @@ so `npm run test:node` measures each hand-written `plugin/hooks/conversation*.js
 `conversation-model.js` is excluded; its source modules in `src/core` are measured directly. The same per-file 90%
 line and branch bar applies to hand-written mod files. These checks supplement the native mounted tests.
 
-The edit/re-run helper is tested both as its TypeScript source process and its shipped bundle, including a
-controlling PTY, real requests and symlink refusals. Its source also meets the enforced per-file 90% coverage bar. The backend integration test verifies those requests become new user runs with source provenance.
-Live acceptance still requires Ghostty; use `specs/notes/rich-conversation-acceptance.md`.
+Live acceptance still requires a terminal session; use `specs/notes/rich-conversation-acceptance.md`.

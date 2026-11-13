@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -56,24 +56,7 @@ test('with the environment Assay set, the session sets up the analysis, starts i
   await rm(dir, { recursive: true, force: true })
 })
 
-test('a second session cannot touch an analysis until its first server closes', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'assay-exclusive-'))
-  const analysis = join(dir, 'analyses/a')
-  await mkdir(analysis, { recursive: true })
-  const env = { ASSAY_ANALYSIS: analysis, ASSAY_ROOT: dir, ASSAY_VENV: join(dir, 'missing') }
-  const firstHost = fakeHost(env)
-  const [, firstTransport] = InMemoryTransport.createLinkedPair()
-  const first = await serve(firstHost.host, firstTransport)
-  const [, otherTransport] = InMemoryTransport.createLinkedPair()
-  await assert.rejects(serve(fakeHost(env).host, otherTransport), /already has an Assay session/)
-  first.close()
-  const second = await serve(fakeHost(env).host, otherTransport)
-  second.close()
-  await rm(dir, { recursive: true, force: true })
-})
-
-
-test('failed startup releases its claim and an old owner cannot remove a replacement claim', async () => {
+test('a failed startup closes the session it opened', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'assay-start-failure-'))
   const analysis = join(dir, 'analyses/a')
   await mkdir(analysis, { recursive: true })
@@ -83,12 +66,7 @@ test('failed startup releases its claim and an old owner cannot remove a replace
   await assert.rejects(serve(fakeHost(env).host, broken), /transport failed/)
   const [, transport] = InMemoryTransport.createLinkedPair()
   const session = await serve(fakeHost(env).host, transport)
-  const lock = join(analysis, '.assay/session.lock')
-  await unlink(lock)
-  await writeFile(lock, 'replacement')
   session.close()
-  session.close()
-  assert.equal(await readFile(lock, 'utf8'), 'replacement')
   await rm(dir, { recursive: true, force: true })
 })
 

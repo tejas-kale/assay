@@ -1,8 +1,6 @@
 // Bundles the MCP server and the plugin's hook scripts, each into one ESM file with its dependencies, so the
 // container runs them with plain `node` and no `npm install`: out/server/index.mjs and out/hooks/<name>.mjs.
 import { build } from 'esbuild'
-import { readFile } from 'node:fs/promises'
-import { URL } from 'node:url'
 
 const common = {
   bundle: true,
@@ -22,10 +20,6 @@ await build({
   outdir: `${outdir}/hooks`,
   outExtension: { '.js': '.mjs' },
 })
-
-const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
-await build({ ...common, entryPoints: { assay: 'src/cli/index.ts', 'run-action': 'src/cli/runAction.ts' }, outdir: `${outdir}/cli`,
-  outExtension: { '.js': '.mjs' }, define: { ASSAY_VERSION: JSON.stringify(version) } })
 
 await build({ bundle: true, platform: 'neutral', format: 'esm', target: 'es2023',
   entryPoints: ['src/core/conversationBundle.ts'], outfile: 'plugin/hooks/conversation-model.js', logLevel: 'warning' })

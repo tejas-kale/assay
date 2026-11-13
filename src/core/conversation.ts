@@ -1,6 +1,5 @@
 import { callRunNumber, resultText } from './conversationCall.ts'
 import type { ConversationCall, ConversationFiles, ConversationTable, ConversationRun } from './conversationCall.ts'
-import { canRerun } from './requests.ts'
 import { conversationNoteRow } from './conversationNotes.ts'
 import type { ConversationNoteRow } from './conversationNotes.ts'
 import { pythonConversation } from './conversationPython.ts'
@@ -33,11 +32,9 @@ export function conversationRow(call: ConversationCall, files: ConversationFiles
   if (!failed && csv === undefined) return { kind: 'engine' }
   const header = parseRunHeader(text)
   const body = codeBody(text, 'sql')
-  const blockedReason = canRerun(run, header, body)
   return {
-    ...(blockedReason && { blockedReason }),
     kind: 'run', number, author: header.author, language: 'sql', code: body,
-    file: run.code, running: false, tables: run.data && csv !== undefined ? [conversationTable(run.data, csv)] : [], plots: [],
+    running: false, tables: run.data && csv !== undefined ? [conversationTable(run.data, csv)] : [], plots: [],
     ...(failed && { error: resultText(call.output) }),
   }
 }

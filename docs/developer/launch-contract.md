@@ -65,30 +65,3 @@ Assay enforces its own rules: its hooks (no Python through Bash, nothing written
 `.git`, the runs, the app's requests or another analysis), its tools, its IPC and its updater. It does not contain what
 code can do once it runs. Containing code execution belongs to the launcher: the Podman wrapper, or Claude Code's own
 sandbox. docs/developer/security.md draws this boundary in full.
-
-## Starting from a terminal
-
-The app writes the `assay` launcher at each launch from `/Applications` (`src/main/cliLauncher.ts`; `npm run install-cli`
-writes the same one). `assay open <name>` (a folder name, a title in any case, or
-words whose slug is the folder) replaces itself with the same Claude launch in the current terminal. It needs Node 22.15 or
-later on PATH. In a terminal, `assay open` with no name, or one that matches nothing, opens a picker
-(`src/core/termPicker.ts`): the app picker's fuzzy ranking, searched from the typed name, and a last row that creates the
-typed title as `assay new` does; piped, it prints the folder names, or fails naming them. `assay new <title>` creates `analyses/<slug>/analysis.yaml` as the app's picker does (words after
-`new` join into one title), then launches it like `assay open <slug>`; it writes nothing when the root, backend or venv
-would stop the launch. The installed command selects the backend and venv for its app version and verifies their stamps.
-Before a launch it prepares what is due, as the app does at startup and with the same functions: it copies the shipped
-backend again when its stamp differs (a changed copy included) and builds the venv with uv from the terminal's PATH.
-Listing analyses prepares nothing; `assay new` prepares before creating the folder, so a failed venv build writes nothing. Set `ASSAY_THEME=light-ansi` for a light terminal; otherwise the
-terminal command uses `dark-ansi`.
-
-Only one Assay server may own an analysis. Before starting its kernel or request polling it exclusively creates
-`.assay/session.lock`; another server fails with a named error. Normal shutdown and failed startup remove only the
-claim that server owns. A crash deliberately leaves the claim in place: after closing **every** app and terminal
-session for that analysis, remove its `.assay/session.lock` and reopen it. No automatic PID-based recovery is used
-because a launcher's container can have a different PID namespace. An app killed with SIGKILL also leaves this
-claim; the unchanged Electron UI reports a generic MCP connection failure until manual recovery clears it. Close sessions started by older Assay versions
-before the first trial: those versions did not claim this lock.
-
-Trust review still requires the app's Trust tab and its own analysis-bound session. A terminal-only session cannot
-start or answer a Trust review. Close the terminal session before opening that analysis in the app to review Trust
-or inspect the recorded runs in History.

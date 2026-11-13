@@ -63,7 +63,7 @@ const ESLINT_SUPPRESSIONS = 'eslint-suppressions.json'
 function measure(): CoverageByFile {
   const scope = TS_SCOPE.flatMap(dir => readdirSync(dir, { recursive: true, encoding: 'utf8' }).map(file => join(dir, file)))
   const mods = readdirSync(MOD_SCOPE).filter(file => /^conversation(?!-model).*\.js$/.test(file)).map(file => join(MOD_SCOPE, file))
-  const ts = withUnmeasured(parseLcov(readFileSync('coverage/lcov.info', 'utf8')), [...scope.filter(f => /(?<!\.test)\.tsx?$/.test(f)), ...mods, 'src/cli/runAction.ts'])
+  const ts = withUnmeasured(parseLcov(readFileSync('coverage/lcov.info', 'utf8')), [...scope.filter(f => /(?<!\.test)\.tsx?$/.test(f)), ...mods])
   const python = JSON.parse(readFileSync('coverage/python.json', 'utf8')) as CoverageReport
   return { ...ts, ...parseCoverageJson(python, 'python') }
 }

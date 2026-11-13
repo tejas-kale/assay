@@ -60,9 +60,3 @@ test('a trusted-include preface still identifies the saved SQL run', () => {
     '001_one.sql': 'select 1', '001_one.csv': 'n\n1\n',
   }).kind, 'run')
 })
-
-test('trusted Python-backed SQL rows explain why editing and re-running are unavailable', () => {
-  const row = conversationRow({ tool: 'mcp__assay__sql', input: {}, output: 'Query 001: 1 row.' }, { '001_calc.sql': '-- trusted: site_total\n-- python: site_total\nselect 1', '001_calc.csv': 'n\n1\n' })
-  assert.equal(row.kind, 'run')
-  assert.equal(row.blockedReason, "Run a trusted calculation with Claude's trusted tool")
-})

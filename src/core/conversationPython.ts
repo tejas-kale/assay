@@ -26,7 +26,7 @@ export function pythonConversation(call: ConversationCall, files: ConversationFi
   }
   return {
     kind: 'run', number: run.number, author: parseRunHeader(text, 'python').author, language: 'python',
-    code: codeBody(text, 'python'), file: run.code, running: result.status === 'running', tables,
+    code: codeBody(text, 'python'), running: result.status === 'running', tables,
     plots: run.plots.filter(file => result.plots.includes(file)), stdout: result.stdout,
     ...(result.error && { error: result.error.traceback || `${result.error.name}: ${result.error.message}` }),
   }

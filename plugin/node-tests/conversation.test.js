@@ -158,40 +158,6 @@ test('VisiData checks the path again and reports clipboard success or failure', 
   assert.match(ui.notices.at(-1), /missing table/)
 })
 
-test('only action button presses invoke the helper, with submission feedback', async () => {
-  const calls = []
-  const ui = harness({ process: { run: (argv, options) => { calls.push({ argv, options }); return Promise.resolve({ exitCode: 0, stdout: '{"ok":true,"id":"new"}', stderr: '' }) } } })
-  const tree = await ui.render()
-  assert.equal(calls.length, 0)
-  await keyed(tree, 'rerun:sql-1').props.onPress()
-  assert.deepEqual(calls[0], { argv: ['node', '/backend/out/cli/run-action.mjs'], options: { stdin: '{"action":"rerun","file":"001_one.sql"}', timeoutMs: 600000 } })
-  assert.equal(ui.notices.at(-1), 'Queued a new user run.')
-  ui.$.process.run = () => Promise.reject(new Error('no process'))
-  await keyed(tree, 'edit:sql-1').props.onPress()
-  assert.match(ui.notices.at(-1), /no process/)
-})
-
-test('action results distinguish unchanged code, helper errors and unreadable replies', async () => {
-  const ui = harness()
-  const button = keyed(await ui.render(), 'edit:sql-1')
-  const cases = [
-    [{ exitCode: 0, stdout: '{"ok":true,"unchanged":true}' }, /No changes/],
-    [{ exitCode: 1, stderr: 'writer refused' }, /writer refused/],
-    [{ exitCode: 1, stderr: '' }, /helper failed/],
-    [{ exitCode: 0, stdout: '{"ok":false,"message":"denied"}' }, /denied/],
-    [{ exitCode: 0, stdout: '{}' }, /no result/],
-    [{ exitCode: 0, stdout: 'broken JSON' }, /unreadable result/],
-  ]
-  for (const [result, message] of cases) {
-    ui.$.process = { run: () => Promise.resolve(result) }
-    await button.props.onPress()
-    assert.match(ui.notices.at(-1), message)
-  }
-  ui.$.env.get = () => Promise.resolve(undefined)
-  await button.props.onPress()
-  assert.match(ui.notices.at(-1), /ASSAY_BACKEND is missing/)
-})
-
 test('quiet rows handle missing details and linked clipboard targets fail after rendering', async () => {
   const ui = harness()
   for (const input of [null, {}, { file_path: '/data' }, { path: '/root' }, { command: 42 }]) {
@@ -214,14 +180,6 @@ test('compact quiet calls preserve engine failures and show when work is still r
   }
   const tree = await ui.render({ ...ui.event, props: { ...ui.event.props, tool: 'Bash', isRunning: true } })
   assert.match(JSON.stringify(tree), /Running/)
-})
-
-test('unavailable backend and trusted Python calculations do not invoke edit or re-run', async () => {
-  const ui = harness()
-  ui.files['001_one.sql'] = '-- trusted: site_total\n-- python: site_total\nselect 1'
-  const tree = await ui.render()
-  assert.equal(keyed(tree, 'edit:sql-1'), undefined)
-  assert.equal(keyed(tree, 'rerun:sql-1'), undefined)
 })
 
 const SCHEMA = 'COLUMNS:\n  id: bigint\n  name: string\n  seen: 2026-11-13\n  ok: true'

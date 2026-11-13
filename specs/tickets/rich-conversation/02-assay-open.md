@@ -1,5 +1,7 @@
 # 02: `assay open` starts an analysis's Claude session in any terminal
 
+> **Dropped 2026-11-13: CLI removed.** The `assay` terminal command is gone; kept for history.
+
 **What to build:** `assay open <slug>` in Ghostty starts Claude for that analysis with the same plugin, MCP server,
 environment and launcher the app would use; `assay open` with no slug lists the analyses. Spec:
 `specs/rich-conversation.md`.

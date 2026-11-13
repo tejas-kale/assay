@@ -1,5 +1,7 @@
 # Rich conversation: deferred live acceptance
 
+> **2026-11-13:** the `assay` CLI and the edit and re-run buttons were removed; skip the steps that use them and run the rest in the app's terminal.
+
 Automated tests mount the actual mod on terminal and desktop surfaces. They do not establish image drawing,
 colour readability or live MCP delivery. On 2026-11-12 the user authorised implementing tickets 03–08 before
 these live checks. Use an installed build containing this change and Claude Code 2.1.323 or later.

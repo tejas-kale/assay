@@ -4,7 +4,7 @@
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 
-/** The root-specific ledger path shared by the app and terminal launcher. */
+/** The root-specific ledger path. */
 export const ledgerPath = (userData: string, realRoot: string): string =>
   join(userData, 'trust-ledger', `${createHash('sha256').update(realRoot).digest('hex')}.json`)
 

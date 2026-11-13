@@ -1,5 +1,4 @@
 import { callRunNumber, conversationRow, parseRuns } from './conversation-model.js'
-import { actionButtons, actionMessage, actionRequest } from './conversation-actions.js'
 import { visidataButton, visidataCommand } from './conversation-clipboard.js'
 import { bashKeyValues, codeElements, keyValueElement, tableElements, plotElements, quietText } from './conversation-view.js'
 
@@ -50,7 +49,6 @@ async function drawRun($, e, { row, engine, files }) {
   for (const [index, table] of row.tables.entries()) {
     pieces.push(visidataButton({ Button, file: table.file, index, copy: (file, surface) => copyTable($, file, surface) }))
   }
-  pieces.push(...actionButtons({ Button, row, id: e.props.tool_use_id, submit: (action, file) => submitAction($, action, file) }))
   pieces.push(...plotElements({ Text, Image, row, files, surface: e.surface, columns: e.viewport?.columns ?? 80 }))
   return h(Box, { flexDirection: 'column', width: e.viewport?.columns ?? 80 }, ...pieces)
 }
@@ -123,17 +121,3 @@ async function copyTable($, file, surface) {
   }
 }
 
-async function submitAction($, action, file) {
-  try {
-    const backend = await $.env.get('ASSAY_BACKEND')
-    const request = actionRequest(backend, action, file)
-    if (request.error) {
-      $.ui.toast(request.error)
-      return
-    }
-    const result = await $.process.run(request.argv, request.options)
-    $.ui.toast(actionMessage(result))
-  } catch (error) {
-    $.ui.toast(`Could not submit run: ${error instanceof Error ? error.message : 'request failed'}`)
-  }
-}

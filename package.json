@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run lint && npm run test:mod && npm run test:node && npm run lint:py && npm run test:py && npm run coverage-bar",
     "test": "npm run test:node && npm run test:py",
-    "test:node": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-include='src/core/**' --test-coverage-include='src/server/**' --test-coverage-include='src/hooks/**' --test-coverage-include='src/cli/runAction.ts' --test-coverage-include='plugin/hooks/conversation*.js' --test-coverage-exclude='plugin/hooks/conversation-model.js' --test-coverage-exclude='**/*.test.ts' --test-reporter=dot --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"src/**/*.test.ts\" \"scripts/**/*.test.ts\" \"plugin/node-tests/**/*.test.js\"",
+    "test:node": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-include='src/core/**' --test-coverage-include='src/server/**' --test-coverage-include='src/hooks/**' --test-coverage-include='plugin/hooks/conversation*.js' --test-coverage-exclude='plugin/hooks/conversation-model.js' --test-coverage-exclude='**/*.test.ts' --test-reporter=dot --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"src/**/*.test.ts\" \"scripts/**/*.test.ts\" \"plugin/node-tests/**/*.test.js\"",
     "test:integration": "node --test --test-concurrency=1 --test-reporter=spec \"tests/integration/**/*.test.ts\"",
     "test:py": "cd python && ../scripts/py.sh pytest -q -p no:cacheprovider -n auto --cov --cov-report=json:../coverage/python.json",
     "lint": "eslint --cache --cache-location node_modules/.cache/eslint/ --max-warnings 0 --no-error-on-unmatched-pattern src scripts tests plugin/hooks plugin/node-tests plugin/tests",
@@ -17,8 +17,7 @@
     "coverage-bar": "node scripts/coverage-bar.ts",
     "postinstall": "node scripts/postinstall.mjs && node scripts/build-server.mjs",
     "package": "electron-vite build && npm run build:server && electron-builder --mac --dir --config.mac.identity=- --config.mac.hardenedRuntime=false",
-    "install-cli": "node scripts/install-cli.ts",
-    "install-app": "npm run package && rm -rf /Applications/Assay.app && ditto dist/mac-arm64/Assay.app /Applications/Assay.app && node scripts/install-cli.ts",
+    "install-app": "npm run package && rm -rf /Applications/Assay.app && ditto dist/mac-arm64/Assay.app /Applications/Assay.app",
     "build:server": "node scripts/build-server.mjs",
     "migrate:root": "node scripts/migrate-root.ts",
     "migrate:notes": "node scripts/migrate-notes.ts",
@@ -94,7 +93,6 @@
       "notarize": true
     },
     "extraResources": [
-      { "from": "out/cli", "to": "backend/out/cli", "filter": ["*.mjs"] },
       {
         "from": "plugin",
         "to": "backend/plugin",

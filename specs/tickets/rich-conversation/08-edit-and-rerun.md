@@ -1,5 +1,7 @@
 # 08: `[ edit ]` and `[ re-run ]` send the user's own runs
 
+> **Dropped 2026-11-13: CLI removed.** The edit and re-run buttons went with the CLI's request helper (`run-action.mjs`); kept for history.
+
 **What to build:** `[ edit ]` opens a run's code in `$EDITOR`; saving changed code sends it to the server as a new run
 by the user that names its source run. `[ re-run ]` sends the code again unchanged. Both go through the server as the
 app's requests do, so the one rule holds. Spec: `specs/rich-conversation.md`.

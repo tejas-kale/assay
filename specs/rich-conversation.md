@@ -1,6 +1,6 @@
 # Rich conversation in Ghostty
 
-Status: tickets 03–08 implemented; automated checks and backend integration passed. On 2026-11-12 the user authorised tickets 03–08 before the live Ghostty and installed-app trials; those acceptance checks remain pending for the user to run later.
+Status: dropped in part on 2026-11-13: the `assay` CLI (`assay open`, stories 1–6, 42) and the edit and re-run buttons (ticket 08, stories 19–23, 43) were removed; the rows now draw in the app's terminal. Tickets 03–07 implemented; automated checks and backend integration passed. On 2026-11-12 the user authorised tickets 03–08 before the live Ghostty and installed-app trials; those acceptance checks remain pending for the user to run later.
 
 ## Problem Statement
 
