@@ -17,6 +17,7 @@
     "coverage-bar": "node scripts/coverage-bar.ts",
     "postinstall": "node scripts/postinstall.mjs && node scripts/build-server.mjs",
     "package": "electron-vite build && npm run build:server && electron-builder --mac --dir --config.mac.identity=- --config.mac.hardenedRuntime=false",
+    "install-cli": "node scripts/install-cli.mjs",
     "install-app": "npm run package && rm -rf /Applications/Assay.app && ditto dist/mac-arm64/Assay.app /Applications/Assay.app && node scripts/install-cli.mjs",
     "build:server": "node scripts/build-server.mjs",
     "migrate:root": "node scripts/migrate-root.ts",

@@ -44,10 +44,16 @@ async function world() {
   const launcher = join(dir, 'launcher')
   const capture = join(dir, 'capture')
   await writeFile(launcher, '#!/bin/sh\nprintf "%s\\n" "$ASSAY_ANALYSIS" "$ASSAY_LEDGER" "$ASSAY_THEME" "$@" > "$ASSAY_CAPTURE"\n', { mode: 0o755 })
-  const env = { ...process.env, HOME: home, SHELL: '/bin/bash', ASSAY_CLAUDE_BIN: launcher, ASSAY_CAPTURE: capture, ASSAY_THEME: 'light-ansi' }
+  // A stand-in uv: it logs its arguments and makes the venv's python, or fails when told to.
+  const bin = join(dir, 'bin')
+  const uvLog = join(dir, 'uv.log')
+  await mkdir(bin)
+  await writeFile(join(bin, 'uv'), '#!/bin/sh\nprintf "%s " "$@" > "$ASSAY_UV_LOG"\n[ -n "$ASSAY_UV_FAIL" ] && { echo "uv broke" >&2; exit 1; }\nmkdir -p "$UV_PROJECT_ENVIRONMENT/bin" && touch "$UV_PROJECT_ENVIRONMENT/bin/python"\n', { mode: 0o755 })
+  const env = { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}`, HOME: home, SHELL: '/bin/bash', ASSAY_CLAUDE_BIN: launcher, ASSAY_CAPTURE: capture, ASSAY_THEME: 'light-ansi', ASSAY_UV_LOG: uvLog }
   const cli = (...args: string[]) => exec(process.execPath, [resolve(shipped, 'out/cli/assay.mjs'), ...args], { env })
   const run = (...args: string[]) => cli('open', ...args)
-  return { dir, root, userData, backend, venv, capture, run, cli }
+  const failingUv = (...args: string[]) => exec(process.execPath, [resolve(shipped, 'out/cli/assay.mjs'), ...args], { env: { ...env, ASSAY_UV_FAIL: '1' } })
+  return { dir, root, userData, backend, venv, capture, uvLog, run, cli, failingUv }
 }
 
 test('the bundled CLI lists analyses and launches a stub with the installed app contract', async () => {
@@ -65,13 +71,29 @@ test('the bundled CLI lists analyses and launches a stub with the installed app 
   }
 })
 
-test('the bundled CLI refuses an unprepared venv and a changed backend', async () => {
+test('the bundled CLI prepares the backend and venv itself, so the app need not be open', async () => {
+  const w = await world()
+  try {
+    await rm(join(w.userData, 'backend'), { recursive: true, force: true })
+    await rm(w.venv, { recursive: true, force: true })
+    await rm(`${w.venv}.status.json`)
+    const opened = await w.run('sales')
+    assert.match(opened.stderr, /Preparing Assay's Python environment/)
+    assert.match(await readFile(w.uvLog, 'utf8'), /^sync --frozen --no-editable --no-dev --project .*\/backend\/[^/]+\/python /)
+    assert.ok((await readFile(w.capture, 'utf8')).startsWith(`${w.root}/analyses/sales\n`))
+    await writeFile(join(w.backend, 'out/server/index.mjs'), 'tampered')
+    await w.run('sales')
+    assert.notEqual(await readFile(join(w.backend, 'out/server/index.mjs'), 'utf8'), 'tampered')
+  } finally {
+    await rm(w.dir, { recursive: true, force: true })
+  }
+})
+
+test('the bundled CLI reports a failed venv build and a missing root', async () => {
   const w = await world()
   try {
     await rm(join(w.venv, 'bin/python'))
-    await assert.rejects(w.run('sales'), /venv is not ready/)
-    await writeFile(join(w.backend, 'out/server/index.mjs'), 'tampered')
-    await assert.rejects(w.run('sales'), /backend is missing/)
+    await assert.rejects(w.failingUv('open', 'sales'), /could not build its Python environment: uv broke/)
     await rm(join(w.userData, 'settings.json'))
     await assert.rejects(w.run('sales'), /root is missing/)
   } finally {
@@ -89,7 +111,7 @@ test('the bundled CLI creates a new analysis and launches it, and refuses before
     await assert.rejects(w.cli('new'), /Usage: assay open \[slug\] \| assay new <title>/)
     await assert.rejects(w.cli('open', 'sales', 'extra'), /Usage/)
     await rm(join(w.venv, 'bin/python'))
-    await assert.rejects(w.cli('new', 'Later'), /venv is not ready/)
+    await assert.rejects(w.failingUv('new', 'Later'), /could not build/)
     assert.deepEqual((await readdir(join(w.root, 'analyses'))).sort((a, b) => a.localeCompare(b)), ['panel-churn-q4', 'sales'])
   } finally {
     await rm(w.dir, { recursive: true, force: true })

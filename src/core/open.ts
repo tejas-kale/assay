@@ -24,8 +24,8 @@ const rootProblem = (facts: OpenFacts) =>
   !facts.root || !facts.rootExists ? 'Assay root is missing. Open Assay and choose your root in Settings.' : undefined
 
 function backendProblem(facts: OpenFacts) {
-  if (!facts.backendReady) return 'Assay backend is missing. Open the installed app once to prepare it.'
-  if (!facts.venvReady) return 'Assay venv is not ready. Open the app and wait for its backend build.'
+  if (!facts.backendReady) return 'Assay backend is missing after preparing it. Reinstall Assay.app from its GitHub release.'
+  if (!facts.venvReady) return 'Assay venv is not ready after building it. Run the command again.'
   return undefined
 }
 

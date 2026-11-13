@@ -5,12 +5,13 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createAnalysis, isoDay, listAnalyses } from '../core/analyses.ts'
+import { cleanTitle, createAnalysis, isoDay, listAnalyses } from '../core/analyses.ts'
 import { newCommand, openCommand } from '../core/open.ts'
 import type { OpenCommand } from '../core/open.ts'
 import { parseSettings } from '../core/settings.ts'
-import { parseVenvBuild, venvStatusPath } from '../core/venv.ts'
-import { backendStamp, installedStamp } from '../main/backend.ts'
+import { parseVenvBuild, venvFailed, venvStatusPath } from '../core/venv.ts'
+import { backendStamp, buildReleaseVenv, installBackend, installedStamp } from '../main/backend.ts'
+import { uvWith } from '../main/doctor.ts'
 import { fsPort } from '../main/fsAccess.ts'
 import { resolveRoot } from '../main/rootPath.ts'
 
@@ -19,8 +20,10 @@ declare const ASSAY_VERSION: string
 const read = (path: string) => readFile(path, 'utf8').catch(() => undefined)
 const fileExists = (path: string) => stat(path).then(info => info.isFile(), () => false)
 
+// The CLI ships inside the app's backend folder (Resources/backend/out/cli).
+const shipped = fileURLToPath(new URL('../../', import.meta.url))
+
 async function preparedBackend(backend: string) {
-  const shipped = fileURLToPath(new URL('../../', import.meta.url))
   const expected = await backendStamp(shipped, { skipCaches: true }).catch(() => undefined)
   if (!expected) return undefined
   const actual = await backendStamp(backend).catch(() => undefined)
@@ -44,14 +47,39 @@ async function facts(slug?: string) {
   }
 }
 
+type Facts = Awaited<ReturnType<typeof facts>>
+
+/**
+ * Installs this version's backend and builds its venv, as the app does at launch, so the terminal never needs the
+ * app open. Only the steps still due run; a ready backend and venv cost two hash checks.
+ */
+async function prepared(known: Facts): Promise<Facts> {
+  if (known.backendReady && known.venvReady) return known
+  const backend = await installBackend({ shipped, home: known.userData, version: ASSAY_VERSION }).catch((error: unknown) => {
+    throw new Error(`Could not install Assay's backend: ${error instanceof Error ? error.message : String(error)}`)
+  })
+  if (!known.venvReady) writeSync(2, "Preparing Assay's Python environment for this version (about a minute)...\n")
+  const build = await buildReleaseVenv({
+    project: join(backend, 'python'), venv: join(known.userData, 'venvs', ASSAY_VERSION),
+    runUv: uvWith(process.env.PATH ?? ''), stamp: (await installedStamp(backend)) ?? 'none',
+  })
+  if (build.state === 'failed') throw new Error(venvFailed(build.error))
+  return facts(known.slug)
+}
+
 const USAGE = 'Usage: assay open [slug] | assay new <title>'
 
 async function command(verb: string | undefined, args: string[]): Promise<OpenCommand> {
-  if (verb === 'open' && args.length <= 1) return openCommand(await facts(args[0]))
+  if (verb === 'open' && args.length <= 1) {
+    const known = await facts(args[0])
+    // Listing, or an unknown slug, needs no backend: only a launch prepares one.
+    return openCommand(known.slug && known.analyses.includes(known.slug) ? await prepared(known) : known)
+  }
   if (verb !== 'new' || args.length === 0) throw new Error(USAGE)
-  const known = await facts()
   // Unquoted words make one title: `assay new Panel churn Q4`.
-  return newCommand(known, args.join(' '), async (root, title) => (await createAnalysis(fsPort, root, title, isoDay(new Date()))).name)
+  const title = args.join(' ')
+  const known = await facts()
+  return newCommand(known.root && cleanTitle(title).ok ? await prepared(known) : known, title, async (root, title) => (await createAnalysis(fsPort, root, title, isoDay(new Date()))).name)
 }
 
 async function main() {

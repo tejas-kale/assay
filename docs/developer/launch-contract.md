@@ -68,12 +68,14 @@ sandbox. docs/developer/security.md draws this boundary in full.
 
 ## Starting from a terminal
 
-After `npm run install-app` and one app launch to prepare the backend, `assay open` lists analyses and
+After `npm run install-cli` (or `npm run install-app`), `assay open` lists analyses and
 `assay open <slug>` replaces itself with the same Claude launch in the current terminal. It needs Node 22.15 or
 later on PATH. `assay new <title>` creates `analyses/<slug>/analysis.yaml` as the app's picker does (words after
 `new` join into one title), then launches it like `assay open <slug>`; it writes nothing when the root, backend or venv
-would stop the launch. The installed command selects the backend and venv for its app version and verifies their stamps;
-a changed backend requires opening the app again. Set `ASSAY_THEME=light-ansi` for a light terminal; otherwise the
+would stop the launch. The installed command selects the backend and venv for its app version and verifies their stamps.
+Before a launch it prepares what is due, as the app does at startup and with the same functions: it copies the shipped
+backend again when its stamp differs (a changed copy included) and builds the venv with uv from the terminal's PATH.
+Listing analyses prepares nothing; `assay new` prepares before creating the folder, so a failed venv build writes nothing. Set `ASSAY_THEME=light-ansi` for a light terminal; otherwise the
 terminal command uses `dark-ansi`.
 
 Only one Assay server may own an analysis. Before starting its kernel or request polling it exclusively creates

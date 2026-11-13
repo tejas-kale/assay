@@ -3,6 +3,8 @@ import { access, chmod, constants, lstat, mkdir, readFile, writeFile } from 'nod
 import { delimiter, join } from 'node:path'
 import { homedir } from 'node:os'
 
+// The launcher runs the CLI inside the installed app, whichever build that is (a GitHub release or install-app's).
+const entry = '/Applications/Assay.app/Contents/Resources/backend/out/cli/assay.mjs'
 const path = (process.env.PATH ?? '').split(delimiter)
 const candidates = [join(homedir(), '.local/bin'), join(homedir(), 'bin'), '/usr/local/bin'].filter(candidate => path.includes(candidate))
 async function writable(candidate) {
@@ -22,6 +24,6 @@ const existing = await lstat(target).catch(() => undefined)
 if (existing && (!existing.isFile() || !(await readFile(target, 'utf8')).startsWith(marker))) {
   throw new Error(`${target} already exists and is not Assay's launcher. Move it aside before installing.`)
 }
-await writeFile(target, `${marker}exec node /Applications/Assay.app/Contents/Resources/backend/out/cli/assay.mjs "$@"\n`, { mode: 0o755, flag: existing ? 'w' : 'wx' })
+await writeFile(target, `${marker}exec node ${entry} "$@"\n`, { mode: 0o755, flag: existing ? 'w' : 'wx' })
 await chmod(target, 0o755)
 console.log(`Installed ${target}`)
