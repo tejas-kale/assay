@@ -36,7 +36,8 @@ test(`${target}: saving changed Python code sends a new user request without cha
   await writeFile(join(dir, 'queries/008_total.py'), '# author: claude\nprint(7)\n')
   const editor = join(dir, 'editor with spaces.sh')
   await writeFile(editor, '#!/bin/sh\nprintf "print(8)\\n" > "$1"\n')
-  const ran = await runNode(await script(), JSON.stringify({ action: 'edit', file: '008_total.py' }), { ...process.env, ASSAY_ANALYSIS: dir, EDITOR: `/bin/sh '${editor}'` })
+  // Detached: without a controlling terminal, the editor writes to the action's stderr instead.
+  const ran = await runNode(await script(), JSON.stringify({ action: 'edit', file: '008_total.py' }), { ...process.env, ASSAY_ANALYSIS: dir, EDITOR: `/bin/sh '${editor}'` }, true)
   const result = JSON.parse(ran.stdout) as { ok: boolean; id: string }
   expect(result.ok).toBe(true)
   expect(JSON.parse(await readFile(join(dir, `.assay/requests/${result.id}.json`), 'utf8'))).toEqual({ id: result.id, kind: 'python', code: 'print(8)\n', from: 8 })
@@ -71,16 +72,21 @@ test(`${target}: refuses traversal, linked run files and linked request folders 
 })
 
 
-test(`${target}: an interactive editor gets the controlling terminal while action JSON stays on captured stdout`, { skip: process.platform !== 'linux' }, async t => {
+test(`${target}: an interactive editor gets the controlling terminal while action JSON stays on captured stdout`, async t => {
   const dir = await fixture(t)
   const editor = join(dir, 'terminal-editor.sh')
   await writeFile(editor, '#!/bin/sh\ntest -t 0 && test -t 1 && test -t 2 || exit 3\nprintf "SELECT 8\\n" > "$1"\n')
   const input = join(dir, 'input.json')
   await writeFile(input, JSON.stringify({ action: 'edit', file: '007_sites.sql' }))
-  const { stdout } = await promisify(execFile)('/usr/bin/script', ['-q', '-e', '-c', 'exec "$ACTION_NODE" "$ACTION_SOURCE" < "$ACTION_INPUT"', '/dev/null'], {
+  // `script` runs the action in a new pseudo-terminal; util-linux and BSD (macOS) spell its arguments differently.
+  const command = 'exec "$ACTION_NODE" "$ACTION_SOURCE" < "$ACTION_INPUT"'
+  const args = process.platform === 'linux' ? ['-q', '-e', '-c', command, '/dev/null'] : ['-q', '/dev/null', '/bin/sh', '-c', command]
+  // BSD script needs a stdin it can query as a terminal or file, not the socket execFile gives it.
+  const { stdout } = await promisify(execFile)('/bin/sh', ['-c', 'exec /usr/bin/script "$@" < /dev/null', 'sh', ...args], {
     env: { ...process.env, ASSAY_ANALYSIS: dir, EDITOR: `/bin/sh '${editor}'`, ACTION_NODE: process.execPath, ACTION_SOURCE: await script(), ACTION_INPUT: input },
   })
-  const result = JSON.parse(stdout) as { ok: boolean; id: string }
+  // The pseudo-terminal's transcript can carry control echoes and carriage returns around the JSON line.
+  const result = JSON.parse(stdout.slice(stdout.indexOf('{'), stdout.lastIndexOf('}') + 1)) as { ok: boolean; id: string }
   expect(result.ok).toBe(true)
   expect(JSON.parse(await readFile(join(dir, `.assay/requests/${result.id}.json`), 'utf8'))).toMatchObject({ sql: 'SELECT 8\n', from: 7 })
 })

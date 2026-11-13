@@ -91,7 +91,8 @@ max-statements = 40
 # coverage follows subprocesses.
 [tool.coverage.run]
 source = ["."]
-omit = ["tests/*", "*/tests/*"]
+# A virtual environment inside python/ (a stray `uv run` there makes one) is installed packages, not Assay's code.
+omit = ["tests/*", "*/tests/*", ".venv/*", "*/.venv/*"]
 branch = true
 patch = ["subprocess"]
 
