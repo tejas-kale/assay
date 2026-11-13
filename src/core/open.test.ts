@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { newCommand, openCommand } from './open.ts'
+import { newCommand, openCommand, pickAnswer } from './open.ts'
 
 const facts = {
-  root: '/work', analyses: ['sales', 'survey'], rootExists: true, backendReady: true, venvReady: true,
+  root: '/work', analyses: [{ name: 'sales', title: 'Sales' }, { name: 'survey', title: 'Panel survey Q4' }], rootExists: true, backendReady: true, venvReady: true,
   userData: '/data', version: '1.2', env: { SHELL: '/bin/bash', ASSAY_CLAUDE_BIN: '/launcher' },
 }
 
@@ -19,13 +19,10 @@ test('opening a known analysis uses the shared launch and configured launcher', 
   assert.match(result.spec.args[1] ?? '', /ASSAY_CLAUDE_BIN:-claude/)
 })
 
-test('listing and failures name the problem before any launch', () => {
-  assert.deepEqual(openCommand(facts), { kind: 'list', message: 'sales\nsurvey' })
-  assert.deepEqual(openCommand({ ...facts, analyses: [] }), { kind: 'list', message: '(none)' })
+test('failures name the problem before any launch', () => {
   const invalid = [
     { input: { ...facts, root: undefined }, reason: /root is missing/ },
     { input: { ...facts, rootExists: false }, reason: /root is missing/ },
-    { input: { ...facts, slug: '../sales' }, reason: /Unknown analysis/ },
     { input: { ...facts, slug: 'sales', backendReady: false }, reason: /backend is missing/ },
     { input: { ...facts, slug: 'sales', venvReady: false }, reason: /venv is not ready/ },
   ]
@@ -34,9 +31,38 @@ test('listing and failures name the problem before any launch', () => {
     assert.equal(result.kind, 'error')
     assert.match(result.message, reason)
   }
-  const unknown = openCommand({ ...facts, slug: 'missing' })
-  if (unknown.kind === 'launch') throw new Error('Unexpected launch')
-  assert.match(unknown.message, /Known analyses:\nsales\nsurvey/)
+})
+
+test('an analysis opens by its folder name, its title in any case, or the title typed as words', () => {
+  // A folder name wins over a title, and a title over the typed words' slug.
+  const analyses = [...facts.analyses, { name: 'panel-survey-q4', title: 'Panel survey Q4 (old)' }]
+  const cases = [['survey', 'survey'], ['panel survey q4', 'survey'], ['Panel  Survey Q4', 'survey'], ['PANEL-SURVEY-Q4', 'panel-survey-q4'], ['Panel survey Q4 (old)', 'panel-survey-q4']]
+  for (const [slug, folder] of cases) {
+    const result = openCommand({ ...facts, slug, analyses })
+    if (result.kind !== 'launch') throw new Error(`Expected a launch for ${String(slug)}`)
+    assert.equal(result.spec.env.ASSAY_ANALYSIS, `/work/analyses/${String(folder)}`)
+  }
+})
+
+test('no name, or one that matches nothing, offers a choice: narrowed by shared words, or all of them', () => {
+  assert.deepEqual(openCommand(facts), { kind: 'choose', candidates: facts.analyses, message: 'sales\nsurvey' })
+  assert.deepEqual(openCommand({ ...facts, analyses: [] }), { kind: 'choose', candidates: [], message: '(none)' })
+  const narrowed = openCommand({ ...facts, slug: 'Q4 panel review' })
+  assert.deepEqual(narrowed, {
+    kind: 'choose', candidates: [facts.analyses[1]], failed: true,
+    message: 'Unknown analysis: Q4 panel review\nKnown analyses:\nsales\nsurvey',
+  })
+  const unmatched = openCommand({ ...facts, slug: 'xyz' })
+  if (unmatched.kind !== 'choose') throw new Error('Expected a choice')
+  assert.deepEqual(unmatched.candidates, facts.analyses)
+})
+
+test('the answer to the choice is a number, a name, or nothing to cancel', () => {
+  const { analyses } = facts
+  assert.deepEqual(pickAnswer('2', analyses), { kind: 'open', slug: 'survey' })
+  assert.deepEqual(pickAnswer(' panel survey q4 ', analyses), { kind: 'open', slug: 'survey' })
+  assert.deepEqual(pickAnswer('', analyses), { kind: 'cancel' })
+  for (const answer of ['0', '3', '1.5', 'nothing']) assert.deepEqual(pickAnswer(answer, analyses), { kind: 'again' })
 })
 
 test('plain Claude and light themes retain the app launch contract', () => {

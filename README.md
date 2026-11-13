@@ -30,7 +30,9 @@ The code is the source of truth. `specs/slices/slice-*.md` are the specs each sl
   login shell's PATH among `~/.local/bin`, `~/bin` and `/usr/local/bin`. It runs the CLI inside the app, so it follows
   app updates, and it never replaces another command named `assay`. `npm run install-cli` writes the same launcher
   from a checkout; `npm run install-app` instead replaces the app with a local, ad-hoc signed build and installs it.
-  With Node 22.15 or later on PATH, `assay open` lists analyses; `assay open <slug>` starts Claude in your terminal.
+  With Node 22.15 or later on PATH, `assay open <name>` starts Claude in your terminal; the name is the folder or the
+  title, in any case. With no name, or one that matches nothing, it lists the analyses (narrowed to shared words) and asks
+  which to open.
   `assay new <title>` creates an analysis, as the app's picker does, and starts Claude in it.
   Choose a root in the app's Settings once. The app need not be open: on the first launch after an update, `assay`
   installs that version's backend and builds its venv itself (about a minute). `ASSAY_CLAUDE_BIN` selects your usual launcher.

@@ -2,14 +2,17 @@
 import { join } from 'node:path'
 
 import { cleanTitle } from './analyses.ts'
+import { slugify } from './rootNotes.ts'
 import { ledgerPath } from './trustLedger.ts'
 import { spawnSpec } from './session.ts'
 import type { SpawnSpec } from './session.ts'
 
 export type OpenFacts = {
+  /** What the user typed after `open`: a folder name, a title, or words to match. */
   slug?: string
   root?: string
-  analyses: string[]
+  /** Most recently changed first, as the picker lists them. */
+  analyses: Choice[]
   rootExists: boolean
   backendReady: boolean
   venvReady: boolean
@@ -17,8 +20,37 @@ export type OpenFacts = {
   version: string
   env: Record<string, string | undefined>
 }
-/** `notice` is printed before the launch replaces the command. */
-export type OpenCommand = { kind: 'launch'; spec: SpawnSpec; notice?: string } | { kind: 'list'; message: string } | { kind: 'error'; message: string }
+export type Choice = { name: string; title: string }
+/**
+ * `notice` is printed before the launch replaces the command. `choose`: a terminal asks which of `candidates` to open;
+ * output that is not a terminal gets `message` instead, as an error when `failed`.
+ */
+export type OpenCommand =
+  | { kind: 'launch'; spec: SpawnSpec; notice?: string }
+  | { kind: 'choose'; candidates: Choice[]; message: string; failed?: true }
+  | { kind: 'error'; message: string }
+
+const sameText = (a: string, b: string) => a.trim().replace(/\s+/g, ' ').toLowerCase() === b.trim().replace(/\s+/g, ' ').toLowerCase()
+
+/** The analysis a typed name means: its folder name, else its title in any case, else the folder its words would make. */
+function resolve(typed: string, analyses: Choice[]): string | undefined {
+  return (analyses.find(a => a.name === typed) ?? analyses.find(a => sameText(a.title, typed)) ?? analyses.find(a => a.name === slugify(typed)))?.name
+}
+
+/** The analyses sharing a word of three or more letters with what was typed; all of them when none does. */
+function narrowed(typed: string, analyses: Choice[]): Choice[] {
+  const words = typed.toLowerCase().split(/[^a-z0-9]+/).filter(word => word.length >= 3)
+  const close = analyses.filter(a => words.some(word => `${a.name} ${a.title.toLowerCase()}`.includes(word)))
+  return close.length > 0 ? close : analyses
+}
+
+/** The answer typed at the choice: a listed number or a name opens, nothing cancels, anything else asks again. */
+export function pickAnswer(answer: string, candidates: Choice[]): { kind: 'open'; slug: string } | { kind: 'cancel' } | { kind: 'again' } {
+  const typed = answer.trim()
+  if (typed === '') return { kind: 'cancel' }
+  const picked = /^\d+$/.test(typed) ? candidates[Number(typed) - 1]?.name : resolve(typed, candidates)
+  return picked ? { kind: 'open', slug: picked } : { kind: 'again' }
+}
 
 const rootProblem = (facts: OpenFacts) =>
   !facts.root || !facts.rootExists ? 'Assay root is missing. Open Assay and choose your root in Settings.' : undefined
@@ -33,13 +65,14 @@ export function openCommand(facts: OpenFacts): OpenCommand {
   const { root, slug, userData, version, env } = facts
   const missingRoot = rootProblem(facts)
   if (missingRoot || !root) return { kind: 'error', message: missingRoot ?? '' }
-  const known = facts.analyses.join('\n') || '(none)'
-  if (slug === undefined) return { kind: 'list', message: known }
-  if (!facts.analyses.includes(slug)) return { kind: 'error', message: `Unknown analysis: ${slug}\nKnown analyses:\n${known}` }
+  const known = facts.analyses.map(a => a.name).join('\n') || '(none)'
+  if (slug === undefined) return { kind: 'choose', candidates: facts.analyses, message: known }
+  const name = resolve(slug, facts.analyses)
+  if (!name) return { kind: 'choose', candidates: narrowed(slug, facts.analyses), message: `Unknown analysis: ${slug}\nKnown analyses:\n${known}`, failed: true }
   const notReady = backendProblem(facts)
   if (notReady) return { kind: 'error', message: notReady }
   return { kind: 'launch', spec: spawnSpec({
-    folder: join(root, 'analyses', slug), root, env,
+    folder: join(root, 'analyses', name), root, env,
     mode: env.ASSAY_THEME === 'light-ansi' ? 'light' : 'dark',
     backend: join(userData, 'backend', version), venv: join(userData, 'venvs', version),
     ledger: ledgerPath(userData, root),
@@ -56,6 +89,6 @@ export async function newCommand(facts: OpenFacts, title: string, create: (root:
   const problem = rootProblem(facts) ?? backendProblem(facts)
   if (problem || !facts.root) return { kind: 'error', message: problem ?? '' }
   const slug = await create(facts.root, cleaned.title)
-  const opened = openCommand({ ...facts, slug, analyses: [...facts.analyses, slug] })
+  const opened = openCommand({ ...facts, slug, analyses: [...facts.analyses, { name: slug, title: cleaned.title }] })
   return opened.kind === 'launch' ? { ...opened, notice: `Created analyses/${slug}` } : opened
 }

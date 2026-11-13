@@ -2,12 +2,13 @@
 import { writeSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
+import { createInterface } from 'node:readline/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { cleanTitle, createAnalysis, isoDay, listAnalyses } from '../core/analyses.ts'
-import { newCommand, openCommand } from '../core/open.ts'
-import type { OpenCommand } from '../core/open.ts'
+import { newCommand, openCommand, pickAnswer } from '../core/open.ts'
+import type { Choice, OpenCommand } from '../core/open.ts'
 import { parseSettings } from '../core/settings.ts'
 import { parseVenvBuild, venvFailed, venvStatusPath } from '../core/venv.ts'
 import { backendStamp, buildReleaseVenv, installBackend, installedStamp } from '../main/backend.ts'
@@ -41,7 +42,7 @@ async function facts(slug?: string) {
   const build = parseVenvBuild(await read(venvStatusPath(venv)))
   return {
     slug, root, rootExists: root !== undefined, userData, version: ASSAY_VERSION, env: process.env,
-    analyses: root ? (await listAnalyses(fsPort, root)).map(analysis => analysis.name) : [],
+    analyses: root ? (await listAnalyses(fsPort, root)).map(({ name, title }) => ({ name, title })) : [],
     backendReady: stamp !== undefined && await fileExists(join(backend, 'out/server/index.mjs')) && await fileExists(join(backend, 'plugin/.claude-plugin/plugin.json')),
     venvReady: stamp !== undefined && await installedStamp(venv) === stamp && build?.state === 'ready' && await fileExists(join(venv, 'bin/python')),
   }
@@ -69,11 +70,48 @@ async function prepared(known: Facts): Promise<Facts> {
 
 const USAGE = 'Usage: assay open [slug] | assay new <title>'
 
-async function command(verb: string | undefined, args: string[]): Promise<OpenCommand> {
+/** A launch whose only problem is the backend gets it prepared, then tries again. */
+async function launch(known: Facts): Promise<OpenCommand> {
+  const result = openCommand(known)
+  // With a root and a known analysis, only the backend or venv can stop the launch.
+  return result.kind === 'error' && known.root ? openCommand(await prepared(known)) : result
+}
+
+/** Asks which analysis to open: a number or a name; nothing, or end of input, cancels. */
+async function ask(candidates: Choice[], typed?: string): Promise<string | undefined> {
+  if (typed !== undefined) console.log(`No analysis named "${typed}".`)
+  if (candidates.length === 0) {
+    console.log('No analyses yet. Start one with: assay new <title>')
+    return undefined
+  }
+  const width = String(candidates.length).length
+  candidates.forEach(({ name, title }, i) => {
+    const shown = title === name ? name : `${name}  (${title})`
+    console.log(`${String(i + 1).padStart(width)}  ${shown}`)
+  })
+  const prompt = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    for (;;) {
+      const answer = pickAnswer(await prompt.question('Open which? Number or name, Enter to cancel: '), candidates)
+      if (answer.kind === 'open') return answer.slug
+      if (answer.kind === 'cancel') return undefined
+    }
+  } catch {
+    return undefined
+  } finally {
+    prompt.close()
+  }
+}
+
+/** Undefined when the user cancelled the choice. */
+async function command(verb: string | undefined, args: string[]): Promise<OpenCommand | undefined> {
   if (verb === 'open' && args.length <= 1) {
     const known = await facts(args[0])
-    // Listing, or an unknown slug, needs no backend: only a launch prepares one.
-    return openCommand(known.slug && known.analyses.includes(known.slug) ? await prepared(known) : known)
+    const result = await launch(known)
+    // Output that is not a terminal (a script, a pipe) gets the list or the error instead of a question.
+    if (result.kind !== 'choose' || !process.stdin.isTTY || !process.stdout.isTTY) return result
+    const slug = await ask(result.candidates, result.failed ? args[0] : undefined)
+    return slug === undefined ? undefined : launch({ ...known, slug })
   }
   if (verb !== 'new' || args.length === 0) throw new Error(USAGE)
   // Unquoted words make one title: `assay new Panel churn Q4`.
@@ -85,8 +123,9 @@ async function command(verb: string | undefined, args: string[]): Promise<OpenCo
 async function main() {
   const [, , verb, ...args] = process.argv
   const result = await command(verb, args)
-  if (result.kind === 'error') throw new Error(result.message)
-  if (result.kind === 'list') {
+  if (!result) return
+  if (result.kind === 'error' || (result.kind === 'choose' && result.failed)) throw new Error(result.message)
+  if (result.kind === 'choose') {
     console.log(result.message)
     return
   }

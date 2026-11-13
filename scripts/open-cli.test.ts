@@ -61,7 +61,8 @@ test('the bundled CLI lists analyses and launches a stub with the installed app 
   try {
     assert.equal((await w.run()).stdout.trim(), 'sales')
     await assert.rejects(w.run('absent'), /Unknown analysis: absent\nKnown analyses:\nsales/)
-    await w.run('sales')
+    // The title, typed in any case, opens the same analysis.
+    await w.run('SALES')
     const output = await readFile(w.capture, 'utf8')
     assert.ok(output.startsWith(`${w.root}/analyses/sales\n${ledgerPath(w.userData, w.root)}\nlight-ansi\n`))
     assert.match(output, /--mcp-config\n.*mcpServers.*\n--plugin-dir\n/)
