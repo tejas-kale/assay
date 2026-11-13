@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { after, before, test } from 'node:test'
@@ -26,7 +26,8 @@ before(async () => {
 after(async () => { await rm(shared, { recursive: true, force: true }) })
 
 async function world() {
-  const dir = await mkdtemp(join(tmpdir(), 'assay-cli-world-'))
+  // The real path: the CLI resolves the root through links, as macOS's /var -> /private/var.
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'assay-cli-world-')))
   const home = join(dir, 'home')
   const root = join(dir, 'root')
   const userData = join(home, 'Library/Application Support/Assay')
@@ -44,8 +45,9 @@ async function world() {
   const capture = join(dir, 'capture')
   await writeFile(launcher, '#!/bin/sh\nprintf "%s\\n" "$ASSAY_ANALYSIS" "$ASSAY_LEDGER" "$ASSAY_THEME" "$@" > "$ASSAY_CAPTURE"\n', { mode: 0o755 })
   const env = { ...process.env, HOME: home, SHELL: '/bin/bash', ASSAY_CLAUDE_BIN: launcher, ASSAY_CAPTURE: capture, ASSAY_THEME: 'light-ansi' }
-  const run = (...args: string[]) => exec(process.execPath, [resolve(shipped, 'out/cli/assay.mjs'), 'open', ...args], { env })
-  return { dir, root, userData, backend, venv, capture, run }
+  const cli = (...args: string[]) => exec(process.execPath, [resolve(shipped, 'out/cli/assay.mjs'), ...args], { env })
+  const run = (...args: string[]) => cli('open', ...args)
+  return { dir, root, userData, backend, venv, capture, run, cli }
 }
 
 test('the bundled CLI lists analyses and launches a stub with the installed app contract', async () => {
@@ -72,6 +74,23 @@ test('the bundled CLI refuses an unprepared venv and a changed backend', async (
     await assert.rejects(w.run('sales'), /backend is missing/)
     await rm(join(w.userData, 'settings.json'))
     await assert.rejects(w.run('sales'), /root is missing/)
+  } finally {
+    await rm(w.dir, { recursive: true, force: true })
+  }
+})
+
+test('the bundled CLI creates a new analysis and launches it, and refuses before creating when it cannot launch', async () => {
+  const w = await world()
+  try {
+    const created = await w.cli('new', 'Panel', 'churn', 'Q4')
+    assert.equal(created.stdout, 'Created analyses/panel-churn-q4\n')
+    assert.match(await readFile(join(w.root, 'analyses/panel-churn-q4/analysis.yaml'), 'utf8'), /^title: Panel churn Q4\ncreated: \d{4}-\d{2}-\d{2}\n$/)
+    assert.ok((await readFile(w.capture, 'utf8')).startsWith(`${w.root}/analyses/panel-churn-q4\n`))
+    await assert.rejects(w.cli('new'), /Usage: assay open \[slug\] \| assay new <title>/)
+    await assert.rejects(w.cli('open', 'sales', 'extra'), /Usage/)
+    await rm(join(w.venv, 'bin/python'))
+    await assert.rejects(w.cli('new', 'Later'), /venv is not ready/)
+    assert.deepEqual((await readdir(join(w.root, 'analyses'))).sort((a, b) => a.localeCompare(b)), ['panel-churn-q4', 'sales'])
   } finally {
     await rm(w.dir, { recursive: true, force: true })
   }

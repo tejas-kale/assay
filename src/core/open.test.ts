@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { openCommand } from './open.ts'
+import { newCommand, openCommand } from './open.ts'
 
 const facts = {
   root: '/work', analyses: ['sales', 'survey'], rootExists: true, backendReady: true, venvReady: true,
@@ -45,4 +45,30 @@ test('plain Claude and light themes retain the app launch contract', () => {
   assert.equal(result.spec.env.ASSAY_THEME, 'light-ansi')
   assert.equal(result.spec.env.ASSAY_CLAUDE_BIN, undefined)
   assert.equal(result.spec.file, '/bin/zsh')
+})
+
+test('new creates the analysis under the root and launches it with a notice', async () => {
+  const made: string[] = []
+  const result = await newCommand(facts, '  Panel   churn ', (root, title) => {
+    made.push(`${root}|${title}`)
+    return Promise.resolve('panel-churn')
+  })
+  assert.deepEqual(made, ['/work|Panel churn'])
+  if (result.kind !== 'launch') throw new Error('Expected launch')
+  assert.equal(result.notice, 'Created analyses/panel-churn')
+  assert.equal(result.spec.env.ASSAY_ANALYSIS, '/work/analyses/panel-churn')
+})
+
+test('new refuses before creating anything when the title or launch is not possible', async () => {
+  const invalid = [
+    { input: facts, title: ' -- ', reason: /letters or digits/ },
+    { input: { ...facts, root: undefined }, title: 'Sales', reason: /root is missing/ },
+    { input: { ...facts, backendReady: false }, title: 'Sales', reason: /backend is missing/ },
+    { input: { ...facts, venvReady: false }, title: 'Sales', reason: /venv is not ready/ },
+  ]
+  for (const { input, title, reason } of invalid) {
+    const result = await newCommand(input, title, () => Promise.reject(new Error('created')))
+    if (result.kind !== 'error') throw new Error('Expected error')
+    assert.match(result.message, reason)
+  }
 })

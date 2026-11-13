@@ -70,7 +70,9 @@ sandbox. docs/developer/security.md draws this boundary in full.
 
 After `npm run install-app` and one app launch to prepare the backend, `assay open` lists analyses and
 `assay open <slug>` replaces itself with the same Claude launch in the current terminal. It needs Node 22.15 or
-later on PATH. The installed command selects the backend and venv for its app version and verifies their stamps;
+later on PATH. `assay new <title>` creates `analyses/<slug>/analysis.yaml` as the app's picker does (words after
+`new` join into one title), then launches it like `assay open <slug>`; it writes nothing when the root, backend or venv
+would stop the launch. The installed command selects the backend and venv for its app version and verifies their stamps;
 a changed backend requires opening the app again. Set `ASSAY_THEME=light-ansi` for a light terminal; otherwise the
 terminal command uses `dark-ansi`.
 

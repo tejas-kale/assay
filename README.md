@@ -29,6 +29,7 @@ The code is the source of truth. `specs/slices/slice-*.md` are the specs each sl
 - `npm run install-app` builds `Assay.app`, ad-hoc signed, into `/Applications`; run it again after pulling changes.
   It also installs `assay` into a writable PATH folder (`~/.local/bin`, `~/bin` or `/usr/local/bin`).
   With Node 22.15 or later on PATH, `assay open` lists analyses; `assay open <slug>` starts Claude in your terminal.
+  `assay new <title>` creates an analysis, as the app's picker does, and starts Claude in it.
   Open the app once first to choose a root and prepare its backend. `ASSAY_CLAUDE_BIN` selects your usual launcher.
   Set `ASSAY_THEME=light-ansi` for a light terminal. Close its app session before starting the same analysis here;
   Trust review still requires closing the terminal session and opening the app. Crash recovery is documented in
