@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { cliVerb, helpText, USAGE } from '../core/cliHelp.ts'
 import { cleanTitle, createAnalysis, isoDay, listAnalyses } from '../core/analyses.ts'
 import { newCommand, openCommand, pickAnswer } from '../core/open.ts'
 import type { Choice, OpenCommand } from '../core/open.ts'
@@ -31,11 +32,17 @@ async function preparedBackend(backend: string) {
   return actual === expected && await installedStamp(backend) === expected ? expected : undefined
 }
 
-async function facts(slug?: string) {
-  const userData = join(homedir(), 'Library', 'Application Support', 'Assay')
+const userData = join(homedir(), 'Library', 'Application Support', 'Assay')
+
+/** The root chosen in the app's Settings, resolved through links; undefined when unset or missing. */
+async function rootPath() {
   const settings = parseSettings(await read(join(userData, 'settings.json')))
   const resolved = settings.root ? await resolveRoot(settings.root, homedir()) : undefined
-  const root = resolved?.ok ? resolved.path : undefined
+  return resolved?.ok ? resolved.path : undefined
+}
+
+async function facts(slug?: string) {
+  const root = await rootPath()
   const backend = join(userData, 'backend', ASSAY_VERSION)
   const venv = join(userData, 'venvs', ASSAY_VERSION)
   const stamp = await preparedBackend(backend)
@@ -67,8 +74,6 @@ async function prepared(known: Facts): Promise<Facts> {
   if (build.state === 'failed') throw new Error(venvFailed(build.error))
   return facts(known.slug)
 }
-
-const USAGE = 'Usage: assay open [slug] | assay new <title>'
 
 /** A launch whose only problem is the backend gets it prepared, then tries again. */
 async function launch(known: Facts): Promise<OpenCommand> {
@@ -104,8 +109,15 @@ async function ask(candidates: Choice[], typed?: string): Promise<string | undef
 }
 
 /** Undefined when the user cancelled the choice. */
-async function command(verb: string | undefined, args: string[]): Promise<OpenCommand | undefined> {
-  if (verb === 'open' && args.length <= 1) {
+async function command(argv: string[]): Promise<OpenCommand | undefined> {
+  const [, ...args] = argv
+  const verb = cliVerb(argv)
+  if (verb === 'help' || verb === 'version') {
+    console.log(verb === 'help' ? helpText({ version: ASSAY_VERSION, root: await rootPath() }) : ASSAY_VERSION)
+    return undefined
+  }
+  if (verb === 'usage') throw new Error(USAGE)
+  if (verb === 'open') {
     const known = await facts(args[0])
     const result = await launch(known)
     // Output that is not a terminal (a script, a pipe) gets the list or the error instead of a question.
@@ -113,7 +125,6 @@ async function command(verb: string | undefined, args: string[]): Promise<OpenCo
     const slug = await ask(result.candidates, result.failed ? args[0] : undefined)
     return slug === undefined ? undefined : launch({ ...known, slug })
   }
-  if (verb !== 'new' || args.length === 0) throw new Error(USAGE)
   // Unquoted words make one title: `assay new Panel churn Q4`.
   const title = args.join(' ')
   const known = await facts()
@@ -121,8 +132,7 @@ async function command(verb: string | undefined, args: string[]): Promise<OpenCo
 }
 
 async function main() {
-  const [, , verb, ...args] = process.argv
-  const result = await command(verb, args)
+  const result = await command(process.argv.slice(2))
   if (!result) return
   if (result.kind === 'error' || (result.kind === 'choose' && result.failed)) throw new Error(result.message)
   if (result.kind === 'choose') {
