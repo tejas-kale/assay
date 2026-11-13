@@ -1,6 +1,6 @@
 // A terminal adapter only: launch decisions and the spawn contract live in core.
 import { writeSync } from 'node:fs'
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
+import { access, constants, mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { emitKeypressEvents } from 'node:readline'
 import { dirname, join } from 'node:path'
@@ -14,6 +14,7 @@ import { pickerScreen, pickerStep } from '../core/termPicker.ts'
 import type { TermKey, TermPickerEffect } from '../core/termPicker.ts'
 import { parseSettings, serializeSettings } from '../core/settings.ts'
 import { parseVenvBuild, venvFailed, venvStatusPath } from '../core/venv.ts'
+import { findOnPath, VD_MISSING, vdFiles, vdTarget } from '../core/vd.ts'
 import { backendStamp, buildReleaseVenv, installBackend, installedStamp } from '../main/backend.ts'
 import { uvWith } from '../main/doctor.ts'
 import { fsPort } from '../main/fsAccess.ts'
@@ -58,6 +59,26 @@ async function rootCommand(input?: string) {
     await rename(temp, path)
   }
   console.log(result.path)
+}
+
+const definedEnv = () => Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined))
+
+/** Replaces this command with VisiData on a run's tables (src/core/vd.ts chooses them). */
+async function vdCommand(args: string[]): Promise<OpenCommand> {
+  const root = await rootPath()
+  const analyses = root ? (await listAnalyses(fsPort, root)).map(({ name, title }) => ({ name, title })) : []
+  const target = vdTarget(args, { cwd: process.cwd(), ...(root ? { root } : {}), analyses })
+  if ('error' in target) return { kind: 'error', message: target.error }
+  const queries = join(root ?? '', 'analyses', target.analysis, 'queries')
+  const names = await readdir(queries).catch(() => [] as string[])
+  const chosen = vdFiles(names, target.run)
+  if ('error' in chosen) return { kind: 'error', message: `${target.analysis}: ${chosen.error}` }
+  const vd = await findOnPath('vd', process.env.PATH ?? '', file => access(file, constants.X_OK).then(() => true, () => false))
+  if (!vd) return { kind: 'error', message: VD_MISSING }
+  return {
+    kind: 'launch', notice: `Run ${String(chosen.run)} of ${target.analysis} in VisiData`,
+    spec: { file: vd, args: chosen.files.map(file => join(queries, file)), cwd: queries, env: definedEnv() },
+  }
 }
 
 async function facts(slug?: string) {
@@ -158,6 +179,7 @@ async function command(argv: string[]): Promise<OpenCommand | undefined> {
     await rootCommand(args[0])
     return undefined
   }
+  if (verb === 'vd') return vdCommand(args)
   if (verb === 'open') {
     const known = await facts(args[0])
     const result = await launch(known)

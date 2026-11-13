@@ -1,8 +1,8 @@
 // What `assay --help` says, and which command the arguments ask for. The CLI adapter (src/cli) prints it.
 
-export type CliVerb = 'help' | 'version' | 'open' | 'new' | 'root' | 'usage'
+export type CliVerb = 'help' | 'version' | 'open' | 'new' | 'root' | 'vd' | 'usage'
 
-export const USAGE = 'Usage: assay open [name] | assay new <title> | assay root [path]\nRun assay --help for what each does.'
+export const USAGE = 'Usage: assay open [name] | assay new <title> | assay root [path] | assay vd [run] [name]\nRun assay --help for what each does.'
 
 /** A help or version flag wins wherever it appears; no arguments at all ask for help. */
 export function cliVerb(args: readonly string[]): CliVerb {
@@ -12,6 +12,7 @@ export function cliVerb(args: readonly string[]): CliVerb {
   if (verb === 'open' && rest.length <= 1) return 'open'
   if (verb === 'new' && rest.length > 0) return 'new'
   if (verb === 'root' && rest.length <= 1) return 'root'
+  if (verb === 'vd' && rest.length <= 2) return 'vd'
   return 'usage'
 }
 
@@ -35,6 +36,12 @@ assay root [path]
   one analysis inside it sets the folder above. The current terminal
   directory never selects the root.
 
+assay vd [run] [name]
+  Opens a run's table in VisiData, in this terminal. With no run, the
+  newest run with a table; a Python run opens each of its tables. The
+  analysis is the one named, else the one this terminal is in, else the
+  most recently changed. Needs vd on PATH: uv tool install visidata.
+
 `
 
 export function helpText({ version, root }: { version: string; root?: string }): string {
@@ -44,6 +51,7 @@ Usage:
   assay open [name]   Start Claude in an analysis
   assay new <title>   Create an analysis, then start Claude in it
   assay root [path]   Show the Assay root, or set it to path
+  assay vd [run]      Open a run's table in VisiData
   assay --help        Show this help (also: assay help, -h)
   assay --version     Print the Assay version this command runs (also: -v)
 
@@ -71,5 +79,6 @@ Examples
   assay open
   assay open "Quarantine Checks"
   assay new Panel churn Q4
+  assay vd 12 "Quarantine Checks"
   ASSAY_THEME=light-ansi assay open increase-rpi`
 }

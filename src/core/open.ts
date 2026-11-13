@@ -34,7 +34,7 @@ export type OpenCommand =
 const sameText = (a: string, b: string) => a.trim().replace(/\s+/g, ' ').toLowerCase() === b.trim().replace(/\s+/g, ' ').toLowerCase()
 
 /** The analysis a typed name means: its folder name, else its title in any case, else the folder its words would make. */
-function resolve(typed: string, analyses: Choice[]): string | undefined {
+export function resolveAnalysis(typed: string, analyses: Choice[]): string | undefined {
   return (analyses.find(a => a.name === typed) ?? analyses.find(a => sameText(a.title, typed)) ?? analyses.find(a => a.name === slugify(typed)))?.name
 }
 
@@ -53,7 +53,7 @@ export function openCommand(facts: OpenFacts): OpenCommand {
   if (missingRoot || !root) return { kind: 'error', message: missingRoot ?? '' }
   const known = facts.analyses.map(a => a.name).join('\n') || '(none)'
   if (slug === undefined) return { kind: 'choose', message: known }
-  const name = resolve(slug, facts.analyses)
+  const name = resolveAnalysis(slug, facts.analyses)
   if (!name) return { kind: 'choose', message: `Unknown analysis: ${slug}\nKnown analyses:\n${known}`, failed: true }
   const notReady = backendProblem(facts)
   if (notReady) return { kind: 'error', message: notReady }

@@ -41,6 +41,8 @@ The code is the source of truth. `specs/slices/slice-*.md` are the specs each sl
   title, in any case. With no name, or one that matches nothing, it opens a picker with fuzzy search; Enter opens the
   selected analysis, or creates one titled what you typed when you select the last row.
   `assay new <title>` creates an analysis, as the app's picker does, and starts Claude in it.
+  `assay vd` opens the newest run's table in VisiData (`uv tool install visidata`); `assay vd 12` opens run 12. The
+  analysis is the one your terminal is in, else the most recently changed; name another with `assay vd 12 <name>`.
   Set the root once with `assay root ~/Code/assay-test` (or in Settings); `assay root` shows it. The root must be an
   existing folder holding `analyses/`; your current terminal directory does not select it.
   The app need not be open: on the first launch after an update, `assay` installs that version's backend and builds
