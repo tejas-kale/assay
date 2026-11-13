@@ -35,7 +35,8 @@ test('the home folder itself is refused when home is given through a link', asyn
 
 test('a folder whose name differs from home only in case is refused, as on a case-insensitive disk (audit UI-5)', async () => {
   const { dir, home } = await scratch()
-  await mkdir(join(dir, 'ME'))
+  // On a case-insensitive disk ME is already home's folder; elsewhere it is made.
+  await mkdir(join(dir, 'ME'), { recursive: true })
   assert.equal((await resolveRoot(join(dir, 'ME'), home)).ok, false)
 })
 

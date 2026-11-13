@@ -42,7 +42,7 @@ test('saving changed Python code sends a new user request without changing its s
 
 test('closing an editor without changes or with a failed exit sends nothing', async t => {
   const dir = await fixture(t)
-  for (const [editor, expected] of [['/bin/true', { ok: true, unchanged: true }], ['/bin/false', { ok: false, message: 'The editor failed; no run was sent.' }]] as const) {
+  for (const [editor, expected] of [['/usr/bin/true', { ok: true, unchanged: true }], ['/usr/bin/false', { ok: false, message: 'The editor failed; no run was sent.' }]] as const) {
     const ran = await runNode(resolve('src/cli/runAction.ts'), JSON.stringify({ action: 'edit', file: '007_sites.sql' }), { ...process.env, ASSAY_ANALYSIS: dir, EDITOR: editor })
     expect(JSON.parse(ran.stdout)).toEqual(expected)
   }
