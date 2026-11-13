@@ -1,4 +1,4 @@
-import { parseCsv } from './conversation-model.js'
+import { keyValueLines, parseCsv } from './conversation-model.js'
 
 export function codeElements({ Code, Button, row, expansion, expand }) {
   const lines = row.code.split('\n')
@@ -45,4 +45,29 @@ export function quietText(call) {
   const input = call.input && typeof call.input === 'object' ? call.input : {}
   const detail = input.command ?? input.file_path ?? input.pattern ?? input.path ?? ''
   return `${call.tool} ${typeof detail === 'string' ? detail : ''}`.replace(/\s+/g, ' ').trim()
+}
+
+// Theme keys, so the colours follow the person's light or dark theme.
+const TONES = {
+  heading: { color: 'claude', bold: true },
+  key: { color: 'suggestion' },
+  type: { color: 'merged' },
+  number: { color: 'warning' },
+  literal: { color: 'warning' },
+  time: { color: 'success' },
+  muted: { dimColor: true },
+}
+
+/** A shell result's stdout as coloured `key: value` lines, under the gutter the engine draws before a result. */
+export function keyValueElement({ Box, Text, lines }) {
+  const rows = lines.map(spans => h(Text, null, ...spans.map(span => (span.tone ? h(Text, TONES[span.tone], span.text) : span.text))))
+  return h(Box, { flexDirection: 'row' }, h(Text, { dimColor: true }, '  ⎿  '), h(Box, { flexDirection: 'column', flexShrink: 1 }, ...rows))
+}
+
+/** The `key: value` lines of a Bash result with no error text; undefined leaves the engine's own drawing. */
+export function bashKeyValues(call) {
+  const output = call.output
+  if (call.tool !== 'Bash' || call.isErrored || typeof output !== 'object' || output === null) return undefined
+  if (typeof output.stdout !== 'string' || (typeof output.stderr === 'string' && output.stderr.trim() !== '')) return undefined
+  return keyValueLines(output.stdout)
 }

@@ -10,7 +10,8 @@ const engine = { type: 'Text', props: {}, children: ['engine'] }
 
 function harness(overrides = {}) {
   const hooks = []
-  register((event, options, handle) => { hooks.push(handle) })
+  const byComponent = {}
+  register((event, options, handle) => { hooks.push(handle); byComponent[options.component] = handle })
   const state = new Map()
   const notices = []
   const files = { '001_one.sql': '-- author: user\nselect 1', '001_one.csv': 'n\n1\n' }
@@ -28,7 +29,8 @@ function harness(overrides = {}) {
   const event = { component: 'ToolUse', surface: 'terminal', viewport: { columns: 80, rows: 30 }, props: {
     tool_use_id: 'sql-1', tool: 'mcp__assay__sql', input: { sql: 'select 1' }, output: 'Query 001: 1 row.', isRunning: false, isErrored: false, isExpanded: false,
   } }
-  return { $, event, files, notices, render: e => hooks[0]($, e ?? event, () => Promise.resolve(engine)) }
+  const $hooks = { toolUse: byComponent.ToolUse, toolGroup: byComponent.ToolGroup, toolResult: byComponent.ToolResult }
+  return { $, $hooks, event, files, notices, render: e => hooks[0]($, e ?? event, () => Promise.resolve(engine)) }
 }
 
 function find(tree, type) {
@@ -220,4 +222,34 @@ test('unavailable backend and trusted Python calculations do not invoke edit or 
   const tree = await ui.render()
   assert.equal(keyed(tree, 'edit:sql-1'), undefined)
   assert.equal(keyed(tree, 'rerun:sql-1'), undefined)
+})
+
+const SCHEMA = 'COLUMNS:\n  id: bigint\n  name: string\n  seen: 2026-11-13\n  ok: true'
+
+test('expanded Bash output that reads as key: value lines is drawn in colour once, under the engine row', async () => {
+  const ui = harness()
+  const seen = []
+  const props = { ...ui.event.props, tool: 'Bash', tool_use_id: 'bash', isExpanded: true, output: { stdout: SCHEMA, stderr: '' } }
+  const tree = await ui.$hooks.toolUse(ui.$, { ...ui.event, props }, e => { seen.push(e.props.output); return Promise.resolve(engine) })
+  assert.deepEqual(seen, [undefined])
+  assert.deepEqual(tree.children[0], engine)
+  assert.match(JSON.stringify(tree), /"color":"suggestion".*"id"/)
+  assert.match(JSON.stringify(tree), /"color":"merged".*"bigint"/)
+  assert.equal((await ui.$hooks.toolResult(ui.$, { props }, () => engine)).type, 'Box')
+  for (const output of [{ stdout: 'plain text', stderr: '' }, { stdout: SCHEMA, stderr: 'warning' }, 'text', null, { stdout: 1 }]) {
+    const other = { ...props, output }
+    assert.equal(await ui.$hooks.toolUse(ui.$, { ...ui.event, props: other }, () => Promise.resolve(engine)), engine)
+    assert.equal(await ui.$hooks.toolResult(ui.$, { props: other }, () => engine), engine)
+  }
+  const errored = { ...props, isErrored: true }
+  assert.equal(await ui.$hooks.toolResult(ui.$, { props: errored }, () => engine), engine)
+})
+
+test('a folded group with a sql or python call is shown call by call', async () => {
+  const ui = harness()
+  const group = calls => ({ props: { calls: calls.map(tool => ({ tool })), isExpanded: false } })
+  assert.equal(ui.$hooks.toolGroup(ui.$, group(['Read', 'mcp__assay__python']), e => e).props.isExpanded, true)
+  assert.equal(ui.$hooks.toolGroup(ui.$, group(['Read', 'Bash']), e => e).props.isExpanded, false)
+  const open = { props: { calls: [{ tool: 'mcp__assay__sql' }], isExpanded: true } }
+  assert.equal(ui.$hooks.toolGroup(ui.$, open, e => e), open)
 })

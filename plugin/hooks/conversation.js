@@ -1,7 +1,7 @@
 import { callRunNumber, conversationRow, parseRuns } from './conversation-model.js'
 import { actionButtons, actionMessage, actionRequest } from './conversation-actions.js'
 import { visidataButton, visidataCommand } from './conversation-clipboard.js'
-import { codeElements, tableElements, plotElements, quietText } from './conversation-view.js'
+import { bashKeyValues, codeElements, keyValueElement, tableElements, plotElements, quietText } from './conversation-view.js'
 
 async function queryFolder($) {
   const analysis = await $.env.get('ASSAY_ANALYSIS')
@@ -56,14 +56,25 @@ async function drawRun($, e, { row, engine, files }) {
 }
 
 async function drawQuiet($, e, next) {
-  if (e.props.isExpanded !== false || e.props.isErrored || e.props.isInterrupted) return next(e)
+  if (e.props.isExpanded !== false || e.props.isErrored || e.props.isInterrupted) return drawExpanded($, e, next)
   const { value = {} } = await $.state.get({ plugin: 'assay', key: 'expansion', id: e.props.tool_use_id })
-  if (value.details) return next(e)
+  if (value.details) return drawExpanded($, e, next)
   const { Box, Text, Button } = $.ui.resolve(e)
   return h(Box, { flexDirection: 'row', width: e.viewport?.columns ?? 80 },
     h(Text, { wrap: 'truncate' }, `${e.props.isRunning ? 'Running · ' : ''}${quietText(e.props)}`),
     h(Button, { key: 'details', label: 'details', onPress: () => expandRow($, e.props.tool_use_id, 'details') }))
 }
+
+/** An expanded call; Bash output that reads as `key: value` lines is drawn in colour in place of the engine's. */
+async function drawExpanded($, e, next) {
+  const lines = bashKeyValues(e.props)
+  if (!lines) return next(e)
+  const { Box, Text } = $.ui.resolve(e)
+  const row = await next({ ...e, props: { ...e.props, output: undefined } })
+  return h(Box, { flexDirection: 'column' }, row, keyValueElement({ Box, Text, lines }))
+}
+
+const RUN_TOOLS = new Set(['mcp__assay__sql', 'mcp__assay__python'])
 
 function drawNote($, e, row, engine) {
   const { Box, Text, Code, Markdown } = $.ui.resolve(e)
@@ -90,6 +101,12 @@ export function register(on) {
     const engine = e.props.isExpanded === false ? undefined : await next(e)
     return row.kind === 'run' ? drawRun($, e, { row, engine, files }) : drawNote($, e, row, engine)
   })
+  // Claude Code folds runs of calls into one line ("Called assay 3 times"); a run with a sql or python call is shown
+  // call by call, so its rich rows are on screen without ctrl+o.
+  on('ui.render', { component: 'ToolGroup' }, (_$, e, next) =>
+    e.props.isExpanded || !e.props.calls.some(call => RUN_TOOLS.has(call.tool)) ? next(e) : next({ ...e, props: { ...e.props, isExpanded: true } }))
+  // The ToolUse row draws Bash output it colours, so the result block after it draws nothing; output shows once.
+  on('ui.render', { component: 'ToolResult' }, ($, e, next) => (bashKeyValues(e.props) ? h($.ui.resolve(e).Box, null) : next(e)))
 }
 
 async function copyTable($, file, surface) {
