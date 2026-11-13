@@ -26,9 +26,10 @@ The code is the source of truth. `specs/slices/slice-*.md` are the specs each sl
 - `npm run check`: typecheck, lint, every test with coverage, and the coverage bar; `git push` runs it first. `npm test`
   runs only the tests. Python runs from `python/`'s locked project, synced by uv into the root `.venv`. Details in
   `docs/developer/testing.md`.
-- `npm run install-cli` installs `assay` into a writable PATH folder (`~/.local/bin`, `~/bin` or `/usr/local/bin`). It
-  runs the CLI inside `/Applications/Assay.app`, so it follows the release you installed from GitHub; run it once.
-  `npm run install-app` instead replaces that app with a local, ad-hoc signed build of this checkout, and installs `assay`.
+- Assay.app installs the `assay` command at each launch from `/Applications`, into the first writable folder on your
+  login shell's PATH among `~/.local/bin`, `~/bin` and `/usr/local/bin`. It runs the CLI inside the app, so it follows
+  app updates, and it never replaces another command named `assay`. `npm run install-cli` writes the same launcher
+  from a checkout; `npm run install-app` instead replaces the app with a local, ad-hoc signed build and installs it.
   With Node 22.15 or later on PATH, `assay open` lists analyses; `assay open <slug>` starts Claude in your terminal.
   `assay new <title>` creates an analysis, as the app's picker does, and starts Claude in it.
   Choose a root in the app's Settings once. The app need not be open: on the first launch after an update, `assay`

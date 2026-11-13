@@ -3,6 +3,7 @@
 // start meanwhile (a Python tool called early answers that the venv is still building). The decisions are in
 // core/preparation.ts; this module holds the state and runs them.
 import { app } from 'electron'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 import { blocksOpening, doctorChecks } from '../core/doctor.ts'
@@ -12,6 +13,7 @@ import type { VenvBuild } from '../core/venv.ts'
 import type { DoctorView } from '../shared/ipc.ts'
 import { buildReleaseVenv, installBackend, installedStamp, pruneVersions, syncDevVenv } from './backend.ts'
 import type { VenvOptions } from './backend.ts'
+import { installLauncher } from './cliLauncher.ts'
 import { loginEnv, probeTools, uvWith } from './doctor.ts'
 
 /** Where Claude finds the backend and the tools' venv (docs/developer/launch-contract.md). */
@@ -95,10 +97,23 @@ async function checkTools(login: Promise<LoginEnv>) {
   changed()
 }
 
-/** The login environment, then the venv build when it is due and the tools' checks, both in the background. */
+/**
+ * The `assay` terminal command, written or updated to run this app's CLI. Only an app in /Applications installs it,
+ * so a copy run from its DMG or a download folder never points the command at itself.
+ */
+async function installTerminalCommand(login: Promise<LoginEnv & { PATH: string }>) {
+  if (!app.isPackaged || !app.isInApplicationsFolder()) return
+  const entry = join(process.resourcesPath, 'backend/out/cli/assay.mjs')
+  await installLauncher({ entry, path: (await login).PATH, home: homedir() }).catch((error: unknown) => {
+    console.error('Could not install the assay command', error)
+  })
+}
+
+/** The login environment, then the venv build when it is due, the terminal command and the tools' checks, in the background. */
 function backgroundWork() {
   const login = loginEnv()
   void paths?.then(launch => buildVenvIfDue(launch, login), () => undefined)
+  void installTerminalCommand(login)
   return checkTools(login)
 }
 

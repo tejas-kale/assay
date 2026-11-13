@@ -68,7 +68,8 @@ sandbox. docs/developer/security.md draws this boundary in full.
 
 ## Starting from a terminal
 
-After `npm run install-cli` (or `npm run install-app`), `assay open` lists analyses and
+The app writes the `assay` launcher at each launch from `/Applications` (`src/main/cliLauncher.ts`; `npm run install-cli`
+writes the same one). `assay open` lists analyses and
 `assay open <slug>` replaces itself with the same Claude launch in the current terminal. It needs Node 22.15 or
 later on PATH. `assay new <title>` creates `analyses/<slug>/analysis.yaml` as the app's picker does (words after
 `new` join into one title), then launches it like `assay open <slug>`; it writes nothing when the root, backend or venv

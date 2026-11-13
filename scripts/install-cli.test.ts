@@ -11,7 +11,7 @@ async function installerWorld() {
   const home = await mkdtemp(join(tmpdir(), 'assay-cli-install-'))
   const bin = join(home, 'bin')
   await mkdir(bin)
-  const run = () => exec(process.execPath, [resolve('scripts/install-cli.mjs')], { env: { ...process.env, HOME: home, PATH: bin } })
+  const run = () => exec(process.execPath, [resolve('scripts/install-cli.ts')], { env: { ...process.env, HOME: home, PATH: bin } })
   return { home, bin, run, target: join(bin, 'assay') }
 }
 
