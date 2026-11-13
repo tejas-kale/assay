@@ -71,9 +71,9 @@ sandbox. docs/developer/security.md draws this boundary in full.
 The app writes the `assay` launcher at each launch from `/Applications` (`src/main/cliLauncher.ts`; `npm run install-cli`
 writes the same one). `assay open <name>` (a folder name, a title in any case, or
 words whose slug is the folder) replaces itself with the same Claude launch in the current terminal. It needs Node 22.15 or
-later on PATH. In a terminal, `assay open` with no name, or one that matches nothing, numbers the analyses
-(those sharing a word with the name, else all) and asks for a number or a name; piped, it prints the folder names, or
-fails naming them. `assay new <title>` creates `analyses/<slug>/analysis.yaml` as the app's picker does (words after
+later on PATH. In a terminal, `assay open` with no name, or one that matches nothing, opens a picker
+(`src/core/termPicker.ts`): the app picker's fuzzy ranking, searched from the typed name, and a last row that creates the
+typed title as `assay new` does; piped, it prints the folder names, or fails naming them. `assay new <title>` creates `analyses/<slug>/analysis.yaml` as the app's picker does (words after
 `new` join into one title), then launches it like `assay open <slug>`; it writes nothing when the root, backend or venv
 would stop the launch. The installed command selects the backend and venv for its app version and verifies their stamps.
 Before a launch it prepares what is due, as the app does at startup and with the same functions: it copies the shipped

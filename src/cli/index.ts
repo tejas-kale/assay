@@ -2,14 +2,16 @@
 import { writeSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { createInterface } from 'node:readline/promises'
+import { emitKeypressEvents } from 'node:readline'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { cliVerb, helpText, USAGE } from '../core/cliHelp.ts'
 import { cleanTitle, createAnalysis, isoDay, listAnalyses } from '../core/analyses.ts'
-import { newCommand, openCommand, pickAnswer } from '../core/open.ts'
+import { newCommand, openCommand } from '../core/open.ts'
 import type { Choice, OpenCommand } from '../core/open.ts'
+import { pickerScreen, pickerStep } from '../core/termPicker.ts'
+import type { TermKey, TermPickerEffect } from '../core/termPicker.ts'
 import { parseSettings } from '../core/settings.ts'
 import { parseVenvBuild, venvFailed, venvStatusPath } from '../core/venv.ts'
 import { backendStamp, buildReleaseVenv, installBackend, installedStamp } from '../main/backend.ts'
@@ -82,30 +84,48 @@ async function launch(known: Facts): Promise<OpenCommand> {
   return result.kind === 'error' && known.root ? openCommand(await prepared(known)) : result
 }
 
-/** Asks which analysis to open: a number or a name; nothing, or end of input, cancels. */
-async function ask(candidates: Choice[], typed?: string): Promise<string | undefined> {
-  if (typed !== undefined) console.log(`No analysis named "${typed}".`)
-  if (candidates.length === 0) {
-    console.log('No analyses yet. Start one with: assay new <title>')
-    return undefined
+/**
+ * Asks which analysis to open, or which to create, with a fuzzy search starting from `query`. Draws below the cursor
+ * and erases itself when done, so the launch starts on a clean line.
+ */
+function pick(analyses: Choice[], query: string): Promise<TermPickerEffect> {
+  const { stdin, stdout } = process
+  let state = { query, selected: 0 }
+  const draw = () => {
+    const { lines, cursor } = pickerScreen(analyses, state, { columns: stdout.columns || 80, rows: stdout.rows || 24 })
+    // Raw mode turns off output processing, so each line ends in \r\n; the cursor goes back to the query, where the
+    // next draw starts.
+    const up = lines.length > 1 ? `\x1b[${String(lines.length - 1)}A` : ''
+    stdout.write(`\r\x1b[J${lines.join('\r\n')}${up}\r\x1b[${String(cursor)}C`)
   }
-  const width = String(candidates.length).length
-  candidates.forEach(({ name, title }, i) => {
-    const shown = title === name ? name : `${name}  (${title})`
-    console.log(`${String(i + 1).padStart(width)}  ${shown}`)
-  })
-  const prompt = createInterface({ input: process.stdin, output: process.stdout })
-  try {
-    for (;;) {
-      const answer = pickAnswer(await prompt.question('Open which? Number or name, Enter to cancel: '), candidates)
-      if (answer.kind === 'open') return answer.slug
-      if (answer.kind === 'cancel') return undefined
+  return new Promise(resolve => {
+    const finish = (effect: TermPickerEffect) => {
+      stdin.off('keypress', onKey)
+      stdout.off('resize', draw)
+      stdout.write('\r\x1b[J')
+      stdin.setRawMode(false)
+      stdin.pause()
+      resolve(effect)
     }
-  } catch {
-    return undefined
-  } finally {
-    prompt.close()
-  }
+    const onKey = (_: unknown, key: TermKey | undefined) => {
+      const step = pickerStep(analyses, state, key ?? {})
+      state = step.state
+      if (step.effect) finish(step.effect)
+      else draw()
+    }
+    emitKeypressEvents(stdin)
+    stdin.setRawMode(true)
+    stdin.on('keypress', onKey)
+    stdout.on('resize', draw)
+    stdin.resume()
+    draw()
+  })
+}
+
+/** Creates the analysis titled `title` and launches it; nothing is written when the launch could not follow. */
+async function created(known: Facts, title: string): Promise<OpenCommand> {
+  const ready = known.root && cleanTitle(title).ok ? await prepared(known) : known
+  return newCommand(ready, title, async (root, title) => (await createAnalysis(fsPort, root, title, isoDay(new Date()))).name)
 }
 
 /** Undefined when the user cancelled the choice. */
@@ -122,13 +142,12 @@ async function command(argv: string[]): Promise<OpenCommand | undefined> {
     const result = await launch(known)
     // Output that is not a terminal (a script, a pipe) gets the list or the error instead of a question.
     if (result.kind !== 'choose' || !process.stdin.isTTY || !process.stdout.isTTY) return result
-    const slug = await ask(result.candidates, result.failed ? args[0] : undefined)
-    return slug === undefined ? undefined : launch({ ...known, slug })
+    const picked = await pick(known.analyses, result.failed ? args[0] ?? '' : '')
+    if (picked.do === 'cancel') return undefined
+    return picked.do === 'open' ? launch({ ...known, slug: picked.name }) : created(known, picked.title)
   }
   // Unquoted words make one title: `assay new Panel churn Q4`.
-  const title = args.join(' ')
-  const known = await facts()
-  return newCommand(known.root && cleanTitle(title).ok ? await prepared(known) : known, title, async (root, title) => (await createAnalysis(fsPort, root, title, isoDay(new Date()))).name)
+  return created(await facts(), args.join(' '))
 }
 
 async function main() {

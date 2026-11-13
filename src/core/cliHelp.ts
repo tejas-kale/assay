@@ -25,11 +25,11 @@ Usage:
 
 assay open [name]
   name is the analysis's folder (quarantine-checks) or its title in any case
-  ("Quarantine Checks"). With no name, or one that matches nothing, it lists
-  the analyses, most recently changed first and narrowed to those sharing a
-  word with the name, and asks for a number or a name; Enter cancels. When
-  output is not a terminal, it prints the folder names instead, or fails
-  naming them.
+  ("Quarantine Checks"). With no name, or one that matches nothing, it opens
+  a picker: the analyses, most recently changed first, searched fuzzily from
+  the name as you type. Up/Down move, Enter opens, Esc cancels; the last row
+  creates a new analysis titled what you typed. When output is not a
+  terminal, it prints the folder names instead, or fails naming them.
 
 assay new <title>
   Creates analyses/<slug>/analysis.yaml under your root, as the app's picker

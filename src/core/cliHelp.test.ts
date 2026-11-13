@@ -6,7 +6,7 @@ import { cliVerb, helpText, USAGE } from './cliHelp.ts'
 test('the help names every command, the matching rules, the environment and the root in use', () => {
   const help = helpText({ version: '1.2.3', root: '/work/root' })
   for (const part of ['assay 1.2.3', 'assay open [name]', 'assay new <title>', 'assay --version', '"Quarantine Checks"',
-    'Enter cancels', 'about a minute', 'ASSAY_CLAUDE_BIN', 'ASSAY_THEME', 'Root: /work/root', 'Node 22.15', 'uv']) {
+    'Esc cancels', 'searched fuzzily', 'creates a new analysis', 'about a minute', 'ASSAY_CLAUDE_BIN', 'ASSAY_THEME', 'Root: /work/root', 'Node 22.15', 'uv']) {
     assert.ok(help.includes(part), part)
   }
   assert.match(helpText({ version: '1.2.3' }), /Root: not set: choose one in the app's Settings/)

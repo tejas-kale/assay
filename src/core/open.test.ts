@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { newCommand, openCommand, pickAnswer } from './open.ts'
+import { newCommand, openCommand } from './open.ts'
 
 const facts = {
   root: '/work', analyses: [{ name: 'sales', title: 'Sales' }, { name: 'survey', title: 'Panel survey Q4' }], rootExists: true, backendReady: true, venvReady: true,
@@ -44,25 +44,12 @@ test('an analysis opens by its folder name, its title in any case, or the title 
   }
 })
 
-test('no name, or one that matches nothing, offers a choice: narrowed by shared words, or all of them', () => {
-  assert.deepEqual(openCommand(facts), { kind: 'choose', candidates: facts.analyses, message: 'sales\nsurvey' })
-  assert.deepEqual(openCommand({ ...facts, analyses: [] }), { kind: 'choose', candidates: [], message: '(none)' })
-  const narrowed = openCommand({ ...facts, slug: 'Q4 panel review' })
-  assert.deepEqual(narrowed, {
-    kind: 'choose', candidates: [facts.analyses[1]], failed: true,
-    message: 'Unknown analysis: Q4 panel review\nKnown analyses:\nsales\nsurvey',
+test('no name, or one that matches nothing, offers a choice, failing with the known names when piped', () => {
+  assert.deepEqual(openCommand(facts), { kind: 'choose', message: 'sales\nsurvey' })
+  assert.deepEqual(openCommand({ ...facts, analyses: [] }), { kind: 'choose', message: '(none)' })
+  assert.deepEqual(openCommand({ ...facts, slug: 'Q4 panel review' }), {
+    kind: 'choose', failed: true, message: 'Unknown analysis: Q4 panel review\nKnown analyses:\nsales\nsurvey',
   })
-  const unmatched = openCommand({ ...facts, slug: 'xyz' })
-  if (unmatched.kind !== 'choose') throw new Error('Expected a choice')
-  assert.deepEqual(unmatched.candidates, facts.analyses)
-})
-
-test('the answer to the choice is a number, a name, or nothing to cancel', () => {
-  const { analyses } = facts
-  assert.deepEqual(pickAnswer('2', analyses), { kind: 'open', slug: 'survey' })
-  assert.deepEqual(pickAnswer(' panel survey q4 ', analyses), { kind: 'open', slug: 'survey' })
-  assert.deepEqual(pickAnswer('', analyses), { kind: 'cancel' })
-  for (const answer of ['0', '3', '1.5', 'nothing']) assert.deepEqual(pickAnswer(answer, analyses), { kind: 'again' })
 })
 
 test('plain Claude and light themes retain the app launch contract', () => {

@@ -22,12 +22,13 @@ export type OpenFacts = {
 }
 export type Choice = { name: string; title: string }
 /**
- * `notice` is printed before the launch replaces the command. `choose`: a terminal asks which of `candidates` to open;
- * output that is not a terminal gets `message` instead, as an error when `failed`.
+ * `notice` is printed before the launch replaces the command. `choose`: a terminal asks which analysis to open, or
+ * which to create, searching from what was typed; output that is not a terminal gets `message` instead, as an error
+ * when `failed`.
  */
 export type OpenCommand =
   | { kind: 'launch'; spec: SpawnSpec; notice?: string }
-  | { kind: 'choose'; candidates: Choice[]; message: string; failed?: true }
+  | { kind: 'choose'; message: string; failed?: true }
   | { kind: 'error'; message: string }
 
 const sameText = (a: string, b: string) => a.trim().replace(/\s+/g, ' ').toLowerCase() === b.trim().replace(/\s+/g, ' ').toLowerCase()
@@ -35,21 +36,6 @@ const sameText = (a: string, b: string) => a.trim().replace(/\s+/g, ' ').toLower
 /** The analysis a typed name means: its folder name, else its title in any case, else the folder its words would make. */
 function resolve(typed: string, analyses: Choice[]): string | undefined {
   return (analyses.find(a => a.name === typed) ?? analyses.find(a => sameText(a.title, typed)) ?? analyses.find(a => a.name === slugify(typed)))?.name
-}
-
-/** The analyses sharing a word of three or more letters with what was typed; all of them when none does. */
-function narrowed(typed: string, analyses: Choice[]): Choice[] {
-  const words = typed.toLowerCase().split(/[^a-z0-9]+/).filter(word => word.length >= 3)
-  const close = analyses.filter(a => words.some(word => `${a.name} ${a.title.toLowerCase()}`.includes(word)))
-  return close.length > 0 ? close : analyses
-}
-
-/** The answer typed at the choice: a listed number or a name opens, nothing cancels, anything else asks again. */
-export function pickAnswer(answer: string, candidates: Choice[]): { kind: 'open'; slug: string } | { kind: 'cancel' } | { kind: 'again' } {
-  const typed = answer.trim()
-  if (typed === '') return { kind: 'cancel' }
-  const picked = /^\d+$/.test(typed) ? candidates[Number(typed) - 1]?.name : resolve(typed, candidates)
-  return picked ? { kind: 'open', slug: picked } : { kind: 'again' }
 }
 
 const rootProblem = (facts: OpenFacts) =>
@@ -66,9 +52,9 @@ export function openCommand(facts: OpenFacts): OpenCommand {
   const missingRoot = rootProblem(facts)
   if (missingRoot || !root) return { kind: 'error', message: missingRoot ?? '' }
   const known = facts.analyses.map(a => a.name).join('\n') || '(none)'
-  if (slug === undefined) return { kind: 'choose', candidates: facts.analyses, message: known }
+  if (slug === undefined) return { kind: 'choose', message: known }
   const name = resolve(slug, facts.analyses)
-  if (!name) return { kind: 'choose', candidates: narrowed(slug, facts.analyses), message: `Unknown analysis: ${slug}\nKnown analyses:\n${known}`, failed: true }
+  if (!name) return { kind: 'choose', message: `Unknown analysis: ${slug}\nKnown analyses:\n${known}`, failed: true }
   const notReady = backendProblem(facts)
   if (notReady) return { kind: 'error', message: notReady }
   return { kind: 'launch', spec: spawnSpec({
