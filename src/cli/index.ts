@@ -34,7 +34,9 @@ async function preparedBackend(backend: string) {
   return actual === expected && await installedStamp(backend) === expected ? expected : undefined
 }
 
-const userData = join(homedir(), 'Library', 'Application Support', 'Assay')
+// The app's userData folder, in the case Electron gives it (package.json's name). macOS ignores the case, but a
+// sandbox launcher's Linux VM mounts the ledger folder by this exact path.
+const userData = join(homedir(), 'Library', 'Application Support', 'assay')
 
 /** The root chosen in the app's Settings, resolved through links; undefined when unset or missing. */
 async function rootPath() {

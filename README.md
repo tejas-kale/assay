@@ -48,7 +48,7 @@ The code is the source of truth. `specs/slices/slice-*.md` are the specs each sl
 
 The app ships its backend in `Contents/Resources/backend/`: `plugin/`, `out/server/`, `out/hooks/` and `python/`
 (the helpers, `pyproject.toml` and `uv.lock`), laid out as in this repo. At launch it copies them, once per version,
-to `~/Library/Application Support/Assay/backend/<version>/`, and builds the venv there with
+to `~/Library/Application Support/assay/backend/<version>/`, and builds the venv there with
 `uv sync --frozen --no-editable` into `venvs/<version>/`, in the background (Settings shows `Preparing Assay ...`).
 It keeps this version's and the previous one's folders and deletes older ones. A package the tools need goes in
 `python/pyproject.toml`, locked with `uv lock`; the next release builds it.

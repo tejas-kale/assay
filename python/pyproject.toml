@@ -1,5 +1,5 @@
 # Assay's Python environment. The app builds it at launch with `uv sync --frozen --no-editable --no-dev` from this file and
-# uv.lock (shipped in the app under backend/python) into ~/Library/Application Support/Assay/venvs/<version>, and
+# uv.lock (shipped in the app under backend/python) into ~/Library/Application Support/assay/venvs/<version>, and
 # passes it to Claude in ASSAY_VENV (docs/developer/launch-contract.md). After changing this file, run `uv lock` and
 # commit the new uv.lock: the next release builds it. (tests/test_venv.sh builds this file with uv in a scratch folder.)
 

@@ -21,10 +21,10 @@ exec "${ASSAY_CLAUDE_BIN:-claude}" --mcp-config "$ASSAY_MCP_CONFIG" --plugin-dir
 | `ASSAY_APP` | `1` |
 | `ASSAY_ROOT` | the Settings folder (holds `analyses/`, `dictionaries/`, `trusted/`) |
 | `ASSAY_ANALYSIS` | the open analysis's folder |
-| `ASSAY_BACKEND` | `~/Library/Application Support/Assay/backend/<version>` |
+| `ASSAY_BACKEND` | `~/Library/Application Support/assay/backend/<version>` |
 | `ASSAY_MCP_CONFIG` | the server `assay`, as JSON: `{"mcpServers":{"assay":{"command":"node","args":["<ASSAY_BACKEND>/plugin/../out/server/index.mjs"]}}}` |
-| `ASSAY_VENV` | `~/Library/Application Support/Assay/venvs/<version>` |
-| `ASSAY_LEDGER` | `~/Library/Application Support/Assay/trust-ledger/<sha256 of the root's real path>.json`: the root's trust ledger, written by the app only (specs/trust-ledger.md); the file may not exist yet |
+| `ASSAY_VENV` | `~/Library/Application Support/assay/venvs/<version>` |
+| `ASSAY_LEDGER` | `~/Library/Application Support/assay/trust-ledger/<sha256 of the root's real path>.json`: the root's trust ledger, written by the app only (specs/trust-ledger.md); the file may not exist yet |
 | `ASSAY_THEME` | Claude Code's theme: `dark-ansi` or `light-ansi` |
 
 Every path is absolute. `ASSAY_BACKEND` and `ASSAY_VENV` contain a space (`Application Support`): quote them.

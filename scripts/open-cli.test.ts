@@ -30,7 +30,7 @@ async function world() {
   const dir = await realpath(await mkdtemp(join(tmpdir(), 'assay-cli-world-')))
   const home = join(dir, 'home')
   const root = join(dir, 'root')
-  const userData = join(home, 'Library/Application Support/Assay')
+  const userData = join(home, 'Library/Application Support/assay')
   await mkdir(userData, { recursive: true })
   await mkdir(join(root, 'analyses/sales'), { recursive: true })
   await writeFile(join(root, 'analyses/sales/analysis.yaml'), 'title: Sales\n')
