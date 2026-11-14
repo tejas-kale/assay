@@ -4,6 +4,7 @@
 import { test } from 'node:test'
 
 import { expect } from '../testing/expect.ts'
+import { parseCoverage, sqlTokens } from '../core/coverage.ts'
 import { parseRunHeader } from '../core/runs.ts'
 import { parseSteps } from '../core/steps.ts'
 import type { Expansion } from './sqlRun.ts'
@@ -168,5 +169,59 @@ test('the retype check reads the SQL with its includes removed', async () => {
   await ws.call('sql', { sql: WRITTEN, slug: 'by-buyer' })
   expect(seen.helper.find(call => call.argv[5] === 'retype')?.input).toBe(EXPANSION.retype_sql)
   expect(await ws.file('queries/001.notices.json')).toBe(undefined)
+  await ws.done()
+})
+
+test('the server writes .assay/coverage.json across partial includes and plain SQL runs, excluding Python', async () => {
+  const ws = await fake({ ...FILES, 'queries/001_plot.py': '# author: claude\nprint(1)\n' })
+  await ws.assay.setUp()
+  expect(parseCoverage((await ws.file('.assay/coverage.json')) ?? '')).toEqual({
+    trustedTokens: 0,
+    totalTokens: 0,
+    coverage: null,
+  })
+  script(ws)
+  await ws.call('sql', { sql: WRITTEN, slug: 'by-buyer' })
+  const block1Tokens = sqlTokens('SELECT session_id, buyer_id FROM cint.mkt.sessions AS s WHERE (s.lk_responsestatusid = 3)').length
+  const block2Tokens = sqlTokens('SELECT buyer_id FROM cint.mkt.buyers').length
+  const expandedTokens = sqlTokens(EXPANSION.sql).length
+  const includeTrusted = block1Tokens + block2Tokens
+  expect(parseCoverage((await ws.file('.assay/coverage.json')) ?? '')).toEqual({
+    trustedTokens: includeTrusted,
+    totalTokens: expandedTokens,
+    coverage: includeTrusted / expandedTokens,
+  })
+  const plainSql = 'SELECT 1 AS x'
+  const plainTokens = sqlTokens(plainSql).length
+  await ws.call('sql', { sql: plainSql, slug: 'plain' })
+  expect(parseCoverage((await ws.file('.assay/coverage.json')) ?? '')).toEqual({
+    trustedTokens: includeTrusted,
+    totalTokens: expandedTokens + plainTokens,
+    coverage: includeTrusted / (expandedTokens + plainTokens),
+  })
+  await ws.done()
+})
+
+test('a trusted SQL run counts as 100% trusted in .assay/coverage.json, and a trusted Python run is excluded', async () => {
+  const ws = await fake({ ...FILES, 'queries/001_plain.sql': 'SELECT 1 AS x\n' })
+  const calcSql = 'SELECT site_id, count(*) AS completes FROM surveys GROUP BY site_id'
+  const calcs = [
+    { name: 'completes_by_site', kind: 'sql', file: 'completes_by_site.sql', description: 'd', parameters: [], sql: calcSql, commit: 'abc123', dirty: false },
+    { name: 'top_sites', kind: 'python', file: 'top_sites.py', description: 'd', parameters: [], commit: 'def456', dirty: false },
+  ]
+  ws.setRun(argv => {
+    if (argv[4] === 'analysis_trust' && argv[5] === 'list') return { stdout: JSON.stringify({ calculations: calcs, problems: [] }) }
+    if (argv[4] === 'analysis_trust' && argv[5] === 'run') return { stdout: JSON.stringify({ columns: ['site_id', 'completes'], rows: [['1', '2']] }) }
+    return { stdout: JSON.stringify({ tables: [], glossary: {} }) }
+  })
+  await ws.call('trusted', { name: 'completes_by_site' })
+  await ws.call('trusted', { name: 'top_sites' })
+  const plainTokens = sqlTokens('SELECT 1 AS x').length
+  const calcTokens = sqlTokens(calcSql).length
+  expect(parseCoverage((await ws.file('.assay/coverage.json')) ?? '')).toEqual({
+    trustedTokens: calcTokens,
+    totalTokens: plainTokens + calcTokens,
+    coverage: calcTokens / (plainTokens + calcTokens),
+  })
   await ws.done()
 })

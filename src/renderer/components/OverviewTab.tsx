@@ -5,7 +5,7 @@ import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from 'react'
 
 import { hasChanges, lineCount, markdownBlocks, OVERVIEW_LINE_CAP, overviewDiff } from '../../core/overview.ts'
 import type { DiffBlock, OverviewDoc, OverviewWhich } from '../../core/overview.ts'
-import { overviewHeading, overviewKey, overviewShown, segmentText } from '../../core/overviewView.ts'
+import { overviewCoverageText, overviewHeading, overviewKey, overviewShown, segmentText } from '../../core/overviewView.ts'
 import { noteBlocks } from '../../core/rootNotes.ts'
 import type { Block as NoteBlock } from '../../core/rootNotes.ts'
 import type { OverviewState } from '../../shared/ipc.ts'
@@ -110,6 +110,7 @@ export function OverviewTab(props: Readonly<{ overview: OverviewState; slug: str
   const baseline = doc?.baseline
   const diff = useMemo(() => (text === undefined ? [] : overviewDiff(baseline, text)), [text, baseline])
   const lines = text === undefined ? 0 : lineCount(text)
+  const coverageText = overviewCoverageText(props.overview.coverage)
 
   const onKeyDown = useOverviewKeys({ root, doc, which, setWhich, setDiff, setFlash })
 
@@ -118,6 +119,7 @@ export function OverviewTab(props: Readonly<{ overview: OverviewState; slug: str
       <div className="subhead">
         {overviewHeading(which, props.overview.system)}
         {doc && <span className={lines > OVERVIEW_LINE_CAP ? 'overview-lines over' : 'overview-lines dim'}>{` · ${String(lines)} lines`}</span>}
+        {coverageText && <span className="overview-coverage dim">{` · ${coverageText}`}</span>}
         {isDiff && <span className="dim"> · diff</span>}
         {doc !== undefined && doc.baseline === doc.text && <span className="dim"> · read</span>}
         {props.overview.preface && <span className="dim">{` · preface frozen (${props.overview.preface.id})`}</span>}

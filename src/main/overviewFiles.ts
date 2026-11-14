@@ -3,6 +3,7 @@
 import { mkdir, readFile, readdir, stat, unlink } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 
+import { COVERAGE_FILE, parseCoverage } from '../core/coverage.ts'
 import { OVERVIEW_FILE, baselinePath, systemOf } from '../core/overview.ts'
 import type { OverviewDoc, OverviewState, OverviewWhich } from '../core/overview.ts'
 import { FROZEN_PREFACE_FILE, PREFACE_DRAFT_FILE, freezePreface, readFrozenPreface, resetPreface } from '../core/preface.ts'
@@ -33,12 +34,15 @@ async function readDoc(analysisPath: string, shown: { path: string; text: string
  * the current frozen preface (specs/delegated-runs.md). Paths in the state are from the root.
  */
 export async function readOverview(analysisPath: string): Promise<OverviewState> {
-  const [text, preface] = await Promise.all([maybeText(join(analysisPath, OVERVIEW_FILE)), readFrozenPreface(prefaceFs, analysisPath)])
-  if (text === undefined) return preface ? { preface } : {}
-  const state: OverviewState = {
-    analysis: await readDoc(analysisPath, { path: `analyses/${basename(analysisPath)}/${OVERVIEW_FILE}`, text, which: 'analysis' }),
-    ...(preface ? { preface } : {}),
-  }
+  const [text, preface, coverageText] = await Promise.all([
+    maybeText(join(analysisPath, OVERVIEW_FILE)),
+    readFrozenPreface(prefaceFs, analysisPath),
+    maybeText(join(analysisPath, COVERAGE_FILE)),
+  ])
+  const coverage = parseCoverage(coverageText ?? '')
+  const state: OverviewState = { ...(preface ? { preface } : {}), ...(coverage ? { coverage } : {}) }
+  if (text === undefined) return state
+  state.analysis = await readDoc(analysisPath, { path: `analyses/${basename(analysisPath)}/${OVERVIEW_FILE}`, text, which: 'analysis' })
   const system = systemOf(text)
   if (!system) return state
   state.system = system
@@ -56,6 +60,7 @@ export async function overviewSignature(analysisPath: string): Promise<string> {
     join(analysisPath, baselinePath('analysis', undefined) ?? ''),
     join(analysisPath, FROZEN_PREFACE_FILE),
     join(analysisPath, PREFACE_DRAFT_FILE),
+    join(analysisPath, COVERAGE_FILE),
   ]
   if (system) paths.push(join(rootOf(analysisPath), system), join(analysisPath, baselinePath('system', system) ?? ''))
   const parts = await Promise.all(paths.map(async path => statSignature(await stat(path).catch(() => undefined))))

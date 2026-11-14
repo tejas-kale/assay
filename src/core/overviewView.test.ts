@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { overviewHeading, overviewKey, overviewShown, segmentText } from './overviewView.ts'
+import { overviewCoverageText, overviewHeading, overviewKey, overviewShown, segmentText } from './overviewView.ts'
 
 const doc = (text: string) => ({ path: 'p', text })
 
@@ -42,4 +42,12 @@ test('only the Overview keys map to commands', () => {
   assert.equal(overviewKey('G'), 'bottom')
   assert.equal(overviewKey('x'), undefined)
   assert.equal(overviewKey('toString'), undefined)
+})
+
+test('overviewCoverageText formats the trusted-SQL share for the Overview header', () => {
+  assert.equal(overviewCoverageText(undefined), undefined)
+  assert.equal(overviewCoverageText({ trustedTokens: 0, totalTokens: 0, coverage: null }), undefined)
+  assert.equal(overviewCoverageText({ trustedTokens: 0, totalTokens: 10, coverage: 0 }), '0% trusted SQL')
+  assert.equal(overviewCoverageText({ trustedTokens: 20, totalTokens: 32, coverage: 20 / 32 }), '63% trusted SQL')
+  assert.equal(overviewCoverageText({ trustedTokens: 14, totalTokens: 14, coverage: 1 }), '100% trusted SQL')
 })

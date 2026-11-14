@@ -15,9 +15,16 @@ async function scratch() {
   return { root, path, analysis: { name: 'a', title: 'A', path } }
 }
 
-test('no overview.md: the state has no overview', async () => {
-  const { analysis } = await scratch()
+test('no overview.md: the state has no overview, or carries coverage when .assay/coverage.json exists', async () => {
+  const { path, analysis } = await scratch()
   assert.deepEqual((await loadState(analysis)).overview, {})
+  const before = await overviewSignature(path)
+  await mkdir(join(path, '.assay'), { recursive: true })
+  await writeFile(join(path, '.assay', 'coverage.json'), '{"trustedTokens":20,"totalTokens":32,"coverage":0.625}\n')
+  assert.notEqual(await overviewSignature(path), before)
+  assert.deepEqual((await loadState(analysis)).overview, {
+    coverage: { trustedTokens: 20, totalTokens: 32, coverage: 0.625 },
+  })
 })
 
 test('the state carries the analysis overview, the system it names and each baseline', async () => {

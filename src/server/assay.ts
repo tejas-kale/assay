@@ -19,6 +19,7 @@ import { parseVenvBuild, venvHint, venvStatusPath } from '../core/venv.ts'
 import { KernelHost } from './kernel.ts'
 import { HELPER_PYTHON_FLAGS } from '../core/helperFlags.ts'
 import type { Proc } from './proc.ts'
+import { writeCoverage } from './sqlRun.ts'
 
 export const THREADS = 'threads.md'
 export const QUERIES = 'queries'
@@ -188,6 +189,7 @@ export class Assay {
     await give(`${LIB}/__init__.py`, '')
     // .assay/ holds the app's session files; it ignores itself, so no repository needs a .gitignore change.
     await this.write('.assay/.gitignore', '*\n').catch(() => undefined)
+    await writeCoverage(this)
   }
 
   /** Starts the session: the files, the kernel. (index.ts does the same around the handshake.) */
@@ -269,6 +271,7 @@ export class Assay {
     if ('error' in outcome) this.failures.set(number, outcome.error)
     // No columns is a statement with no result set (CREATE VIEW, DROP): an empty .csv, which a failed run never has.
     else if ('columns' in outcome) await this.write(`${base}.csv`, outcome.columns.length === 0 ? '' : toCsv(outcome.columns, outcome.rows))
+    await writeCoverage(this)
     await this.writeAppStatus(null)
     if ('reply' in outcome) return outcome.reply
     const dictionary = runner.hasTables ? await this.dictionaryFor(runner.dictionaryFile?.(number) ?? `${base}.sql`).catch(() => undefined) : undefined

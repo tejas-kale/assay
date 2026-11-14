@@ -1,9 +1,11 @@
 // A SQL run: the SQL rules and the included trusted pieces first (`analysis_sql`, specs/slices/slice-9.md and slice-10.md),
 // then the statement saved under the next number and run on its engine.
 import { ANALYSIS_FILE } from '../core/analyses.ts'
+import { COVERAGE_FILE, analysisCoverage } from '../core/coverage.ts'
 import { parseCliOutput, parsePsqlOutput, POSTGRES_MARK, readTarget } from '../core/engines.ts'
 import type { Table, Target } from '../core/engines.ts'
 import { queryLabel, runSlug } from '../core/pythonRuns.ts'
+import { parseRuns } from '../core/runs.ts'
 import type { Engine } from '../core/runs.ts'
 import { QUERIES } from './assay.ts'
 import type { Assay, Runner } from './assay.ts'
@@ -179,4 +181,23 @@ export async function runClaudeSql(assay: Assay, sql: string, slug: string, engi
   if (rules.length > 0) parts.push('', 'SQL rule warnings:', ...bullets(rules))
   if (retyped.length > 0) parts.push('', RETYPED, ...bullets(retyped))
   return parts.join('\n')
+}
+
+/** Recomputes the analysis's trusted-SQL lexical token coverage across `queries/` and writes `.assay/coverage.json`. */
+export async function writeCoverage(assay: Assay): Promise<void> {
+  const runs = parseRuns(await assay.names(QUERIES))
+  const sqlRuns = await Promise.all(
+    runs.flatMap(run =>
+      run.language !== 'sql' || run.code === undefined
+        ? []
+        : [
+            Promise.all([assay.readText(`${QUERIES}/${run.code}`), assay.readText(expandedFile(run.number))]).then(([code, expanded]) => ({
+              language: 'sql' as const,
+              code,
+              ...(expanded ? { expanded } : {}),
+            })),
+          ],
+    ),
+  )
+  await assay.writeAtomic(COVERAGE_FILE, `${JSON.stringify(analysisCoverage(sqlRuns))}\n`).catch(() => undefined)
 }

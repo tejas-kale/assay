@@ -1,5 +1,5 @@
 // What the Overview tab shows and what its keys do; the component only draws and sends.
-import type { OverviewDoc, OverviewState, OverviewWhich } from './overview.ts'
+import type { OverviewDoc, OverviewState, OverviewWhich, SqlCoverage } from './overview.ts'
 import type { Segment } from './rootNotes.ts'
 
 const pad = (n: number) => String(n).padStart(3, '0')
@@ -42,4 +42,10 @@ const OVERVIEW_KEYS: Record<string, OverviewKey> = {
 
 export function overviewKey(key: string): OverviewKey | undefined {
   return Object.hasOwn(OVERVIEW_KEYS, key) ? OVERVIEW_KEYS[key] : undefined
+}
+
+/** The trusted-SQL share for the Overview header, or undefined when the analysis has no SQL tokens yet. */
+export function overviewCoverageText(coverage: SqlCoverage | undefined): string | undefined {
+  if (coverage?.coverage === undefined || coverage.coverage === null) return undefined
+  return `${String(Math.round(coverage.coverage * 100))}% trusted SQL`
 }

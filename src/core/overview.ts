@@ -1,6 +1,9 @@
 // The analysis and system overviews (specs/slices/slice-10.md, slice 10a): the system an analysis overview names, its
 // Markdown split into blocks, and the block diff against the text the user last marked read.
+import type { SqlCoverage } from './coverage.ts'
 import type { FrozenPreface } from './preface.ts'
+
+export type { SqlCoverage }
 
 /** The analysis overview, in the analysis folder. */
 export const OVERVIEW_FILE = 'overview.md'
@@ -18,9 +21,16 @@ export type OverviewDoc = { path: string; text: string; baseline?: string }
 
 /**
  * What the Overview tab shows. `system` is the file the analysis overview names (`systems/<name>.md`), absent when it
- * names none; `systemDoc` is that file, absent when it does not exist; `preface` is the current frozen preface.
+ * names none; `systemDoc` is that file, absent when it does not exist; `preface` is the current frozen preface;
+ * `coverage` is the trusted-SQL lexical token share.
  */
-export type OverviewState = { analysis?: OverviewDoc; system?: string; systemDoc?: OverviewDoc; preface?: FrozenPreface }
+export type OverviewState = {
+  analysis?: OverviewDoc
+  system?: string
+  systemDoc?: OverviewDoc
+  preface?: FrozenPreface
+  coverage?: SqlCoverage
+}
 
 const SYSTEM_LINE = /^\s*(?:[>^]\s*)?System:\s*(systems\/([a-z0-9][a-z0-9-]*)\.md)\s*$/i
 const SYSTEM_LINES = 5
