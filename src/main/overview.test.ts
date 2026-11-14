@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
 import { loadState } from './files.ts'
-import { markOverviewRead, overviewSignature, readOverview } from './overviewFiles.ts'
+import { freezeOverviewPreface, markOverviewRead, overviewSignature, readOverview, resetOverviewPreface } from './overviewFiles.ts'
 
 async function scratch() {
   const root = await mkdtemp(join(tmpdir(), 'assay-overview-'))
@@ -64,4 +64,52 @@ test('a run notices file is read safely', async () => {
   assert.deepEqual(parseNotices('{"rules": ["a"], "retype": ["b", 3]}'), { rules: ['a'], retype: ['b'] })
   assert.equal(parseNotices(''), undefined)
   assert.equal(parseNotices('{bad'), undefined)
+})
+
+const VALID_DRAFT = JSON.stringify({
+  low: 0.12,
+  high: 0.18,
+  known_total: 1250,
+  tolerance: 5,
+  falsifiers: ['The rollout matches the backtest.'],
+  answer: 'rollout-rate',
+  reconciliation: 'rollout-total',
+  specs: [
+    { id: 'rollout-rate', text: 'The spec you approved, in prose.' },
+    { id: 'rollout-total', text: 'The reconciliation spec you approved, in prose.' },
+  ],
+})
+
+test('freezeOverviewPreface and resetOverviewPreface freeze, archive, and refuse symlinked preface files or .assay folders', async () => {
+  const { root, path } = await scratch()
+  const outside = join(root, 'outside.json')
+  await writeFile(outside, VALID_DRAFT)
+
+  // Refuses a symlinked draft preface.json.
+  await symlink(outside, join(path, 'preface.json'))
+  const linkedDraft = await freezeOverviewPreface(path)
+  assert.equal(linkedDraft.ok, false)
+  await rm(join(path, 'preface.json'))
+
+  // Refuses a symlinked .assay folder.
+  await writeFile(join(path, 'preface.json'), VALID_DRAFT)
+  await mkdir(join(root, 'fake-assay'))
+  await symlink(join(root, 'fake-assay'), join(path, '.assay'))
+  assert.equal((await freezeOverviewPreface(path)).ok, false)
+  await rm(join(path, '.assay'))
+
+  // Refuses a symlinked .assay/preface.json.
+  await mkdir(join(path, '.assay'))
+  await symlink(outside, join(path, '.assay', 'preface.json'))
+  assert.equal((await freezeOverviewPreface(path)).ok, false)
+  assert.equal((await resetOverviewPreface(path)).ok, false)
+  assert.equal((await readOverview(path)).preface, undefined)
+  await rm(join(path, '.assay', 'preface.json'))
+
+  // Succeeds on real files and directories, then resets into .assay/preface-archive.
+  assert.equal((await freezeOverviewPreface(path)).ok, true)
+  const frozen = (await readOverview(path)).preface
+  assert.ok(frozen?.id)
+  assert.equal((await resetOverviewPreface(path)).ok, true)
+  assert.equal((await readOverview(path)).preface, undefined)
 })

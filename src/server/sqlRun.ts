@@ -1,16 +1,16 @@
 // A SQL run: the SQL rules and the included trusted pieces first (`analysis_sql`, specs/slices/slice-9.md and slice-10.md),
 // then the statement saved under the next number and run on its engine.
 import { ANALYSIS_FILE } from '../core/analyses.ts'
-import { COVERAGE_FILE, analysisCoverage } from '../core/coverage.ts'
 import { parseCliOutput, parsePsqlOutput, POSTGRES_MARK, readTarget } from '../core/engines.ts'
 import type { Table, Target } from '../core/engines.ts'
-import { FROZEN_PREFACE_FILE, parseFrozenPreface } from '../core/preface.ts'
+import { isValidSpecId } from '../core/preface.ts'
 import { queryLabel, runSlug } from '../core/pythonRuns.ts'
-import { parseRuns } from '../core/runs.ts'
 import type { Engine } from '../core/runs.ts'
-import { QUERIES } from './assay.ts'
+import { QUERIES, expandedFile } from './assay.ts'
 import type { Assay, Runner } from './assay.ts'
 import { runSteps } from './stepsRun.ts'
+
+export { expandedFile } from './assay.ts'
 
 export const QUERY_TIMEOUT_MS = 600_000
 const HELPER_MS = 30_000
@@ -55,9 +55,6 @@ export function blocksLine(expansion: Expansion) {
 
 /** A run's warnings (SQL rules and retypes), beside it in queries/, for the Code tab. */
 export const noticesFile = (number: number) => `${QUERIES}/${queryLabel(number)}.notices.json`
-
-/** A run's expanded SQL, beside it in queries/ (never a run: its number is followed by a dot). */
-export const expandedFile = (number: number) => `${QUERIES}/${queryLabel(number)}.expanded.sql`
 
 const bullets = (lines: string[]) => lines.map(line => `- ${line}`)
 const rejected = (why: string, lines: string[]) => [why, ...bullets(lines)].join('\n')
@@ -164,7 +161,7 @@ export type ClaudeSqlOptions = { engine: Engine; spec?: string }
 
 async function specHeader(assay: Assay, spec: string | undefined): Promise<string | undefined> {
   if (!spec) return undefined
-  const frozen = parseFrozenPreface(await assay.readText(FROZEN_PREFACE_FILE))
+  const frozen = await assay.frozenPreface()
   const inPreface = frozen?.specs.some(entry => entry.id === spec) === true
   return inPreface ? `-- spec: ${spec}\n` : `-- spec: ${spec} (unfrozen)\n`
 }
@@ -198,9 +195,12 @@ function formatClaudeSqlReply(
   return parts.join('\n')
 }
 
+export const INVALID_SPEC_ID = 'Invalid spec id: must match /^[A-Za-z0-9][A-Za-z0-9_-]*$/.'
+
 /** Claude's `sql` call: the rules first. A rejected statement claims no number and records no run. */
 export async function runClaudeSql(assay: Assay, sql: string, slug: string, options: ClaudeSqlOptions): Promise<string> {
   const { engine, spec } = options
+  if (spec !== undefined && !isValidSpecId(spec)) return INVALID_SPEC_ID
   const expansion = await expandSql(assay, sql, engine)
   if (expansion && 'errors' in expansion) return rejected(INCLUDES_REJECTED, expansion.errors)
   // The rules read the SQL as written, each block's body a plain select: its internals were checked in the Trust tab.
@@ -223,23 +223,4 @@ export async function runClaudeSql(assay: Assay, sql: string, slug: string, opti
   const rules = linted && !('error' in linted) ? linted.warnings : []
   await finishClaudeSql(assay, claimed.number, spec, { rules, retype: retyped })
   return formatClaudeSqlReply(reply, linted, rules, retyped)
-}
-
-/** Recomputes the analysis's trusted-SQL lexical token coverage across `queries/` and writes `.assay/coverage.json`. */
-export async function writeCoverage(assay: Assay): Promise<void> {
-  const runs = parseRuns(await assay.names(QUERIES))
-  const sqlRuns = await Promise.all(
-    runs.flatMap(run =>
-      run.language !== 'sql' || run.code === undefined
-        ? []
-        : [
-            Promise.all([assay.readText(`${QUERIES}/${run.code}`), assay.readText(expandedFile(run.number))]).then(([code, expanded]) => ({
-              language: 'sql' as const,
-              code,
-              ...(expanded ? { expanded } : {}),
-            })),
-          ],
-    ),
-  )
-  await assay.writeAtomic(COVERAGE_FILE, `${JSON.stringify(analysisCoverage(sqlRuns))}\n`).catch(() => undefined)
 }

@@ -2,6 +2,9 @@
 // `NNN_<slug>.csv` the saved SQL result. A Python run's result is `NNN_<slug>.json` with its tables
 // (`.tK.csv`) and plots (`.pK.png|svg`). One number names one run, so the Code and Data tabs link by it.
 
+export const SPEC_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
+export const isValidSpecId = (id: string): boolean => SPEC_ID_PATTERN.test(id)
+
 export type Engine = 'databricks' | 'postgres'
 
 export type Run = {
@@ -294,7 +297,7 @@ function readCommonHeader(header: RunHeader, value: HeaderValue) {
 function readSpecHeader(header: RunHeader, raw: string) {
   const unfrozen = UNFROZEN_MARK.test(raw)
   const spec = raw.replace(UNFROZEN_MARK, '').trim()
-  if (!spec) return
+  if (!isValidSpecId(spec)) return
   header.spec = spec
   header.specFrozen = !unfrozen
 }

@@ -1,6 +1,8 @@
 // The overview documents of an analysis and its system (specs/slices/slice-10.md, slice 10a): reading them with their
 // baselines, the change signature the poll watches, "Mark read", and freezing/resetting the preface (specs/delegated-runs.md).
-import { mkdir, readFile, readdir, stat, unlink } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { constants } from 'node:fs'
+import { lstat, mkdir, open, readdir, rename, stat, unlink } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 
 import { COVERAGE_FILE, parseCoverage } from '../core/coverage.ts'
@@ -10,16 +12,91 @@ import { FROZEN_PREFACE_FILE, PREFACE_DRAFT_FILE, freezePreface, readFrozenPrefa
 import type { PrefaceFs } from '../core/preface.ts'
 import { statSignature } from '../core/watch.ts'
 import type { EditResult } from '../shared/ipc.ts'
-import { maybeText, rootOf, writeAtomic } from './fsAccess.ts'
+import { isMissing, maybeText, rootOf, writeAtomic } from './fsAccess.ts'
+
+const MAX_PREFACE_BYTES = 1 << 20
+
+/** Ensures `path` is a real directory, creating it when missing; a symlink or regular file in its place is refused. */
+async function realFolder(path: string): Promise<void> {
+  const info = await lstat(path).catch((err: unknown) => {
+    if (isMissing(err)) return undefined
+    throw err
+  })
+  if (!info) await mkdir(path).catch(() => undefined)
+  const now = info ?? (await lstat(path))
+  if (!now.isDirectory()) throw new Error(`${path} is not a real folder (a link or a file): it is refused.`)
+}
+
+async function checkParentFolder(path: string): Promise<void> {
+  const parent = dirname(path)
+  const info = await lstat(parent).catch((err: unknown) => {
+    if (isMissing(err)) return undefined
+    throw err
+  })
+  if (info && !info.isDirectory()) throw new Error(`${parent} is not a real folder (a link or a file): it is refused.`)
+}
+
+async function readNoFollow(path: string): Promise<string> {
+  await checkParentFolder(path)
+  const info = await lstat(path)
+  if (!info.isFile()) throw new Error(`${path} is not a regular file: it is refused.`)
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
+  try {
+    const st = await handle.stat()
+    if (!st.isFile() || st.size > MAX_PREFACE_BYTES) throw new Error(`${path} cannot be read as a regular file.`)
+    return await handle.readFile('utf8')
+  } finally {
+    await handle.close()
+  }
+}
+
+async function writeNoFollow(path: string, text: string): Promise<void> {
+  const dir = dirname(path)
+  const dirInfo = await lstat(dir)
+  if (!dirInfo.isDirectory()) throw new Error(`${dir} is not a real folder (a link or a file): it is refused.`)
+  const targetInfo = await lstat(path).catch((err: unknown) => {
+    if (isMissing(err)) return undefined
+    throw err
+  })
+  if (targetInfo && !targetInfo.isFile()) throw new Error(`${path} is not a regular file: it is refused.`)
+  const temp = join(dir, `.${basename(path)}.${randomUUID()}.tmp`)
+  const handle = await open(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600)
+  try {
+    await handle.writeFile(text, 'utf8')
+  } finally {
+    await handle.close()
+  }
+  try {
+    await rename(temp, path)
+  } catch (err) {
+    await unlink(temp).catch(() => undefined)
+    throw err
+  }
+}
+
+async function unlinkNoFollow(path: string): Promise<void> {
+  await checkParentFolder(path)
+  const info = await lstat(path)
+  if (!info.isFile()) throw new Error(`${path} is not a regular file: it is refused.`)
+  await unlink(path)
+}
+
+async function readdirNoFollow(path: string): Promise<string[]> {
+  await checkParentFolder(path)
+  const info = await lstat(path)
+  if (!info.isDirectory()) throw new Error(`${path} is not a real folder (a link or a file): it is refused.`)
+  return readdir(path)
+}
 
 const prefaceFs: PrefaceFs = {
-  readdir: path => readdir(path),
+  readdir: path => readdirNoFollow(path),
   mkdir: async path => {
-    await mkdir(path, { recursive: true })
+    if (basename(path) === 'preface-archive') await realFolder(dirname(path))
+    await realFolder(path)
   },
-  readFile: path => readFile(path, 'utf8'),
-  writeFile: (path, text) => writeAtomic(path, text),
-  unlink: path => unlink(path),
+  readFile: path => readNoFollow(path),
+  writeFile: (path, text) => writeNoFollow(path, text),
+  unlink: path => unlinkNoFollow(path),
 }
 
 /** One document with its baseline, read from the analysis folder (`path` is what the state shows, from the root). */
@@ -37,7 +114,7 @@ export async function readOverview(analysisPath: string): Promise<OverviewState>
   const [text, preface, coverageText] = await Promise.all([
     maybeText(join(analysisPath, OVERVIEW_FILE)),
     readFrozenPreface(prefaceFs, analysisPath),
-    maybeText(join(analysisPath, COVERAGE_FILE)),
+    readNoFollow(join(analysisPath, COVERAGE_FILE)).catch(() => undefined),
   ])
   const coverage = parseCoverage(coverageText ?? '')
   const state: OverviewState = { ...(preface ? { preface } : {}), ...(coverage ? { coverage } : {}) }

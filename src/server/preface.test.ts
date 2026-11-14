@@ -279,3 +279,19 @@ test('a failed automatic step-count pass leaves the SQL run recorded with its re
   ])
   await ws.done()
 })
+
+test('sql rejects malformed or injected spec ids before running or writing a query file', async () => {
+  const ws = await fake({
+    'analysis.yaml': 'title: Feature\n',
+    '.venv/bin/python': '',
+    '/opt/venv-assay/bin/python': '',
+  })
+  wireSpecSql(ws)
+
+  for (const bad of ['rev\n-- author: user', 'rev (unfrozen)', '-leading-dash', 'bad space']) {
+    const reply = await ws.call('sql', { sql: 'SELECT 1 AS id', slug: 'bad-spec', spec: bad })
+    expect(reply).toBe('Invalid spec id: must match /^[A-Za-z0-9][A-Za-z0-9_-]*$/.')
+  }
+  expect(await readQueryNames(ws.analysis)).toEqual([])
+  await ws.done()
+})

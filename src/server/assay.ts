@@ -9,8 +9,10 @@ import { dirname, join, relative } from 'node:path'
 import { ANALYSIS_FILE } from '../core/analyses.ts'
 import { dictionaryText, newSeen } from '../core/calculations.ts'
 import type { CalculationList, DictionaryAnswer, Seen } from '../core/calculations.ts'
+import { COVERAGE_FILE, analysisCoverage } from '../core/coverage.ts'
 import type { Table } from '../core/engines.ts'
 import { FROZEN_PREFACE_FILE, parseFrozenPreface } from '../core/preface.ts'
+import type { FrozenPreface } from '../core/preface.ts'
 import { formatTable, queryLabel, toCsv } from '../core/pythonRuns.ts'
 import type { UserRun } from '../core/rules.ts'
 import { nextRunNumber, parseRuns } from '../core/runs.ts'
@@ -20,10 +22,11 @@ import { parseVenvBuild, venvHint, venvStatusPath } from '../core/venv.ts'
 import { KernelHost } from './kernel.ts'
 import { HELPER_PYTHON_FLAGS } from '../core/helperFlags.ts'
 import type { Proc } from './proc.ts'
-import { writeCoverage } from './sqlRun.ts'
 
 export const THREADS = 'threads.md'
 export const QUERIES = 'queries'
+/** A run's expanded SQL, beside it in queries/ (never a run: its number is followed by a dot). */
+export const expandedFile = (number: number) => `${QUERIES}/${queryLabel(number)}.expanded.sql`
 const LIB = 'lib'
 const TESTS = 'tests'
 const REPLY_ROWS = 50
@@ -190,7 +193,7 @@ export class Assay {
     await give(`${LIB}/__init__.py`, '')
     // .assay/ holds the app's session files; it ignores itself, so no repository needs a .gitignore change.
     await this.write('.assay/.gitignore', '*\n').catch(() => undefined)
-    await writeCoverage(this)
+    await this.writeCoverage()
   }
 
   /** Starts the session: the files, the kernel. (index.ts does the same around the handshake.) */
@@ -264,6 +267,30 @@ export class Assay {
     return this.append(USER_RUNS, run)
   }
 
+  /** Reads `.assay/preface.json` when a valid preface is currently frozen. */
+  async frozenPreface(): Promise<FrozenPreface | undefined> {
+    return parseFrozenPreface(await this.readText(FROZEN_PREFACE_FILE))
+  }
+
+  /** Recomputes the analysis's trusted-SQL lexical token coverage across `queries/` and writes `.assay/coverage.json`. */
+  private async writeCoverage(): Promise<void> {
+    const runs = parseRuns(await this.names(QUERIES))
+    const sqlRuns = await Promise.all(
+      runs.flatMap(run =>
+        run.language !== 'sql' || run.code === undefined
+          ? []
+          : [
+              Promise.all([this.readText(`${QUERIES}/${run.code}`), this.readText(expandedFile(run.number))]).then(([code, expanded]) => ({
+                language: 'sql' as const,
+                code,
+                ...(expanded ? { expanded } : {}),
+              })),
+            ],
+      ),
+    )
+    await this.writeAtomic(COVERAGE_FILE, `${JSON.stringify(analysisCoverage(sqlRuns))}\n`).catch(() => undefined)
+  }
+
   /** Saves a run under the next number, runs it and keeps its result; the tool's reply. */
   async runQuery(runner: Runner): Promise<string> {
     const ext = runner.ext ?? 'sql'
@@ -272,7 +299,7 @@ export class Assay {
     if ('error' in outcome) this.failures.set(number, outcome.error)
     // No columns is a statement with no result set (CREATE VIEW, DROP): an empty .csv, which a failed run never has.
     else if ('columns' in outcome) await this.write(`${base}.csv`, outcome.columns.length === 0 ? '' : toCsv(outcome.columns, outcome.rows))
-    await writeCoverage(this)
+    await this.writeCoverage()
     await this.writeAppStatus(null)
     if ('reply' in outcome) return outcome.reply
     const dictionary = runner.hasTables ? await this.dictionaryFor(runner.dictionaryFile?.(number) ?? `${base}.sql`).catch(() => undefined) : undefined
@@ -294,7 +321,7 @@ export class Assay {
       // Before the file, so the app never sees the new run without knowing it runs.
       await this.writeAppStatus({ number: claimed.number, startedAt: Date.now() })
       runner.onClaim?.(claimed.number)
-      const frozen = parseFrozenPreface(await this.readText(FROZEN_PREFACE_FILE))
+      const frozen = await this.frozenPreface()
       const comment = ext === 'py' ? '#' : '--'
       const preface = frozen ? `${comment} preface: ${frozen.id}\n` : ''
       await this.write(`${Assay.queryBase(claimed)}.${ext}`, `${preface}${runner.saved}`)

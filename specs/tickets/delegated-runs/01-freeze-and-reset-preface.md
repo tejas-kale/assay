@@ -7,7 +7,7 @@ https://github.com/tejas-kale/assay/issues/9#issuecomment-6879918940.
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** done
 
 ```json
 {
@@ -25,8 +25,8 @@ https://github.com/tejas-kale/assay/issues/9#issuecomment-6879918940.
 }
 ```
 
-- [ ] A draft `preface.json` in the analysis folder is validated against the preface schema (`low`, `high`, optional `known_total` and `tolerance`, `falsifiers` as sentences, `specs` as `{ id, text }[]`, `answer` and `reconciliation` naming ids present in `specs`).
-- [ ] Pressing the freeze key on the Overview tab freezes a validated copy under `.assay/` with a stable preface identity and shows the frozen state on the Overview tab.
-- [ ] The frozen preface under `.assay/` cannot be written or edited by the agent's file tools.
-- [ ] A second freeze is refused while a preface is already frozen, until the analyst resets.
-- [ ] Resetting from the Overview tab archives the current frozen preface under `.assay/` so its prediction and specs remain preserved on disk, and allows freezing a new draft.
+- [x] A draft `preface.json` in the analysis folder is validated against the preface schema (`low`, `high`, optional `known_total` and `tolerance`, `falsifiers` as sentences, `specs` as `{ id, text }[]`, `answer` and `reconciliation` naming ids present in `specs`).
+- [x] Pressing the freeze key on the Overview tab freezes a validated copy under `.assay/` with a stable preface identity and shows the frozen state on the Overview tab.
+- [x] The frozen preface under `.assay/` cannot be written or edited by the agent's file tools.
+- [x] A second freeze is refused while a preface is already frozen, until the analyst resets.
+- [x] Resetting from the Overview tab archives the current frozen preface under `.assay/` so its prediction and specs remain preserved on disk, and allows freezing a new draft.

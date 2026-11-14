@@ -45,6 +45,7 @@ one kernel the app shows. Protect this in every change.
   - `assay:resume`: report where the analysis stands and offer past root notes to link.
   - `assay:wrap-up`: close threads, write findings as root notes, settle weak citations, link the notes read.
   - `assay:propose-trusted`: draft a trusted calculation or dictionary entry, with every file Check needs.
+  - `assay:delegate`: run a delegated analysis from upfront grilling and preface approval through spec-gated SQL and the defence sheet.
 - `python/`: `analysis_db`, `analysis_kernel`, `analysis_sql` (the SQL rules on Claude's `sql`
   calls and on SQL templates at Check, and the lineage and step queries the Steps tab draws and runs; specs/slices/slice-9.md;
   its docstring names the modules behind it),
@@ -52,11 +53,11 @@ one kernel the app shows. Protect this in every change.
   Assay's venv (`src/main/backend.ts`). A new `analysis_*.py` module goes in `py-modules` in `python/pyproject.toml`.
 - The app talks to the server through files: it writes `.assay/requests/<id>.json` (`sql`, `python`, `interrupt`,
   `restart`, `replay`, `lineage`, `steps`, `trust-list`, `trust-check`, `trust-done`), the server answers in
-  `.assay/replies/`, writes next to a SQL run in `queries/` when the Steps tab asks (`NNN.lineage.json`;
+  `.assay/replies/`, writes next to a SQL run in `queries/` when the Steps tab or a spec-gated `sql` call asks (`NNN.lineage.json`;
   `NNN.steps.json` and each step's `NNN.k_<name>.sql`, `.csv` and `.counts.sql`: steps are not runs and take no
   number, and `q(N, step=k)` in the kernel loads step k's rows), and
-  writes `.assay/runs.json` and `.assay/trust/<name>.json` for run status and the trust review. For the prompt hook
-  only, it writes `.assay/user-runs.json` (the user's runs) and `.assay/step-notices.json` (step checks that failed),
+  writes `.assay/runs.json`, `.assay/coverage.json` (trusted-SQL lexical token coverage), and `.assay/trust/<name>.json` for run status, coverage, and the trust review. The Overview tab freezes `preface.json` into `.assay/preface.json` and archives reset prefaces in `.assay/preface-archive/<id>.json`. For the prompt hook
+  only, the server writes `.assay/user-runs.json` (the user's runs) and `.assay/step-notices.json` (step checks that failed),
   both emptied by the hook, and `.assay/session.json` (the kernel's python). No tool of Claude's can start or answer a review: only the Trust tab's buttons do, and only the app writes the trust ledger (`ASSAY_LEDGER`, specs/trust-ledger.md); `trust-done` carries no power.
 
 ## Driving the app without a person

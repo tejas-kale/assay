@@ -6,7 +6,7 @@ description: Run a delegated analysis from upfront grilling and preface approval
 # Delegate an analysis run
 
 The open analysis's folder, `analyses/<slug>/` from the root, is named in the rules on each prompt;
-every file below is in it.
+every file below is in it unless noted otherwise.
 
 1. If `analysis.yaml` is missing in `analyses/<slug>/`, tell the user to open the analysis in Assay and stop.
 
@@ -17,15 +17,15 @@ Before writing any answer or reconciliation SQL, settle the task with the user:
 1. Use `AskUserQuestion` (up to four questions per call) to settle:
    - the one metric the user will defend and its unit or scale;
    - the cohort, eligibility filters, and time windows (`YYYY-MM-DD` start and end dates);
-   - the known total (`known_total`) and absolute `tolerance` from a backtest or baseline for a rollout check (for a parameter optimisation task, `known_total` may be omitted);
+   - the known total (`known_total`) and absolute `tolerance` from a backtest or baseline for a rollout check (for a parameter optimisation task, `known_total` and `reconciliation` may be omitted);
    - any foreseeable judgment calls (duplicate keys, null buckets, boundary timestamps), the default to take for each, and why.
-2. Draft:
-   - `low` and `high`: the expected range `[low, high]` for the single defended metric (`low <= high`);
-   - `known_total` and `tolerance` (`tolerance >= 0`): required when `known_total` is set; omit `known_total` for an optimisation task that has no baseline total;
-   - `falsifiers`: non-empty list of sentences the user will judge on the defence sheet (for an optimisation task, include the holdout window with `YYYY-MM-DD` dates that the tuning never touched);
-   - `specs`: non-empty list of `{ "id": "<spec-id>", "text": "<prose spec>" }` entries covering the `answer` query and the `reconciliation` query (plus any supporting spec-gated queries);
-   - `answer` and `reconciliation`: the spec ids in `specs` for the defended metric and the reconciliation check.
-3. If neither a predicted `[low, high]` range nor falsifiers can be stated before seeing the result, tell the user in one line that this is an open understanding task rather than a delegable run, and stop.
+2. Check delegability before looking at the data: **if neither a plausible `[low, high]` range nor at least two falsifiers can be written before looking, the task is an understanding task (not a delegated execution task) — tell the analyst in one line before starting and stop.**
+3. Draft:
+   - `low` and `high`: the plausible range `[low, high]` for the single defended metric (`low <= high`);
+   - `known_total` and `tolerance` (`tolerance >= 0`, defaulting to `0` when omitted): required for a rollout check; omit `known_total` for an optimisation task that has no baseline total;
+   - `falsifiers`: at least two concrete falsifier sentences the analyst will judge on the defence sheet (for an optimisation task, include the holdout window with `YYYY-MM-DD` dates that the tuning never touched);
+   - `specs`: non-empty list of `{ "id": "<spec-id>", "text": "<prose spec>" }` entries (each `id` matching `/^[A-Za-z0-9][A-Za-z0-9_-]*$/`) covering the `answer` query and, when present, the `reconciliation` query;
+   - `answer` and `reconciliation`: the spec ids in `specs` for the defended metric and the reconciliation check (`reconciliation` may be omitted or `""` when `known_total` is omitted).
 4. Write `analyses/<slug>/preface.json` with `Write`:
 
 ```json
@@ -62,18 +62,18 @@ Before writing any answer or reconciliation SQL, settle the task with the user:
 
 Once the user confirms the preface is frozen:
 
-1. Read `analyses/<slug>/.assay/preface.json` to verify it is frozen and load its `id`, `low`, `high`, `known_total`, `tolerance`, `falsifiers`, `answer`, `reconciliation`, and `specs`. If `.assay/preface.json` is missing, ask the user to press `f` on the Overview tab and stop.
+1. Read `analyses/<slug>/.assay/preface.json` to verify it is frozen and load its `id`, `frozenAt`, `low`, `high`, `known_total`, `tolerance`, `falsifiers`, `answer`, `reconciliation`, and `specs`. If `.assay/preface.json` is missing, ask the user to press `f` on the Overview tab and stop.
 2. **Exploration queries**: call `mcp__assay__sql` without a `spec` argument (`{ "sql": "...", "slug": "..." }`). Exploration runs stay ungated and do not trigger the per-step row-count pass.
 3. **Answer and reconciliation queries**: call `mcp__assay__sql` with `spec` set to the approved spec `id` from `.assay/preface.json` (`{ "sql": "...", "slug": "...", "spec": "<spec-id>" }`):
    - Include approved trusted blocks (`{{ block(p => 'v') }}`) and dictionary definitions (`{{ definition(alias) }}`) wherever they fit instead of retyping their logic by hand.
    - The server records `-- preface: <id>`, `-- spec: <id>`, and `-- built from: ...` on the saved `.sql` file, updates `.assay/coverage.json`, and runs the per-step row-count pass (`queries/NNN.steps.json`) when the query finishes.
-4. **Unattended judgment calls**: when an ambiguity arises mid-run that was not settled up front, do not stop. Take the sensible default, append one bullet to `analyses/<slug>/decisions.md`:
+4. **Unattended judgment calls**: when an ambiguity arises mid-run that was not settled up front, do not stop. Take the sensible default, log the decision in `analyses/<slug>/decisions.md` (and/or a root note labelled `decision`) with the default taken, why, and the run citation:
    `- **<decision>**: <default taken> — <why> ([q NNN])`
    and continue.
 
 ## 4. Write the defence sheet (`analyses/<slug>/defence-sheet.md`)
 
-Read from the recorded files in `analyses/<slug>/` — always use the frozen `.assay/preface.json`, never the mutable draft `preface.json`:
+Compute and format the defence sheet directly from the recorded files in `analyses/<slug>/` — always read the frozen `.assay/preface.json`, never the mutable draft `preface.json`:
 
 1. Read `.assay/preface.json` and `.assay/coverage.json`.
 2. List `queries/` and read every SQL run recorded under the frozen preface (`-- preface: <id>` and `-- spec: <spec-id>`):
@@ -81,25 +81,40 @@ Read from the recorded files in `analyses/<slug>/` — always use the frozen `.a
    - `queries/NNN_<slug>.csv` (the saved result);
    - `queries/NNN.steps.json` (the per-step row counts and grain/join checks);
    - `queries/NNN.notices.json` (when present, for stored `retype` warnings).
-3. Read `decisions.md` when present.
-4. Write `analyses/<slug>/defence-sheet.md` with these sections:
-   - **Header & Status**: the frozen preface `id` and `frozenAt`, and a one-line status stating whether any of the four SQL review flags triggered.
-   - **Review Flags**: the four flags in plain sight at the top (`OK` or `FLAG`), so the user opens SQL only when a flag triggers:
-     - `Range`: latest run of the `answer` spec (`[q NNN]`) compared to `[low, high]` (`FLAG` when missing, `< low`, `> high`, or `(unfrozen)`).
-     - `Reconciliation`: latest run of the `reconciliation` spec (`[q NNN]`) compared to `known_total ± tolerance` (`FLAG` when missing, `|actual - known_total| > tolerance`, or `(unfrozen)`; `OK` with `known_total omitted (optimisation task)` when `known_total` is omitted).
-     - `Retype & Unfrozen Spec Warnings`: count of stored `retype` warnings from `queries/NNN.notices.json` plus any run whose spec was marked `(unfrozen)` (`FLAG` when `> 0`).
-     - `Logged Decisions`: count of judgment calls logged in `decisions.md` (`FLAG` when `> 0`, so the user can check that every default is one they stand behind).
-   - **Trusted-SQL Coverage**: the analysis's lexical token coverage share from `.assay/coverage.json` (`<pct>% (<trustedTokens> / <totalTokens> tokens)`).
-   - **Specs, Runs & Step Counts**: one subsection per spec in `.assay/preface.json` (plus any `(unfrozen)` spec run):
-     - approved spec prose `text`;
-     - latest run `[q NNN]` and its actual value;
-     - earlier runs `[q MMM]` with the same `spec` id (so reruns never hide an earlier attempt);
-     - `Built from` pieces (`name@commit`) from the run's `-- built from:` header;
-     - `Time windows` (`YYYY-MM-DD` date arguments in the saved query and in the spec text);
-     - `Steps` from `queries/NNN.steps.json`: each step's name, block name (when a trusted block), row count, and any failed grain or join check.
-   - **Stored Retype & Spec Warnings**: each stored `retype` warning (`qNNN: <warning>`) and any unfrozen spec warning, or `- None.`.
-   - **Falsifiers**: every falsifier sentence from `.assay/preface.json` (including the holdout window for optimisation tasks) for the user to judge.
-   - **Decision Log**: every logged decision (`- **<decision>**: <default taken> — <why> ([q NNN])`), or `- None.`.
+3. Read `decisions.md` (and any decision notes in `notes/`).
+4. Write `analyses/<slug>/defence-sheet.md` with these 7 sections in order:
+
+   1. **Header**
+      - `# Defence Sheet — <question or analysis title>`
+      - `Preface: <id> (frozen <frozenAt>)`
+      - One-line summary of the four SQL review triggers (missed plausible range, failed reconciliation, stored `retype` / `(unfrozen)` spec warnings, and logged decisions for the analyst to review).
+
+   2. **Reconciliation**
+      - Compare the latest run `[q NNN]` of the `reconciliation` spec against `known_total ± tolerance`:
+        - `PASS` when `|actual - known_total| <= tolerance` (and the spec was frozen);
+        - `FAIL` when missing, `(unfrozen)`, or `|actual - known_total| > tolerance`;
+        - `N/A (no known_total)` when `known_total` was omitted for a parameter-optimisation task.
+      - List any earlier runs `[q MMM]` for the `reconciliation` spec so reruns never hide an earlier attempt.
+
+   3. **Plausible Range & Falsifiers**
+      - **Plausible range**: compare the latest run `[q NNN]` of the `answer` spec against `[low, high]` (`PASS` when `low <= actual <= high` and the spec was frozen; `FAIL` when missing, `(unfrozen)`, `< low`, or `> high`), and list any earlier runs `[q MMM]` with the same `answer` spec id.
+      - **Falsifiers**: list each falsifier sentence from `.assay/preface.json` with `PASS`, `FAIL`, or the evidence citation `[q NNN]` for the analyst to judge.
+
+   4. **Spec & Step Counts**
+      - For each spec in `.assay/preface.json` (plus any `(unfrozen)` spec run), show:
+        - the approved spec `id` and prose `text`;
+        - a Markdown table of the SQL run (`[q NNN]`), any earlier runs (`[q MMM]`), `Built from` trusted pieces (`name@commit` from `-- built from:`), `Time windows` (`YYYY-MM-DD` dates in the query and spec text), each step's name, block name, and row count from `queries/NNN.steps.json`, and `PASS`/`FAIL` for the step grain/join checks;
+        - any stored `retype` warnings from `queries/NNN.notices.json` or `(unfrozen)` spec warnings (`PASS` when none, `FAIL` when any warning is present).
+
+   5. **Trusted SQL Coverage**
+      - Copy the figure from `.assay/coverage.json`: `<pct>% (<trustedTokens>/<totalTokens> lexical SQL tokens)` and `<trusted>/<total> SQL runs` across the analysis.
+
+   6. **Logged Decisions**
+      - List every logged decision from `decisions.md` and any root note with label `decision`, citing the run/note references (`[q NNN]`, `[[<ID>]]`) with the default taken and why for the analyst's judgment.
+      - **Do NOT mark logged decisions as `FAIL` just because decisions exist** — logging unattended judgment calls is expected behaviour. Only flag `FAIL` if silent/unlogged scope or denominator choices were made without being recorded.
+
+   7. **Holdout Check**
+      - Evaluate the holdout slice named in `.assay/preface.json` (`PASS`/`FAIL` with the citing run `[q NNN]`, or `N/A` when the task has no holdout slice) and confirm tuning queries did not overlap the holdout window.
 
 ## 5. Reply
 

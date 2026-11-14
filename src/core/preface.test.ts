@@ -43,7 +43,7 @@ const validDraft = {
   ],
 }
 
-test('parsePreface accepts a valid rollout preface and an optimisation preface without known_total', () => {
+test('parsePreface accepts a valid rollout preface and an optimisation preface without known_total, tolerance or reconciliation', () => {
   const full = parsePreface(JSON.stringify(validDraft))
   expect('preface' in full && full.preface).toEqual(validDraft)
 
@@ -62,7 +62,31 @@ test('parsePreface accepts a valid rollout preface and an optimisation preface w
   expect('preface' in opt && opt.preface).toEqual({ ...withoutKnown, tolerance: 0 })
 
   const optNoTol = parsePreface(JSON.stringify(withoutKnown))
-  expect('preface' in optNoTol && optNoTol.preface).toEqual(withoutKnown)
+  expect('preface' in optNoTol && optNoTol.preface).toEqual({ ...withoutKnown, tolerance: 0 })
+
+  const optOmittedRecon = {
+    low: 0.05,
+    high: 0.1,
+    falsifiers: ['Holdout window 2026-10-01..2026-10-14 does not regress.'],
+    answer: 'opt-rate',
+    specs: [{ id: 'opt-rate', text: 'Optimisation rate spec.' }],
+  }
+  const parsedOptOmitted = parsePreface(JSON.stringify(optOmittedRecon))
+  expect('preface' in parsedOptOmitted && parsedOptOmitted.preface).toEqual({
+    ...optOmittedRecon,
+    tolerance: 0,
+    reconciliation: '',
+  })
+
+  const parsedOptEmptyRecon = parsePreface(JSON.stringify({ ...optOmittedRecon, reconciliation: '   ' }))
+  expect('preface' in parsedOptEmptyRecon && parsedOptEmptyRecon.preface).toEqual({
+    ...optOmittedRecon,
+    tolerance: 0,
+    reconciliation: '',
+  })
+
+  const rolloutDefaultTol = parsePreface(JSON.stringify({ ...validDraft, tolerance: undefined }))
+  expect('preface' in rolloutDefaultTol && rolloutDefaultTol.preface).toEqual({ ...validDraft, tolerance: 0 })
 })
 
 test('parsePreface rejects malformed JSON, bad bounds, missing falsifiers, duplicate or bad specs, and unknown spec references', () => {
@@ -72,7 +96,7 @@ test('parsePreface rejects malformed JSON, bad bounds, missing falsifiers, dupli
   expect('error' in parsePreface(JSON.stringify({ ...validDraft, low: 'bad' }))).toBe(true)
   expect('error' in parsePreface(JSON.stringify({ ...validDraft, low: 0.5, high: 0.2 }))).toBe(true)
   expect('error' in parsePreface(JSON.stringify({ ...validDraft, known_total: 'bad' }))).toBe(true)
-  expect('error' in parsePreface(JSON.stringify({ ...validDraft, tolerance: undefined }))).toBe(true)
+  expect('error' in parsePreface(JSON.stringify({ ...validDraft, tolerance: 'bad' }))).toBe(true)
   expect('error' in parsePreface(JSON.stringify({ ...validDraft, tolerance: -1 }))).toBe(true)
   expect('error' in parsePreface(JSON.stringify({ ...validDraft, known_total: undefined, tolerance: -1 }))).toBe(true)
   expect('error' in parsePreface(JSON.stringify({ ...validDraft, falsifiers: [] }))).toBe(true)
@@ -81,6 +105,9 @@ test('parsePreface rejects malformed JSON, bad bounds, missing falsifiers, dupli
   expect('error' in parsePreface(JSON.stringify({ ...validDraft, specs: [] }))).toBe(true)
   expect('error' in parsePreface(JSON.stringify({ ...validDraft, specs: ['bad'] }))).toBe(true)
   expect('error' in parsePreface(JSON.stringify({ ...validDraft, specs: [{ id: '', text: 'x' }] }))).toBe(true)
+  expect('error' in parsePreface(JSON.stringify({ ...validDraft, specs: [{ id: '-bad', text: 'x' }] }))).toBe(true)
+  expect('error' in parsePreface(JSON.stringify({ ...validDraft, specs: [{ id: 'bad space', text: 'x' }] }))).toBe(true)
+  expect('error' in parsePreface(JSON.stringify({ ...validDraft, specs: [{ id: 'rev (unfrozen)', text: 'x' }] }))).toBe(true)
   expect(
     'error' in
       parsePreface(
@@ -95,14 +122,20 @@ test('parsePreface rejects malformed JSON, bad bounds, missing falsifiers, dupli
   ).toBe(true)
   expect('error' in parsePreface(JSON.stringify({ ...validDraft, answer: 'missing-id' }))).toBe(true)
   expect('error' in parsePreface(JSON.stringify({ ...validDraft, reconciliation: 'missing-id' }))).toBe(true)
+  expect('error' in parsePreface(JSON.stringify({ ...validDraft, reconciliation: 123 }))).toBe(true)
+  expect('error' in parsePreface(JSON.stringify({ ...validDraft, reconciliation: '' }))).toBe(true)
+  expect('error' in parsePreface(JSON.stringify({ ...validDraft, known_total: undefined, reconciliation: 'missing-id' }))).toBe(true)
 })
 
-test('parseFrozenPreface requires a valid preface plus non-empty id and frozenAt', () => {
+test('parseFrozenPreface requires a valid preface plus a 12-hex id and non-empty frozenAt', () => {
   expect(parseFrozenPreface('{')).toBeUndefined()
   expect(parseFrozenPreface('[]')).toBeUndefined()
   expect(parseFrozenPreface(JSON.stringify(validDraft))).toBeUndefined()
-  expect(parseFrozenPreface(JSON.stringify({ ...validDraft, id: 'abc', frozenAt: '   ' }))).toBeUndefined()
-  expect(parseFrozenPreface(JSON.stringify({ ...validDraft, low: 5, high: 1, id: 'abc', frozenAt: '2026-11-14T10:00:00.000Z' }))).toBeUndefined()
+  expect(parseFrozenPreface(JSON.stringify({ ...validDraft, id: 'abc123def456', frozenAt: '   ' }))).toBeUndefined()
+  expect(parseFrozenPreface(JSON.stringify({ ...validDraft, id: 'abc', frozenAt: '2026-11-14T10:00:00.000Z' }))).toBeUndefined()
+  expect(parseFrozenPreface(JSON.stringify({ ...validDraft, id: '../../escape', frozenAt: '2026-11-14T10:00:00.000Z' }))).toBeUndefined()
+  expect(parseFrozenPreface(JSON.stringify({ ...validDraft, id: 'ABC123DEF456', frozenAt: '2026-11-14T10:00:00.000Z' }))).toBeUndefined()
+  expect(parseFrozenPreface(JSON.stringify({ ...validDraft, low: 5, high: 1, id: 'abc123def456', frozenAt: '2026-11-14T10:00:00.000Z' }))).toBeUndefined()
   const frozen = parseFrozenPreface(JSON.stringify({ ...validDraft, id: 'abc123def456', frozenAt: '2026-11-14T10:00:00.000Z' }))
   expect(frozen).toEqual({ ...validDraft, id: 'abc123def456', frozenAt: '2026-11-14T10:00:00.000Z' })
 })
@@ -152,4 +185,23 @@ test('freezePreface validates and freezes preface.json, refuses a second freeze 
   expect(third.preface.id).not.toBe(first.preface.id)
   expect(third.preface.low).toBe(0.1)
   expect(await readFile(join(analysis, FROZEN_PREFACE_FILE), 'utf8')).toContain(third.preface.id)
+})
+
+test('freezePreface and resetPreface report non-ENOENT filesystem errors as invalid', async () => {
+  const analysis = await mkdtemp(join(tmpdir(), 'assay-preface-err-'))
+  await writeFile(join(analysis, PREFACE_DRAFT_FILE), JSON.stringify(validDraft, null, 2), 'utf8')
+  const failingFs: PrefaceFs = {
+    ...diskFs,
+    readFile: () => Promise.reject(new Error('refused link')),
+    readdir: () => Promise.reject(new Error('refused dir')),
+  }
+  expect(await readFrozenPreface(failingFs, analysis)).toBeUndefined()
+  expect(await freezePreface(failingFs, analysis)).toEqual({ ok: false, reason: 'invalid', message: 'refused link' })
+  expect(await resetPreface(failingFs, analysis)).toEqual({ ok: false, reason: 'invalid', message: 'refused link' })
+  const failingReaddirFs: PrefaceFs = {
+    ...diskFs,
+    readFile: path => (path.endsWith(FROZEN_PREFACE_FILE) ? Promise.reject(Object.assign(new Error('missing'), { code: 'ENOENT' })) : diskFs.readFile(path)),
+    readdir: () => Promise.reject(new Error('refused archive dir')),
+  }
+  expect(await freezePreface(failingReaddirFs, analysis)).toEqual({ ok: false, reason: 'invalid', message: 'refused archive dir' })
 })

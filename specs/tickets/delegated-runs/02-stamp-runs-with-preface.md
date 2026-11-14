@@ -6,8 +6,8 @@ https://github.com/tejas-kale/assay/issues/9#issuecomment-6879918940.
 
 **Blocked by:** 01 (Freeze and reset the preface from the Overview tab).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] When a frozen preface is current, every newly claimed SQL, Python, and trusted run records that preface's identity in its run metadata/header and parsed run state.
-- [ ] When no preface is frozen (before the first freeze, or after a reset before a new freeze), runs omit the preface identity cleanly.
-- [ ] After a reset and a second frozen preface, earlier runs still report the first preface's identity and new runs report the second preface's identity.
+- [x] When a frozen preface is current, every newly claimed SQL, Python, and trusted run records that preface's identity in its run metadata/header and parsed run state.
+- [x] When no preface is frozen (before the first freeze, or after a reset before a new freeze), runs omit the preface identity cleanly.
+- [x] After a reset and a second frozen preface, earlier runs still report the first preface's identity and new runs report the second preface's identity.
