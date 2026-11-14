@@ -265,3 +265,29 @@ test('parseRunHeader reads preface on SQL and Python runs, and codeBody strips i
   })
   assert.equal(codeBody(py, 'python'), '# note\nx = 1\n')
 })
+
+test('parseRunHeader reads frozen and unfrozen spec headers on SQL runs, and codeBody and withoutHeaderLines strip them', () => {
+  const frozenSql = '-- preface: abc123def456\n-- spec: rollout-rate\n-- why\nSELECT 1\n'
+  assert.deepEqual(parseRunHeader(frozenSql, 'sql'), {
+    author: 'claude',
+    engine: 'databricks',
+    preface: 'abc123def456',
+    spec: 'rollout-rate',
+    specFrozen: true,
+  })
+  assert.equal(codeBody(frozenSql, 'sql'), '-- why\nSELECT 1\n')
+
+  const unfrozenSql = '-- spec: rollout-rate (unfrozen)\nSELECT 1\n'
+  assert.deepEqual(parseRunHeader(unfrozenSql, 'sql'), {
+    author: 'claude',
+    engine: 'databricks',
+    spec: 'rollout-rate',
+    specFrozen: false,
+  })
+  assert.equal(codeBody(unfrozenSql, 'sql'), 'SELECT 1\n')
+  assert.equal(withoutHeaderLines('-- spec: forged\n-- spec: forged (unfrozen)\nSELECT 1', 'sql'), 'SELECT 1')
+  assert.deepEqual(parseRunHeader('-- spec:   \n-- spec: (unfrozen)\nSELECT 1\n', 'sql'), {
+    author: 'claude',
+    engine: 'databricks',
+  })
+})

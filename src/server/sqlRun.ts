@@ -4,11 +4,13 @@ import { ANALYSIS_FILE } from '../core/analyses.ts'
 import { COVERAGE_FILE, analysisCoverage } from '../core/coverage.ts'
 import { parseCliOutput, parsePsqlOutput, POSTGRES_MARK, readTarget } from '../core/engines.ts'
 import type { Table, Target } from '../core/engines.ts'
+import { FROZEN_PREFACE_FILE, parseFrozenPreface } from '../core/preface.ts'
 import { queryLabel, runSlug } from '../core/pythonRuns.ts'
 import { parseRuns } from '../core/runs.ts'
 import type { Engine } from '../core/runs.ts'
 import { QUERIES } from './assay.ts'
 import type { Assay, Runner } from './assay.ts'
+import { runSteps } from './stepsRun.ts'
 
 export const QUERY_TIMEOUT_MS = 600_000
 const HELPER_MS = 30_000
@@ -158,29 +160,69 @@ export async function retypeWarnings(assay: Assay, sql: string, engine: Engine):
   return 'warnings' in found && Array.isArray(found.warnings) ? found.warnings.map(String) : []
 }
 
-/** Claude's `sql` call: the rules first. A rejected statement claims no number and records no run. */
-export async function runClaudeSql(assay: Assay, sql: string, slug: string, engine: Engine): Promise<string> {
-  const expansion = await expandSql(assay, sql, engine)
-  if (expansion && 'errors' in expansion) return rejected(INCLUDES_REJECTED, expansion.errors)
-  // The rules read the SQL as written, each block's body a plain select: its internals were checked in the Trust tab.
-  const linted = await lintSql(assay, expansion?.lint_sql ?? sql, engine)
-  if (linted && !('error' in linted) && linted.errors.length > 0) return rejected(SQL_RULES_REJECTED, linted.errors)
-  const retyped = await retypeWarnings(assay, expansion?.retype_sql ?? sql, engine)
-  const claimed: { number?: number } = {}
-  const onClaim = (number: number) => {
-    claimed.number = number
+export type ClaudeSqlOptions = { engine: Engine; spec?: string }
+
+async function specHeader(assay: Assay, spec: string | undefined): Promise<string | undefined> {
+  if (!spec) return undefined
+  const frozen = parseFrozenPreface(await assay.readText(FROZEN_PREFACE_FILE))
+  const inPreface = frozen?.specs.some(entry => entry.id === spec) === true
+  return inPreface ? `-- spec: ${spec}\n` : `-- spec: ${spec} (unfrozen)\n`
+}
+
+async function finishClaudeSql(
+  assay: Assay,
+  number: number | undefined,
+  spec: string | undefined,
+  notices: { rules: string[]; retype: string[] },
+): Promise<void> {
+  if (number === undefined) return
+  if (notices.rules.length > 0 || notices.retype.length > 0) {
+    await assay.writeAtomic(noticesFile(number), `${JSON.stringify(notices)}\n`).catch(() => undefined)
   }
-  const reply = await runSql(assay, { sql, slug, engine, onClaim, ...(expansion ? { expansion } : {}) })
-  const rules = linted && !('error' in linted) ? linted.warnings : []
-  if (claimed.number !== undefined && (rules.length > 0 || retyped.length > 0)) {
-    await assay.writeAtomic(noticesFile(claimed.number), `${JSON.stringify({ rules, retype: retyped })}\n`).catch(() => undefined)
+  if (spec && !assay.failures.has(number)) {
+    await runSteps(assay, number).catch(() => undefined)
   }
+}
+
+function formatClaudeSqlReply(
+  reply: string,
+  linted: SqlLint | { error: string } | undefined,
+  rules: string[],
+  retyped: string[],
+): string {
   const parts = [reply]
   // A lint that cannot run does not block: the query ran, and the reply says why it was not checked.
   if (linted && 'error' in linted) parts.push('', `SQL rules not checked: ${linted.error}`)
   if (rules.length > 0) parts.push('', 'SQL rule warnings:', ...bullets(rules))
   if (retyped.length > 0) parts.push('', RETYPED, ...bullets(retyped))
   return parts.join('\n')
+}
+
+/** Claude's `sql` call: the rules first. A rejected statement claims no number and records no run. */
+export async function runClaudeSql(assay: Assay, sql: string, slug: string, options: ClaudeSqlOptions): Promise<string> {
+  const { engine, spec } = options
+  const expansion = await expandSql(assay, sql, engine)
+  if (expansion && 'errors' in expansion) return rejected(INCLUDES_REJECTED, expansion.errors)
+  // The rules read the SQL as written, each block's body a plain select: its internals were checked in the Trust tab.
+  const linted = await lintSql(assay, expansion?.lint_sql ?? sql, engine)
+  if (linted && !('error' in linted) && linted.errors.length > 0) return rejected(SQL_RULES_REJECTED, linted.errors)
+  const retyped = await retypeWarnings(assay, expansion?.retype_sql ?? sql, engine)
+  const header = await specHeader(assay, spec)
+  const claimed: { number?: number } = {}
+  const onClaim = (number: number) => {
+    claimed.number = number
+  }
+  const reply = await runSql(assay, {
+    sql,
+    slug,
+    engine,
+    onClaim,
+    ...(header ? { header } : {}),
+    ...(expansion ? { expansion } : {}),
+  })
+  const rules = linted && !('error' in linted) ? linted.warnings : []
+  await finishClaudeSql(assay, claimed.number, spec, { rules, retype: retyped })
+  return formatClaudeSqlReply(reply, linted, rules, retyped)
 }
 
 /** Recomputes the analysis's trusted-SQL lexical token coverage across `queries/` and writes `.assay/coverage.json`. */

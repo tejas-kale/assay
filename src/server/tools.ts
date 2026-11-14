@@ -32,6 +32,11 @@ export const TOOLS = [
           description:
             'Where to run it. "postgres" when the user asks for Postgres or pg: the Aurora database, read only. Otherwise "databricks", the default.',
         },
+        spec: {
+          type: 'string',
+          description:
+            'Optional spec id from the frozen preface when running an answer or reconciliation query; omit for exploration.',
+        },
       },
       required: ['sql', 'slug'],
     },
@@ -187,7 +192,10 @@ export async function callTool(assay: Assay, name: string, args: Args): Promise<
 function sqlTool(assay: Assay, args: Args): Promise<string> {
   const sql = withoutHeaderLines(field(args, 'sql'), 'sql')
   const engine: Engine = field(args, 'engine') === 'postgres' ? 'postgres' : 'databricks'
-  return sql.trim() ? runClaudeSql(assay, sql, field(args, 'slug'), engine) : Promise.resolve('Give the SQL to run.')
+  const spec = field(args, 'spec').trim()
+  return sql.trim()
+    ? runClaudeSql(assay, sql, field(args, 'slug'), { engine, ...(spec ? { spec } : {}) })
+    : Promise.resolve('Give the SQL to run.')
 }
 
 async function pythonTool(assay: Assay, args: Args): Promise<string> {

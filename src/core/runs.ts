@@ -29,6 +29,9 @@ export type Run = {
   engine?: Engine
   /** The frozen preface current when the run was claimed (specs/delegated-runs.md). */
   preface?: string
+  /** The spec id a SQL run claimed to execute, and whether that spec id was in the current frozen preface. */
+  spec?: string
+  specFrozen?: boolean
   /** How many steps a SQL run has (planned, or run); main fills it from `NNN.steps.json`. */
   steps?: number
 }
@@ -262,10 +265,14 @@ export type RunHeader = {
   builtFrom?: string[]
   /** The frozen preface current when the run was claimed (specs/delegated-runs.md). */
   preface?: string
+  /** The spec id a SQL run claimed to execute, and whether that spec id was in the current frozen preface. */
+  spec?: string
+  specFrozen?: boolean
 }
 
-const SQL_HEADER_LINE = /^-- (?:author: |from: |trusted: |commit: |args: |built from: |preface: |postgres\s*$)/
+const SQL_HEADER_LINE = /^-- (?:author: |from: |trusted: |commit: |args: |built from: |preface: |spec: |postgres\s*$)/
 const PYTHON_HEADER_LINE = /^# (?:author: |from: |replay: |preface: )/
+const UNFROZEN_MARK = /(?:^|\s)\(unfrozen\)$/
 
 type HeaderValue = (key: string) => string | undefined
 
@@ -284,12 +291,22 @@ function readCommonHeader(header: RunHeader, value: HeaderValue) {
   if (preface) header.preface = preface
 }
 
-/** The SQL-only header lines: the trusted name, what a run is built from, and the engine. */
+function readSpecHeader(header: RunHeader, raw: string) {
+  const unfrozen = UNFROZEN_MARK.test(raw)
+  const spec = raw.replace(UNFROZEN_MARK, '').trim()
+  if (!spec) return
+  header.spec = spec
+  header.specFrozen = !unfrozen
+}
+
+/** The SQL-only header lines: the trusted name, what a run is built from, the spec, and the engine. */
 function readSqlHeader(header: RunHeader, value: HeaderValue, line: string) {
   const trusted = value('trusted')
   if (trusted) header.trusted = trusted.split(/\s/)[0] ?? trusted
   const built = value('built from')
   if (built) header.builtFrom = built.split(',').map(piece => piece.trim()).filter(Boolean)
+  const spec = value('spec')
+  if (spec) readSpecHeader(header, spec)
   if (/^-- postgres\s*$/.test(line)) header.engine = 'postgres'
 }
 
