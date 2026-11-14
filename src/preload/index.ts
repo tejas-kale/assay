@@ -61,6 +61,8 @@ const api: AppApi = {
   },
   overview: {
     markRead: (which, expectedText) => invoke(CHANNELS.overviewMarkRead, which, expectedText),
+    freezePreface: () => invoke(CHANNELS.overviewFreezePreface),
+    resetPreface: () => invoke(CHANNELS.overviewResetPreface),
   },
   notes: {
     read: name => invoke(CHANNELS.notesRead, name),

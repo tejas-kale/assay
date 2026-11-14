@@ -26,9 +26,19 @@ export function overviewHeading(which: OverviewWhich, system: string | undefined
   return `System: ${system?.replace(/^systems\/|\.md$/g, '') ?? '—'}`
 }
 
-export type OverviewKey = 'toggleWhich' | 'toggleDiff' | 'markRead' | 'down' | 'up' | 'top' | 'bottom'
+export type OverviewKey = 'toggleWhich' | 'toggleDiff' | 'markRead' | 'freezePreface' | 'resetPreface' | 'down' | 'up' | 'top' | 'bottom'
 
-const OVERVIEW_KEYS: Record<string, OverviewKey> = { s: 'toggleWhich', d: 'toggleDiff', m: 'markRead', j: 'down', k: 'up', g: 'top', G: 'bottom' }
+const OVERVIEW_KEYS: Record<string, OverviewKey> = {
+  s: 'toggleWhich',
+  d: 'toggleDiff',
+  m: 'markRead',
+  f: 'freezePreface',
+  r: 'resetPreface',
+  j: 'down',
+  k: 'up',
+  g: 'top',
+  G: 'bottom',
+}
 
 export function overviewKey(key: string): OverviewKey | undefined {
   return Object.hasOwn(OVERVIEW_KEYS, key) ? OVERVIEW_KEYS[key] : undefined

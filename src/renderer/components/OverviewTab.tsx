@@ -67,7 +67,19 @@ type KeyArgs = {
   setFlash: (message: string) => void
 }
 
-/** Keys: switch between the analysis and its system, the diff, Mark read, and scrolling. */
+function runPrefaceKey(key: 'freezePreface' | 'resetPreface', setFlash: (message: string) => void) {
+  if (key === 'freezePreface') {
+    void window.app.overview.freezePreface().then(result => {
+      setFlash(result.ok ? 'Preface frozen.' : result.message)
+    })
+  } else {
+    void window.app.overview.resetPreface().then(result => {
+      setFlash(result.ok ? 'Preface reset.' : result.message)
+    })
+  }
+}
+
+/** Keys: switch between the analysis and its system, the diff, Mark read, freeze/reset preface, and scrolling. */
 function useOverviewKeys({ root, doc, which, setWhich, setDiff, setFlash }: KeyArgs) {
   return (e: KeyboardEvent) => {
     if (!isPaneKey(e)) return
@@ -79,7 +91,8 @@ function useOverviewKeys({ root, doc, which, setWhich, setDiff, setFlash }: KeyA
     else if (key === 'markRead') {
       if (!doc) return
       void window.app.overview.markRead(which, doc.text).then(result => { setFlash(result.ok ? 'Marked read.' : result.message) })
-    } else if (key === 'down') scroller?.scrollBy(0, SCROLL_STEP)
+    } else if (key === 'freezePreface' || key === 'resetPreface') runPrefaceKey(key, setFlash)
+    else if (key === 'down') scroller?.scrollBy(0, SCROLL_STEP)
     else if (key === 'up') scroller?.scrollBy(0, -SCROLL_STEP)
     else if (key === 'top') scroller?.scrollTo(0, 0)
     else scroller?.scrollTo(0, scroller.scrollHeight)
@@ -107,7 +120,8 @@ export function OverviewTab(props: Readonly<{ overview: OverviewState; slug: str
         {doc && <span className={lines > OVERVIEW_LINE_CAP ? 'overview-lines over' : 'overview-lines dim'}>{` · ${String(lines)} lines`}</span>}
         {isDiff && <span className="dim"> · diff</span>}
         {doc !== undefined && doc.baseline === doc.text && <span className="dim"> · read</span>}
-        <span className="dim">{'  (s analysis / system, d diff, m mark read)'}</span>
+        {props.overview.preface && <span className="dim">{` · preface frozen (${props.overview.preface.id})`}</span>}
+        <span className="dim">{'  (s analysis / system, d diff, m mark read, f freeze preface, r reset preface)'}</span>
       </div>
       {missing && <div className="status dim">{missing}</div>}
       {doc && (

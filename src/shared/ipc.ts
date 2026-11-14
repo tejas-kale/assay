@@ -25,11 +25,12 @@ import type { TrustAdoptResult, TrustUnadoptedResult } from '../core/trustAdopt.
 import type { TrustApproveInput, TrustApproveResult, TrustFilesResult } from '../core/trustApprove.ts'
 import type { Proposal } from '../core/requests.ts'
 import type { OverviewState, OverviewWhich } from '../core/overview.ts'
+import type { FrozenPreface, Preface, PrefaceSpec } from '../core/preface.ts'
 import type { Check } from '../core/doctor.ts'
 import type { UpdateState } from '../core/update.ts'
 
 export type { TrustAdoptResult, TrustApproveInput, TrustApproveResult, TrustFilesResult, TrustUnadoptedResult }
-export type { CitationLabel, Analysis, AnalysisRef, ClosedThread, CloseState, CommandId, Engine, FileEntry, KernelState, NoteLists, Reply, RootNote, Run, RunRequest, RunResult, RunStatus, SearchContents, Table, Threads, TrustReview, OverviewState, OverviewWhich }
+export type { CitationLabel, Analysis, AnalysisRef, ClosedThread, CloseState, CommandId, Engine, FileEntry, FrozenPreface, KernelState, NoteLists, Preface, PrefaceSpec, Reply, RootNote, Run, RunRequest, RunResult, RunStatus, SearchContents, Table, Threads, TrustReview, OverviewState, OverviewWhich }
 
 /** Call to stop listening. */
 export type Unsubscribe = () => void
@@ -182,6 +183,10 @@ export type AppApi = {
   overview: {
     /** Marks the shown overview read: its text becomes the diff's baseline, if the file still holds `expectedText`. */
     markRead(which: OverviewWhich, expectedText: string): Promise<EditResult>
+    /** Freezes the draft `preface.json` into `.assay/preface.json`, unless a preface is already frozen. */
+    freezePreface(): Promise<EditResult>
+    /** Archives `.assay/preface.json` into `.assay/preface-archive/<id>.json` and clears the current frozen preface. */
+    resetPreface(): Promise<EditResult>
   }
 
   files: {
@@ -333,6 +338,8 @@ export const CHANNELS = {
   trustUnadopted: 'trust:unadopted',
   trustAdopt: 'trust:adopt',
   overviewMarkRead: 'overview:markRead',
+  overviewFreezePreface: 'overview:freezePreface',
+  overviewResetPreface: 'overview:resetPreface',
   filesList: 'files:list',
   filesOpen: 'files:open',
   filesPreview: 'files:preview',

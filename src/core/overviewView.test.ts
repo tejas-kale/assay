@@ -34,6 +34,8 @@ test('only the Overview keys map to commands', () => {
   assert.equal(overviewKey('s'), 'toggleWhich')
   assert.equal(overviewKey('d'), 'toggleDiff')
   assert.equal(overviewKey('m'), 'markRead')
+  assert.equal(overviewKey('f'), 'freezePreface')
+  assert.equal(overviewKey('r'), 'resetPreface')
   assert.equal(overviewKey('j'), 'down')
   assert.equal(overviewKey('k'), 'up')
   assert.equal(overviewKey('g'), 'top')

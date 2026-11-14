@@ -95,6 +95,8 @@ test("the analysis's .assay/ and queries/ and the root's git are Assay's alone, 
   const { root, analysis, env } = await scratch()
   for (const path of [
     `${analysis}/.assay/requests/0001.json`,
+    `${analysis}/.assay/preface.json`,
+    `${analysis}/.assay/preface-archive/abc123def456.json`,
     `${analysis}/.ASSAY/trust/x.json`,
     `${analysis}/queries/001_x.sql`,
     `${analysis}/Queries/001_x.csv`,
@@ -106,7 +108,7 @@ test("the analysis's .assay/ and queries/ and the root's git are Assay's alone, 
     const said = writeDecision({ tool_input: { file_path: path } }, env)
     expect(`${path}: ${said?.hookSpecificOutput.permissionDecisionReason ?? 'allowed'}`).toMatch('which only Assay writes')
   }
-  for (const path of [`${analysis}/lib/queries.py`, `${analysis}/assay.md`, `${analysis}/.assayrc`]) {
+  for (const path of [`${analysis}/preface.json`, `${analysis}/lib/queries.py`, `${analysis}/assay.md`, `${analysis}/.assayrc`]) {
     expect(writeDecision({ tool_input: { file_path: path } }, env)).toBeUndefined()
   }
 })

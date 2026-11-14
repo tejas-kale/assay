@@ -14,7 +14,7 @@ import { listFiles, openChart, openFile, previewFile } from './browse.ts'
 import { fsPort, rootOf } from './fsAccess.ts'
 import { THREADS, loadState } from './files.ts'
 import { readSearchContents } from './noteFiles.ts'
-import { markOverviewRead } from './overviewFiles.ts'
+import { freezeOverviewPreface, markOverviewRead, resetOverviewPreface } from './overviewFiles.ts'
 import { editFile, writeRequest } from './requestFiles.ts'
 import { readPlot, readRun } from './runFiles.ts'
 import { trustAdoptFor, trustApproveFor, trustFilesFor, trustUnadoptedFor } from './trustContext.ts'
@@ -262,6 +262,27 @@ function registerTrustIpc() {
   })
 }
 
+function registerOverviewIpc() {
+  handle(CHANNELS.overviewMarkRead, async (ctx, which, expected): Promise<EditResult> => {
+    if (!ctx.analysis || (which !== 'analysis' && which !== 'system') || typeof expected !== 'string') return invalid('Invalid input')
+    const result = await markOverviewRead(ctx.analysis.path, which, expected)
+    await pushState(ctx)
+    return result
+  })
+  handle(CHANNELS.overviewFreezePreface, async (ctx): Promise<EditResult> => {
+    if (!ctx.analysis) return invalid('No analysis is open')
+    const result = await freezeOverviewPreface(ctx.analysis.path)
+    await pushState(ctx)
+    return result
+  })
+  handle(CHANNELS.overviewResetPreface, async (ctx): Promise<EditResult> => {
+    if (!ctx.analysis) return invalid('No analysis is open')
+    const result = await resetOverviewPreface(ctx.analysis.path)
+    await pushState(ctx)
+    return result
+  })
+}
+
 function registerNoteIpc() {
   handle(CHANNELS.notesRead, (ctx, name): Promise<NoteReadResult> | NoteReadResult => {
     if (!ctx.analysis || typeof name !== 'string' || name.length > 255) return { ok: false, message: 'Invalid name' }
@@ -270,12 +291,6 @@ function registerNoteIpc() {
   handle(CHANNELS.notesAdd, async (ctx, title, text): Promise<NoteCreateResult> => {
     if (!ctx.analysis || !isText(title) || !isText(text)) return { ok: false, message: 'Invalid input' }
     const result = await addRootNote(rootOf(ctx.analysis.path), ctx.analysis, { title, body: text })
-    await pushState(ctx)
-    return result
-  })
-  handle(CHANNELS.overviewMarkRead, async (ctx, which, expected): Promise<EditResult> => {
-    if (!ctx.analysis || (which !== 'analysis' && which !== 'system') || typeof expected !== 'string') return invalid('Invalid input')
-    const result = await markOverviewRead(ctx.analysis.path, which, expected)
     await pushState(ctx)
     return result
   })
@@ -316,6 +331,7 @@ export function registerIpc() {
   registerFileIpc()
   registerRunIpc()
   registerTrustIpc()
+  registerOverviewIpc()
   registerNoteIpc()
   registerWindowIpc()
 }
