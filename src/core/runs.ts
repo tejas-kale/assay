@@ -27,6 +27,8 @@ export type Run = {
   replay?: number
   trusted?: string
   engine?: Engine
+  /** The frozen preface current when the run was claimed (specs/delegated-runs.md). */
+  preface?: string
   /** How many steps a SQL run has (planned, or run); main fills it from `NNN.steps.json`. */
   steps?: number
 }
@@ -258,14 +260,29 @@ export type RunHeader = {
   engine: Engine
   /** The trusted pieces a run with includes is built from, as `name@commit` (specs/slices/slice-10.md). */
   builtFrom?: string[]
+  /** The frozen preface current when the run was claimed (specs/delegated-runs.md). */
+  preface?: string
 }
 
-const SQL_HEADER_LINE = /^-- (?:author: |from: |trusted: |commit: |args: |built from: |postgres\s*$)/
-const PYTHON_HEADER_LINE = /^# (?:author: |from: |replay: )/
+const SQL_HEADER_LINE = /^-- (?:author: |from: |trusted: |commit: |args: |built from: |preface: |postgres\s*$)/
+const PYTHON_HEADER_LINE = /^# (?:author: |from: |replay: |preface: )/
 
 type HeaderValue = (key: string) => string | undefined
 
 const isNumber = (text: string | undefined): text is string => text !== undefined && /^\d+$/.test(text)
+
+function headerValue(line: string, comment: string, key: string): string | undefined {
+  const prefix = `${comment} ${key}: `
+  return line.startsWith(prefix) ? line.slice(prefix.length).trim() : undefined
+}
+
+function readCommonHeader(header: RunHeader, value: HeaderValue) {
+  if (value('author') === 'user') header.author = 'user'
+  const from = value('from')
+  if (isNumber(from)) header.from = Number(from)
+  const preface = value('preface')
+  if (preface) header.preface = preface
+}
 
 /** The SQL-only header lines: the trusted name, what a run is built from, and the engine. */
 function readSqlHeader(header: RunHeader, value: HeaderValue, line: string) {
@@ -282,10 +299,8 @@ export function parseRunHeader(text: string, language: 'sql' | 'python' = 'sql')
   const comment = language === 'python' ? '#' : '--'
   for (const line of text.split('\n')) {
     if (!line.startsWith(comment)) break
-    const value: HeaderValue = key => (line.startsWith(`${comment} ${key}: `) ? line.slice(comment.length + key.length + 3).trim() : undefined)
-    if (value('author') === 'user') header.author = 'user'
-    const from = value('from')
-    if (isNumber(from)) header.from = Number(from)
+    const value: HeaderValue = key => headerValue(line, comment, key)
+    readCommonHeader(header, value)
     if (language === 'python') {
       const replay = value('replay')
       if (isNumber(replay)) header.replay = Number(replay)

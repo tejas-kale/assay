@@ -54,7 +54,7 @@ async function withHeaders(folder: string, runs: Run[]): Promise<Run[]> {
       if (!run.code) return run
       const header = await headerOf(join(folder, QUERIES, run.code), run)
       if (!header) return run
-      const { author, from, replay, trusted, engine } = header
+      const { author, from, replay, trusted, engine, preface } = header
       return {
         ...run,
         author,
@@ -62,6 +62,7 @@ async function withHeaders(folder: string, runs: Run[]): Promise<Run[]> {
         ...(from !== undefined && { from }),
         ...(replay !== undefined && { replay }),
         ...(trusted !== undefined && { trusted }),
+        ...(preface !== undefined && { preface }),
       }
     }),
   )

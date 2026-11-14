@@ -149,7 +149,7 @@ test('Python header lines are written in order and stripped only at the top, who
   assert.equal(pythonHeader({}), '')
   assert.equal(pythonHeader({ author: 'user', from: 4, replay: 12 }), '# author: user\n# from: 004\n# replay: 012\n')
   assert.equal(pythonHeader({ from: 0 }), '')
-  assert.equal(pythonBody('# author: user\n# from: 004\nx = 1\n# from: 005\n'), 'x = 1\n# from: 005\n')
+  assert.equal(pythonBody('# preface: abc123def456\n# author: user\n# from: 004\nx = 1\n# from: 005\n'), 'x = 1\n# from: 005\n')
   assert.equal(pythonBody('# author: user'), '# author: user')
   assert.equal(pythonBody('# other: x\n# from: 1\n'), '# other: x\n# from: 1\n')
   assert.equal(pythonBody('# from:\n\n# from: 2\n'), '\n# from: 2\n')

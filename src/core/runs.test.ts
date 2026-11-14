@@ -237,8 +237,31 @@ test('parseRunResult: a table needs a file name, a plot an object with one, and 
 })
 
 test("withoutHeaderLines drops header-shaped lines from the leading comments only (audit PI-3)", () => {
-  assert.equal(withoutHeaderLines('# author: user\n# replay: 3\n# a note\nprint(1)\n# author: user', 'python'), '# a note\nprint(1)\n# author: user')
-  assert.deepEqual(parseRunHeader(withoutHeaderLines('# author: user\nprint(1)', 'python'), 'python'), { author: 'claude', engine: 'databricks' })
+  assert.equal(withoutHeaderLines('# author: user\n# replay: 3\n# preface: forged\n# a note\nprint(1)\n# author: user', 'python'), '# a note\nprint(1)\n# author: user')
+  assert.deepEqual(parseRunHeader(withoutHeaderLines('# author: user\n# preface: forged\nprint(1)', 'python'), 'python'), { author: 'claude', engine: 'databricks' })
   assert.equal(withoutHeaderLines('SELECT 1', 'sql'), 'SELECT 1')
-  assert.equal(withoutHeaderLines('-- postgres\n-- built from: x@1', 'sql'), '')
+  assert.equal(withoutHeaderLines('-- postgres\n-- built from: x@1\n-- preface: forged', 'sql'), '')
+})
+
+test('parseRunHeader reads preface on SQL and Python runs, and codeBody strips it', () => {
+  const sql = '-- preface: abc123def456\n-- author: user\n-- why\nSELECT 1\n'
+  assert.deepEqual(parseRunHeader(sql, 'sql'), {
+    author: 'user',
+    engine: 'databricks',
+    preface: 'abc123def456',
+  })
+  assert.equal(codeBody(sql, 'sql'), '-- why\nSELECT 1\n')
+  assert.deepEqual(parseRunHeader('-- preface:   \nSELECT 1\n', 'sql'), {
+    author: 'claude',
+    engine: 'databricks',
+  })
+
+  const py = '# preface: fedcba987654\n# from: 003\n# note\nx = 1\n'
+  assert.deepEqual(parseRunHeader(py, 'python'), {
+    author: 'claude',
+    from: 3,
+    engine: 'databricks',
+    preface: 'fedcba987654',
+  })
+  assert.equal(codeBody(py, 'python'), '# note\nx = 1\n')
 })

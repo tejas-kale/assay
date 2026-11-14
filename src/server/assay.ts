@@ -10,6 +10,7 @@ import { ANALYSIS_FILE } from '../core/analyses.ts'
 import { dictionaryText, newSeen } from '../core/calculations.ts'
 import type { CalculationList, DictionaryAnswer, Seen } from '../core/calculations.ts'
 import type { Table } from '../core/engines.ts'
+import { FROZEN_PREFACE_FILE, parseFrozenPreface } from '../core/preface.ts'
 import { formatTable, queryLabel, toCsv } from '../core/pythonRuns.ts'
 import type { UserRun } from '../core/rules.ts'
 import { nextRunNumber, parseRuns } from '../core/runs.ts'
@@ -293,7 +294,10 @@ export class Assay {
       // Before the file, so the app never sees the new run without knowing it runs.
       await this.writeAppStatus({ number: claimed.number, startedAt: Date.now() })
       runner.onClaim?.(claimed.number)
-      await this.write(`${Assay.queryBase(claimed)}.${ext}`, runner.saved)
+      const frozen = parseFrozenPreface(await this.readText(FROZEN_PREFACE_FILE))
+      const comment = ext === 'py' ? '#' : '--'
+      const preface = frozen ? `${comment} preface: ${frozen.id}\n` : ''
+      await this.write(`${Assay.queryBase(claimed)}.${ext}`, `${preface}${runner.saved}`)
       return { base: Assay.queryBase(claimed), number: claimed.number }
     })
   }

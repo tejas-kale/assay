@@ -169,7 +169,7 @@ export const pythonHeader = (header: { author?: 'user'; from?: number; replay?: 
   ].map(line => `${line}\n`).join('')
 
 /** A Python run's .py text without its leading header lines: the code that ran. */
-export const pythonBody = (text: string) => text.replace(/^(?:# (?:author|from|replay):[^\n]*\n)+/, '')
+export const pythonBody = (text: string) => text.replace(/^(?:# (?:author|from|replay|preface):[^\n]*\n)+/, '')
 
 /** Where a project venv's python may be, nearest first: `.venv/bin/python` of the folder and each parent up to `/`. */
 export function venvCandidates(dir: string): string[] {
