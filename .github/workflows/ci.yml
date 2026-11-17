@@ -38,8 +38,9 @@ jobs:
       # The same gate as the pre-push hook: typecheck, ESLint, node tests, ruff, pytest, the coverage bar.
       - run: npm run check
       # Known vulnerabilities in the locked dependencies (docs/developer/security.md). Electron counts although it is a
-      # dev dependency: it is the runtime the app ships, so no --omit=dev.
-      - run: npm audit --audit-level=high
+      # dev dependency: it is the runtime the app ships, so no --omit=dev. The gate fails on high and above, except the
+      # advisories scripts/audit-gate.ts accepts by id, each with its accepted-risk entry.
+      - run: node scripts/audit-gate.ts
       - run: npm audit --prefix scripts/mod-runner --audit-level=high
       # Every group, on the lowest Python the project supports: pip-audit checks only the lines whose markers match.
       - run: |

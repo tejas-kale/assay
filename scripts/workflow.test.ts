@@ -39,7 +39,8 @@ test('the release checkout keeps no token, and no dependency install script runs
 test('the release checks the built app fuses, and the unit job audits both lockfiles (audit UP-4, DEP-1)', () => {
   assert.match(release, /node scripts\/fuse-check\.ts dist\/mac-arm64\/Assay\.app/)
   const unit = jobs().get('unit') ?? ''
-  assert.match(unit, /npm audit --audit-level=high/)
+  assert.match(unit, /node scripts\/audit-gate\.ts/)
+  assert.doesNotMatch(unit, /npm audit (?!--prefix)/)
   assert.match(unit, /pip-audit@[\d.]+ .*--require-hashes/)
 })
 
