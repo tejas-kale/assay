@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assay's architecture, part 1: the map</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #FFFFFF;  --surface: #FFFFFF;  --sunken: #F2F4F4;
+    --text: #16181A;  --muted: #5A6066;  --border: #D8DBDD;
+    --accent: #0F6E5A;  --accent-ink: #0C5F4E;  --on-accent: #FFFFFF;
+    --good: #1B7A44;  --warn: #8A5A00;  --bad: #B3261E;
+    --series-1: #0F6E5A;  --series-2: #C2410C;  --series-3: #3B5BA9;  --series-4: #8E3B8A;  --series-5: #6B7280;
+    --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-head: ui-serif, "Iowan Old Style", Charter, Georgia, serif;
+    --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --radius: 8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #131516;  --surface: #1B1E20;  --sunken: #0D0F10;
+      --text: #ECEDEE;  --muted: #A1A7AD;  --border: #30353A;
+      --accent: #4FC3A1;  --accent-ink: #6AD1B2;  --on-accent: #06261D;
+      --good: #62C98B;  --warn: #E0B04C;  --bad: #F28B82;
+      --series-1: #4FC3A1;  --series-2: #F29B66;  --series-3: #8FA8F0;  --series-4: #D58BD0;  --series-5: #9CA3AF;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #131516;  --surface: #1B1E20;  --sunken: #0D0F10;
+    --text: #ECEDEE;  --muted: #A1A7AD;  --border: #30353A;
+    --accent: #4FC3A1;  --accent-ink: #6AD1B2;  --on-accent: #06261D;
+    --good: #62C98B;  --warn: #E0B04C;  --bad: #F28B82;
+    --series-1: #4FC3A1;  --series-2: #F29B66;  --series-3: #8FA8F0;  --series-4: #D58BD0;  --series-5: #9CA3AF;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 40px 16px 96px; background: var(--bg); color: var(--text);
+         font: 16px/1.6 var(--font-body); -webkit-font-smoothing: antialiased; }
+  .page { max-width: 1040px; margin: 0 auto; display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 40px; }
+  main > * { max-width: 720px; }
+  main > .wide { max-width: none; }
+  h1, h2, h3 { font-family: var(--font-head); line-height: 1.25; margin: 0; }
+  h1 { font-size: 30px; margin-bottom: 8px; }
+  h2 { font-size: 21px; margin: 40px 0 12px; scroll-margin-top: 20px; }
+  h3 { font-size: 16px; margin: 20px 0 6px; }
+  p, ul, ol { margin: 0 0 12px; }
+  a { color: var(--accent-ink); }
+  code, pre, kbd { font-family: var(--font-mono); font-size: 0.86em; }
+  code { background: var(--sunken); padding: 1px 4px; border-radius: 4px; }
+  .eyebrow, .meta { font: 12px var(--font-mono); color: var(--muted); letter-spacing: 0.04em; }
+  .eyebrow { text-transform: uppercase; margin-bottom: 8px; }
+  .meta { margin-bottom: 20px; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .btn { border: 1px solid var(--border); background: var(--surface); border-radius: 6px; padding: 4px 10px; font-size: 13px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .answer, .next { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+                   border-radius: var(--radius); padding: 14px 16px; }
+  .answer > :last-child, .next > :last-child, .note > :last-child { margin-bottom: 0; }
+  .label { font: 600 11px var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-ink); margin-bottom: 4px; }
+  .next { margin-top: 40px; }
+  nav[data-part="nav"] { position: sticky; top: 24px; align-self: start; font-size: 13px; }
+  nav[data-part="nav"] a { display: block; padding: 4px 0 4px 10px; border-left: 2px solid var(--border); color: var(--muted); text-decoration: none; }
+  nav[data-part="nav"] a:hover { color: var(--text); border-color: var(--accent); }
+  nav[data-part="nav"] .btn { margin-top: 16px; }
+  .prov { margin-top: 48px; border-top: 1px solid var(--border); padding-top: 12px; font-size: 13px; color: var(--muted); }
+  .prov summary { cursor: pointer; }
+  .prov dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 6px 12px; margin: 12px 0 0; }
+  .prov dt { font-family: var(--font-mono); font-size: 12px; }
+  .prov dd { margin: 0; }
+  .prov ul { margin: 0; padding-left: 18px; }
+  details.fold { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin: 0 0 10px; }
+  details.fold > summary { cursor: pointer; padding: 10px 14px; font-weight: 600; }
+  details.fold > summary .where { float: right; font: 12px var(--font-mono); color: var(--muted); font-weight: 400; }
+  details.fold > .body { padding: 0 14px 12px; }
+  .note { border: 1px solid var(--border); background: var(--sunken); border-radius: var(--radius); padding: 10px 14px; margin: 0 0 12px; font-size: 15px; }
+  .note.warn { border-color: var(--warn); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 0 0 12px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font: 600 12px var(--font-mono); color: var(--muted); }
+  .scroll { overflow-x: auto; }
+  .tag { display: inline-block; font: 11px var(--font-mono); padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+  .tag.good { color: var(--good); border-color: var(--good); }
+  .tag.warn { color: var(--warn); border-color: var(--warn); }
+  .tag.bad { color: var(--bad); border-color: var(--bad); }
+  figure { margin: 0 0 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+  figure svg { display: block; width: 100%; height: auto; }
+  figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  svg text { font-family: var(--font-body); fill: var(--muted); font-size: 11px; }
+  svg text.t { fill: var(--text); font-size: 13px; font-weight: 600; }
+  svg text.z { font: 600 11px var(--font-mono); letter-spacing: 0.06em; }
+  svg .box { fill: var(--surface); stroke: var(--border); }
+  svg .zone { fill: var(--sunken); stroke: var(--border); stroke-dasharray: 4 4; }
+  svg .wire { stroke: var(--muted); fill: none; stroke-width: 1.4; }
+  svg .hot { stroke: var(--accent); fill: none; stroke-width: 2.4; }
+  svg .hotbox { fill: var(--surface); stroke: var(--accent); stroke-width: 1.6; }
+  svg .dash { stroke: var(--muted); fill: none; stroke-width: 1.2; stroke-dasharray: 3 3; }
+  svg .num { fill: var(--accent); }
+  svg text.numt { fill: var(--on-accent); font-size: 11px; font-weight: 700; }
+  @media (max-width: 860px) {
+    .page { grid-template-columns: 1fr; gap: 0; }
+    nav[data-part="nav"] { display: none; }
+    body { padding-top: 24px; }
+  }
+  @media print {
+    body { background: #fff; padding: 0; }
+    nav[data-part="nav"], [data-theme-toggle] { display: none; }
+    .page { display: block; }
+    details.fold > .body { display: block; }
+    h2, figure, table { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <nav data-part="nav" aria-label="On this page">
+    <a href="#s1">The map</a>
+    <a href="#s2">One run, start to finish</a>
+    <a href="#s3">Why files sit in the middle</a>
+    <a href="#s4">Who may write what</a>
+    <a href="#s5">Words you will meet</a>
+    <a href="#s6">What the desktop move touches</a>
+    <button class="btn" type="button" data-theme-toggle>Theme: auto</button>
+  </nav>
+
+  <main>
+    <div class="eyebrow">Code explainer · Assay architecture, part 1 of a series</div>
+    <h1>Assay's architecture, part 1: the map</h1>
+    <div class="meta">6 min read · 2026-11-17</div>
+
+    <div class="answer" data-part="answer">
+      <div class="label">Answer</div>
+      <p>Assay is two programs that never call each other directly. One is the <b>app</b>: the window, the panes and the Trust buttons. The other is <b>Claude's side</b>: Claude Code, plus Assay's plugin, the <code>assay</code> server and the Python kernel. They communicate only by writing and reading files in the analysis folder.</p>
+      <p>Moving to the Claude desktop app replaces how Claude's side is started and contained. The files in the middle and the app's role as the only one who can trust a calculation can stay as they are.</p>
+    </div>
+
+    <h2 id="s1">The map</h2>
+    <p>Everything you see in Assay belongs to one of two sides. The left half of the window, the terminal, is Claude's side. The right-hand panes (Data, Plots, Steps, Trust and the rest) belong to the app. The two sides share one thing: the analysis folder on disk.</p>
+
+    <figure class="wide">
+      <svg viewBox="0 0 780 440" role="img" aria-label="Map of Assay: the app on the left, the analysis folder in the middle, Claude's side on the right">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
+          <marker id="arrh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
+        </defs>
+
+        <!-- zones -->
+        <rect class="zone" x="8" y="8" width="252" height="424" rx="10"/>
+        <text class="z" x="20" y="28">THE APP (on your Mac)</text>
+        <rect class="zone" x="500" y="8" width="272" height="424" rx="10"/>
+        <text class="z" x="512" y="28">CLAUDE'S SIDE</text>
+        <text x="512" y="44">a launcher may put this in a container</text>
+
+        <!-- app side -->
+        <rect class="hotbox" x="24" y="56" width="220" height="64" rx="8"/>
+        <text class="t" x="36" y="80">Panes and tabs</text>
+        <text x="36" y="98">Data, Plots, Steps, Trust …</text>
+        <text x="36" y="112">src/renderer/</text>
+
+        <rect class="hotbox" x="24" y="160" width="220" height="80" rx="8"/>
+        <text class="t" x="36" y="184">App core (Electron main)</text>
+        <text x="36" y="202">starts Claude, watches files,</text>
+        <text x="36" y="216">sends re-run requests, updates</text>
+        <text x="36" y="232">src/main/</text>
+
+        <rect class="box" x="24" y="356" width="220" height="60" rx="8"/>
+        <text class="t" x="36" y="380">Trust ledger</text>
+        <text x="36" y="398">the approved calculations;</text>
+        <text x="36" y="410">only the app writes it</text>
+
+        <!-- middle -->
+        <rect class="hotbox" x="288" y="140" width="204" height="170" rx="8"/>
+        <text class="t" x="302" y="164">Analysis folder</text>
+        <text x="302" y="186">queries/ 001.sql, 002.py …</text>
+        <text x="302" y="204">  every run, numbered</text>
+        <text x="302" y="226">.assay/requests/ (app → server)</text>
+        <text x="302" y="244">.assay/replies/ (server → app)</text>
+        <text x="302" y="262">.assay/runs.json (status)</text>
+        <text x="302" y="284">notes/, threads, overview.md</text>
+
+        <!-- claude side -->
+        <rect class="hotbox" x="516" y="56" width="240" height="56" rx="8"/>
+        <text class="t" x="528" y="80">Claude Code</text>
+        <text x="528" y="98">the terminal pane; you type here</text>
+
+        <rect class="box" x="516" y="134" width="240" height="56" rx="8"/>
+        <text class="t" x="528" y="156">Assay plugin: hooks + skills</text>
+        <text x="528" y="174">plugin/, src/hooks/</text>
+
+        <rect class="hotbox" x="516" y="212" width="240" height="56" rx="8"/>
+        <text class="t" x="528" y="234">The assay server (MCP)</text>
+        <text x="528" y="252">sql, python, note … · src/server/</text>
+
+        <rect class="hotbox" x="516" y="290" width="240" height="56" rx="8"/>
+        <text class="t" x="528" y="312">Python kernel</text>
+        <text x="528" y="330">one per session · python/</text>
+
+        <rect class="box" x="516" y="368" width="240" height="48" rx="8"/>
+        <text class="t" x="528" y="388">Databricks · Postgres</text>
+        <text x="528" y="404">via databricks CLI, rds-psql</text>
+
+        <!-- wires -->
+        <path class="wire" d="M134,160 L134,122" marker-end="url(#arr)"/>
+        <path class="wire" d="M244,172 C380,172 400,84 514,84" marker-end="url(#arr)"/>
+        <text x="300" y="112">starts it in a terminal</text>
+        <path class="wire" d="M636,112 L636,132" marker-end="url(#arr)"/>
+        <text x="644" y="126">checks prompts, tools</text>
+        <path class="hot" d="M524,112 C500,150 500,178 524,210" marker-end="url(#arrh)"/>
+        <path class="hot" d="M636,268 L636,288" marker-end="url(#arrh)"/>
+        <path class="wire" d="M700,346 L700,366" marker-end="url(#arr)"/>
+        <path class="hot" d="M516,240 L494,240" marker-end="url(#arrh)"/>
+                <path class="hot" d="M288,200 L246,200" marker-end="url(#arrh)"/>
+        <text x="248" y="194" style="font-size:10px">watched</text>
+        <path class="wire" d="M246,226 L286,226" marker-end="url(#arr)"/>
+        <text x="248" y="220" style="font-size:10px">requests</text>
+        <path class="wire" d="M134,240 L134,354" marker-end="url(#arr)"/>
+        <text x="142" y="300">writes on Trust</text>
+        <path class="dash" d="M516,258 C400,330 330,386 246,386" marker-end="url(#arr)"/>
+        <text x="330" y="372">server only reads it</text>
+
+        <!-- step numbers on the hot path -->
+        <circle class="num" cx="507" cy="160" r="9"/><text class="numt" x="503.5" y="164">1</text>
+        <circle class="num" cx="620" cy="278" r="9"/><text class="numt" x="616.5" y="282">2</text>
+        <circle class="num" cx="505" cy="254" r="9"/><text class="numt" x="501.5" y="258">3</text>
+        <circle class="num" cx="268" cy="212" r="9"/><text class="numt" x="264.5" y="216">4</text>
+        <circle class="num" cx="150" cy="140" r="9"/><text class="numt" x="146.5" y="144">5</text>
+      </svg>
+      <figcaption>Green is the path every run takes: Claude asks the server (1), the server runs the code in the kernel (2) and saves the run in the folder (3), and the app notices the new file (4) and shows it in a pane (5). Neither side calls the other directly.</figcaption>
+    </figure>
+
+    <h2 id="s2">One run, start to finish</h2>
+    <p>Here is what happens when you ask Claude for a number and it appears in the Data tab. Each step names the file where it happens, so you can open the code if you want to.</p>
+
+    <details class="fold" open>
+      <summary>0. The app starts Claude <span class="where">src/core/session.ts:34-60</span></summary>
+      <div class="body">
+        <p>When you open an analysis, the app opens a terminal and starts <code>claude</code> in it, through your login shell so that it finds the same programs a normal Terminal would. It gives Claude two things: Assay's plugin (<code>--plugin-dir</code>) and the <code>assay</code> server (<code>--mcp-config</code>). It also sets variables such as <code>ASSAY_ANALYSIS</code> (which folder is open) and <code>ASSAY_VENV</code> (which Python to use).</p>
+        <p>If you set <code>ASSAY_CLAUDE_BIN</code>, the app starts that program instead of <code>claude</code>. Your Podman wrapper uses this to run Claude inside a container. The full rules for a launcher are in <code>docs/developer/launch-contract.md</code>.</p>
+      </div>
+    </details>
+
+    <details class="fold">
+      <summary>1. You type; a hook adds the rules <span class="where">src/hooks/prompt.ts, src/core/rules.ts</span></summary>
+      <div class="body">
+        <p>Before Claude sees your message, the plugin's prompt hook adds Assay's rules to it: which analysis is open, that Python goes through the <code>python</code> tool, which trusted calculations exist, and which runs you made yourself since your last message. This happens on every message you type.</p>
+      </div>
+    </details>
+
+    <details class="fold">
+      <summary>2. Claude calls a tool, and hooks check it <span class="where">src/hooks/bash.ts, write.ts</span></summary>
+      <div class="body">
+        <p>Claude decides to run SQL and calls <code>mcp__assay__sql</code>. Other hooks check other tools: one stops Python from being run through Bash, and another stops Claude from writing into <code>trusted/</code>, <code>dictionaries/</code>, <code>queries/</code> or another analysis. A hook can refuse a tool call before it runs. That makes hooks the strongest rules Assay has inside Claude Code.</p>
+      </div>
+    </details>
+
+    <details class="fold">
+      <summary>3. The server checks the SQL, numbers it and runs it <span class="where">src/server/sqlRun.ts</span></summary>
+      <div class="body">
+        <p>The <code>assay</code> server is a small Node program that Claude Code starts at the beginning of the session and stops at the end. It first applies Assay's SQL rules and expands any trusted blocks you include, then saves the statement under the next free number (say <code>queries/042.sql</code>) and runs it on Databricks or Postgres. Python goes the same way, except that it runs in the kernel (<code>src/server/pythonRun.ts</code>).</p>
+      </div>
+    </details>
+
+    <details class="fold">
+      <summary>4. The kernel keeps your variables <span class="where">src/server/kernel.ts, python/analysis_kernel.py</span></summary>
+      <div class="body">
+        <p>The kernel is one long-running Python process per session, like a Jupyter kernel. Claude's Python runs and your re-runs from the app all go to this same kernel, so a variable that Claude creates is there when you re-run something. This is the "one place where code runs" in Assay's first rule.</p>
+      </div>
+    </details>
+
+    <details class="fold">
+      <summary>5. The app notices the new run and shows it <span class="where">src/main/windowWatch.ts:29-31</span></summary>
+      <div class="body">
+        <p>The app checks the analysis folder for changes to <code>queries/</code>, <code>.assay/runs.json</code>, the threads and the trust files. When <code>042</code> appears, the Data and History tabs redraw. The app never asked the server for anything: it only saw a new file.</p>
+      </div>
+    </details>
+
+    <details class="fold">
+      <summary>6. You re-run from the app: the same path, backwards <span class="where">src/server/requests.ts</span></summary>
+      <div class="body">
+        <p>When you press Cmd+Enter on a run, the app writes a request file, <code>.assay/requests/&lt;id&gt;.json</code>. The server checks that folder every 500 ms, runs the code in the same kernel, saves it as a new numbered run marked as yours, and writes the answer to <code>.assay/replies/</code>. On your next message, the prompt hook tells Claude what you ran.</p>
+      </div>
+    </details>
+
+    <h2 id="s3">Why files sit in the middle</h2>
+    <p>The README says "the files are the contract between the two, and the app keeps no database". This one choice explains most of the design:</p>
+    <ul>
+      <li><b>Claude's side can run somewhere else.</b> The Podman wrapper runs Claude in a container that sees the same folder at the same path. The app doesn't need to know, because it only reads files.</li>
+      <li><b>Every run is a file you can open.</b> <code>queries/042.sql</code> and its results are on disk, numbered and never changed afterwards. That's what makes the record of an analysis trustworthy.</li>
+      <li><b>Neither side can make the other do anything.</b> A request file asks the server to run code. It can't make anything trusted, because only the app's Trust buttons do that (next section).</li>
+    </ul>
+    <div class="note warn"><p>The cost: anything on Claude's side that can write files can also write a fake request. A forged request file can make a run look like yours. The security doc lists this as a known gap (PI-1, <code>docs/developer/security.md</code>, "Known gaps").</p></div>
+
+    <h2 id="s4">Who may write what</h2>
+    <p>Who may write which file is the core of Assay's safety. One rule matters more than the others: <b>nothing becomes trusted unless you press Trust in the app.</b></p>
+    <div class="scroll"><table>
+      <thead><tr><th>What</th><th>Who writes it</th><th>What stops anyone else</th></tr></thead>
+      <tbody>
+        <tr><td>Runs in <code>queries/</code></td><td>The server only</td><td>The write hook refuses Claude's Write and Edit there</td></tr>
+        <tr><td>A run's "made by you" mark</td><td>The server only</td><td>The server removes header lines that Claude's code tries to add</td></tr>
+        <tr><td><code>trusted/</code>, <code>dictionaries/</code></td><td>The server, after you approve</td><td>The write hook, and the server copies only what the ledger allows</td></tr>
+        <tr><td>Trust ledger</td><td>The app only</td><td>It sits in the app's data folder; a launcher must mount it read-only</td></tr>
+        <tr><td>Requests in <code>.assay/requests/</code></td><td>The app</td><td>The write hook (Claude's code can still write one: PI-1)</td></tr>
+        <tr><td>Your notes, drafts in <code>lib/</code></td><td>You and Claude</td><td>Claude uses <code>note</code> and <code>revise_note</code>, not Write</td></tr>
+      </tbody>
+    </table></div>
+    <div class="note warn"><p>These rules come in two strengths. Hooks stop a Claude that follows the rules. They can't stop code that's already running: the kernel runs any Python Claude writes, as you, with your permissions. Containing that code is left to the launcher (your Podman wrapper). With plain <code>claude</code> and no container, a Claude that was tricked by text in the data could do anything your Mac account can do (<code>docs/developer/security.md</code>, "The isolation boundary").</p></div>
+
+    <h2 id="s5">Words you will meet</h2>
+    <p>These words come up in every later page.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>Term</th><th>Plain meaning</th><th>Used in a sentence</th></tr></thead>
+      <tbody>
+        <tr><td>Plugin</td><td>A bundle that adds tools, rules and commands to Claude Code</td><td>"The plugin's hooks stop Python going through Bash."</td></tr>
+        <tr><td>Hook</td><td>A small script Claude Code runs at a fixed moment, such as before a tool call; it can refuse the call</td><td>"The write hook refuses edits to <code>queries/</code>."</td></tr>
+        <tr><td>Skill</td><td>A written procedure Claude loads when a task matches it</td><td>"<code>assay:wrap-up</code> closes threads and writes root notes."</td></tr>
+        <tr><td>MCP server</td><td>A separate program that gives Claude new tools; Claude Code starts it and talks to it</td><td>"<code>sql</code> and <code>python</code> are tools of the <code>assay</code> MCP server."</td></tr>
+        <tr><td>Kernel</td><td>A long-running Python process that keeps variables between runs</td><td>"Your re-run used the frame Claude made, because it's the same kernel."</td></tr>
+        <tr><td>Launcher</td><td>The program the app starts instead of plain <code>claude</code>, usually to contain it</td><td>"The Podman wrapper is a launcher."</td></tr>
+        <tr><td>Trust ledger</td><td>A file listing the fingerprints (sha256 hashes) of the calculations you approved</td><td>"A trusted file that was edited no longer matches the ledger, so it isn't trusted."</td></tr>
+        <tr><td>Sandbox</td><td>A limit set by the operating system on which files and network hosts a program can reach</td><td>"In Claude Code, the sandbox covers Bash commands, not MCP servers."</td></tr>
+      </tbody>
+    </table></div>
+
+    <h2 id="s6">What the desktop move touches</h2>
+    <p>Here is each box on the map, high level only. Later pages go into the weeds one box at a time.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>Box</th><th>Today</th><th>In the Claude desktop app</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td>Claude Code</td><td>Started by the app in its own terminal</td><td>You start it in the desktop app's Code tab</td><td><span class="tag warn">large</span></td></tr>
+        <tr><td>Python kernel</td><td>Contained only if a launcher contains it</td><td>There's no launcher, and the desktop sandbox doesn't reach MCP servers, so Assay has to contain the kernel itself</td><td><span class="tag bad">largest, safety</span></td></tr>
+        <tr><td>The <code>assay</code> server</td><td>Declared by the app (<code>--mcp-config</code>); tools named <code>mcp__assay__*</code></td><td>Declared by the plugin; tool names change</td><td><span class="tag warn">medium</span></td></tr>
+        <tr><td>App core</td><td>Starts Claude, sets the <code>ASSAY_*</code> variables</td><td>Starts nothing; the plugin has to find the analysis and the venv itself</td><td><span class="tag warn">medium</span></td></tr>
+        <tr><td>Plugin: hooks and skills</td><td>Loaded from the app's backend folder</td><td>Installed from a plugin marketplace</td><td><span class="tag">small</span></td></tr>
+        <tr><td>Panes and tabs</td><td>Beside the terminal in one window</td><td>A companion window that watches the same folder; some views could become desktop-app mods</td><td><span class="tag warn">medium</span></td></tr>
+        <tr><td>Analysis folder (files)</td><td>The contract</td><td>The same contract</td><td><span class="tag good">none</span></td></tr>
+        <tr><td>Trust ledger</td><td>Written only by the app</td><td>The same, but it must be kept out of reach of Claude's code without a launcher</td><td><span class="tag warn">guard</span></td></tr>
+      </tbody>
+    </table></div>
+    <div class="note"><p>The two rules worth keeping through the move are "one place where code runs, every run recorded" and "only your click in the app trusts anything". Both live in the middle and left of the map, and the desktop move mostly changes the right.</p></div>
+
+    <div class="next" data-part="next">
+      <div class="label">Next action</div>
+      <p>Open the fold "One run, start to finish" and tell me which step doesn't click yet. The next page is <b>part 2: how Claude's side is started and kept in its lane</b> (the launch, the hooks and what contains the kernel), which is where the desktop move does its real work.</p>
+    </div>
+
+    <footer class="prov" data-part="provenance">
+      <details>
+        <summary>Provenance: prompt, sources, not checked</summary>
+        <dl>
+          <dt>Prompt</dt><dd data-prov="prompt">"No, let's not do any implementation here. This is a big refactor and let us treat it carefully. Let's create a new branch and hold all the documents in @docs/specs. I want you to use the /explain skill heavily. Let's go into the architecture and overall design of the app in steps - high-level first and then into the weeds. Let's start." Then: "One important context: I'm a heavy user of Assay but understand little of its architecture or design. I created the app after lots of grilling sessions with Claude and then Claude built the whole app. I want you to keep this in mind when creating the explainers." Then: "No, explainers go in docs/explain while specs go in docs/specs".</dd>
+          <dt>Written</dt><dd>2026-11-17 · Claude Code</dd>
+          <dt>Sources</dt><dd data-prov="sources"><ul>
+            <li><code>README.md</code> (backend, files as the contract, launchers, "Not yet tried with a real Claude session")</li>
+            <li><code>AGENTS.md</code> ("Where things are", request and reply files)</li>
+            <li><code>src/core/session.ts:34-60</code> (how Claude is started, the <code>ASSAY_*</code> variables)</li>
+            <li><code>plugin/hooks/hooks.json</code>; <code>src/hooks/decide.ts:72-108</code> (write guard)</li>
+            <li><code>src/server/main.ts</code>, <code>sqlRun.ts</code>, <code>pythonRun.ts</code>, <code>kernel.ts</code>, <code>requests.ts</code> (header comments)</li>
+            <li><code>src/main/windowWatch.ts:29-31</code>, <code>trustApprove.ts</code> (header comment)</li>
+            <li><code>docs/developer/security.md</code> (isolation boundary, guarantees, known gaps), <code>docs/developer/launch-contract.md</code></li>
+            <li>Claude Code docs: <a href="https://code.claude.com/docs/en/desktop">Desktop application</a>, <a href="https://code.claude.com/docs/en/sandboxing">Sandboxing</a>, <a href="https://code.claude.com/docs/en/plugins/manifest-reference">Plugin manifest reference</a></li>
+          </ul></dd>
+          <dt>Not checked</dt><dd data-prov="not-checked"><ul>
+            <li>Whether Postgres runs go through the kernel or a separate process; the page only says "runs it on Databricks or Postgres".</li>
+            <li>The exact names plugin-declared MCP tools get in the desktop app.</li>
+            <li>Whether mods can host Assay's panes well enough; "some views could become mods" is a direction, not a finding.</li>
+            <li>README says the plugin has not yet been tried with a real Claude session; this page describes the code, not observed behaviour.</li>
+          </ul></dd>
+        </dl>
+      </details>
+    </footer>
+  </main>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  Array.prototype.slice.call(document.querySelectorAll('[data-theme-toggle]')).forEach(function (btn) {
+    var modes = ['auto', 'light', 'dark'], i = 0;
+    btn.addEventListener('click', function () {
+      i = (i + 1) % 3;
+      if (modes[i] === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', modes[i]);
+      btn.textContent = 'Theme: ' + modes[i];
+    });
+  });
+})();
+</script>
+</body>
+</html>
