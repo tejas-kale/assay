@@ -69,7 +69,7 @@ its window's session was launched with, not to the settings root now.
   commit before the ledger stay untrusted until the user adopts them in the Trust tab, one group at a time after
   looking at its files.
 - **Dependencies are locked and audited.** Both lockfiles hold hashes and only the official registries; CI runs
-  `npm audit --audit-level=high` and `pip-audit --require-hashes` on every Python group.
+  `scripts/audit-gate.ts` (`npm audit`, failing on high and above except advisories accepted by id below) and `pip-audit --require-hashes` on every Python group.
 
 `scripts/workflow.test.ts`, `scripts/fuse-check.test.ts` and the tests named in the audit pin each of these.
 
@@ -96,5 +96,6 @@ specs/trust-ledger.md.
 | L-6 | The pinned setuptools build backend is fetched by version, not by hash. | uv's build constraints pin versions only; PyPI never lets a published file be replaced, so a pinned version's files cannot change under it. |
 | L-7 | The kernel puts the analysis folder first on `sys.path`, so a stray `pandas.py` shadows pandas. (DEP-8) | ipykernel puts the working folder first anyway, and the kernel runs Claude's code by design; moving it would gain nothing. Assay's own helpers run with `-I`, so this reaches only the kernel (PI-9). |
 | L-8 | `npm audit` reports moderate advisories (minimatch ReDoS) in ESLint, typescript-eslint and electron-builder. | Build and lint tools only, never shipped; their glob patterns come from the repo. The CI gate is high and above. |
+| L-11 | `npm audit` reports a high advisory in picomatch ≤4.0.7 (GHSA-fc5q-39xc-vjpf, ReDoS through repeated extglobs), reached through vite, fdir, tinyglobby and electron-builder; no patched release exists, and npm's only fix downgrades vite a major version. | Build tools only, never shipped (`npm audit --omit=dev` is clean); their glob patterns come from the repo. `scripts/audit-gate.ts` accepts this advisory by id in picomatch alone, and fails once `npm audit fix` can fix it or npm stops reporting it. |
 | L-9 | A symlinked `.assay/` or `.assay/requests/` could send the app's request files elsewhere. | Refused: before each request the app checks that both are real folders (a link or a file there fails the send), creates them only as real folders, and writes the file with a no-follow exclusive create, then renames it inside the checked folder. What remains is a swap of the folder between the check and the write; the file written is a request that carries no power to trust anything (PI-1). |
 | L-10 | The Write guard compares paths without Unicode normalisation (`trusted​/` passes) and does not guard paths outside the root such as `~/.claude/settings.json`. | A zero-width name does not reach the real folder; paths outside the root are the launcher's and Claude Code's permissions to guard. |
