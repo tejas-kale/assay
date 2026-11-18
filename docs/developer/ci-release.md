@@ -6,7 +6,7 @@
 
 | Job | Runner | When | What |
 |---|---|---|---|
-| `unit` | ubuntu-latest | every push and pull request | `npm run check` (typecheck, ESLint, node tests, ruff, pytest, the coverage bar), `npm audit --audit-level=high`, `pip-audit` on every locked Python group; on main, the release filter |
+| `unit` | ubuntu-latest | every push and pull request | `npm run check` (typecheck, ESLint, node tests, ruff, pytest, the coverage bar), `scripts/audit-gate.ts` (`npm audit` at high and above, less the accepted advisories in security.md), `pip-audit` on every locked Python group; on main, the release filter |
 | `integration` | ubuntu-latest | every push, after `unit` | `npm run test:integration` under `xvfb-run`, with node-pty rebuilt for Electron |
 | `release` | macos-latest, environment `release` | a push to main, after both, unless the filter skips it | version, build, sign, notarize, fuse check, tag, GitHub release |
 
